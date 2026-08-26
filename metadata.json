@@ -1,0 +1,8 @@
+{
+  "name": "Remix 拾年 - 私人离线成长记忆档案",
+  "description": "私人离线成长记忆档案与时光故事管理工具，支持时光轴、拾人册、拾忆篇、拾物阁与未来寄信。",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
