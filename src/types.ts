@@ -20,6 +20,7 @@ export interface Person {
   avatar: string;
   bio: string;
   relationship: string;
+  group?: string;
   birthday: string;
   zodiac: string;
   hobbies: string;

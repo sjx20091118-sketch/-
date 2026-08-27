@@ -33,19 +33,20 @@ export const INITIAL_SEED: AppData = {
   people: [
     {
       id: 'p-201',
-      name: '周梓童',
+      name: '陆青寻',
       avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=300&auto=format&fit=crop&q=80',
-      bio: '大学最默契的室友兼设计搭档，共同度过了无数通宵做方案的夜。',
-      relationship: '大学挚友 / 设计搭档',
+      bio: '大学建筑系同窗与设计默契搭档，深夜实验室里最合拍的灵感捕手。',
+      relationship: '大学同窗 / 挚友',
+      group: '大学同窗',
       birthday: '10月24日',
       zodiac: '天蝎座',
-      hobbies: '建筑摄影、黑胶唱片、深夜长跑',
-      color: '鼠尾草绿 (#5B7B6D)',
-      customFields: { '认识地点': '新生报到宿舍楼下', '共同记忆': '威海海边日落' },
+      hobbies: '胶片摄影、原木雕刻、夜骑城市街巷',
+      color: '青松黛绿 (#5B7B6D)',
+      customFields: { '认识地点': '新生报到宿舍楼下林荫道', '共同记忆': '威海海边紫橙色日落' },
       impressions: [
-        { id: 'imp-1', year: '2021', text: '初见时有点清冷害羞，手里拿着一本建筑杂志，很有自己的想法。' },
-        { id: 'imp-2', year: '2023', text: '变得极其靠谱且富有幽默感，是深夜通宵做方案时最值得信赖的战友。' },
-        { id: 'imp-3', year: '2025', text: '入职了心仪的设计事务所，依然保持着对生活的赤诚与对美的敏感度。' }
+        { id: 'imp-1', year: '2021', text: '新生报到那天抱着用牛皮纸包着的画筒，清澈安静，对建筑光影有种近乎直觉的敏锐。' },
+        { id: 'imp-2', year: '2023', text: '一起通宵做模型方案，在凌晨四点把热咖啡分我一半，笑着说我们的方案绝对能拿大奖。' },
+        { id: 'imp-3', year: '2025', text: '进入了心仪的先锋建筑事务所，依然保持着对生活本真的热爱与敏锐观察。' }
       ]
     },
     {
@@ -54,11 +55,12 @@ export const INITIAL_SEED: AppData = {
       avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=300&auto=format&fit=crop&q=80',
       bio: '毕业设计指导老师，极具温情与严谨爱心的学术与人生引路人。',
       relationship: '大学导师 / 恩师',
+      group: '师长前辈',
       birthday: '04月15日',
       zodiac: '白羊座',
       hobbies: '古建筑研究、茶道、古典音乐',
       color: '沉木灰 (#3E564B)',
-      customFields: { '认识地点': '建筑学基础研讨课', '办公室': '老系馆302' },
+      customFields: { '认识地点': '老系馆302学术研讨室', '共同记忆': '毕业论文逐字修改与赠言' },
       impressions: [
         { id: 'imp-4', year: '2022', text: '学术极其严谨，对细节有近乎完美的追求，但对学生充满关怀。' },
         { id: 'imp-5', year: '2024', text: '临别之际赠言：“保持好奇心，做有温度的产品与设计”。' }
@@ -70,11 +72,12 @@ export const INITIAL_SEED: AppData = {
       avatar: 'https://images.unsplash.com/photo-1517841905240-472988babdf9?w=300&auto=format&fit=crop&q=80',
       bio: '高中同桌，见证了我整个青涩懵懂青春时期的欢笑与眼泪。',
       relationship: '高中同桌 / 闺蜜',
+      group: '青春同窗',
       birthday: '07月08日',
       zodiac: '巨蟹座',
       hobbies: '烘焙甜品、手帐创作、猫咪发呆',
       color: '暖杏粉 (#E88765)',
-      customFields: { '认识地点': '高中高一(3)班后座', '约定': '每年跨年聚会' },
+      customFields: { '认识地点': '高中高一(3)班窗边后座', '共同记忆': '晚自习课桌抽屉里的曲奇与跨年约定' },
       impressions: [
         { id: 'imp-6', year: '2018', text: '总是会在课桌底下藏各种好吃的曲奇饼干，笑容格外治愈。' },
         { id: 'imp-7', year: '2024', text: '即便身在不同的城市，每次通电话依然能无话不谈，默契如初。' }

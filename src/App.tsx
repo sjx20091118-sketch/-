@@ -5,6 +5,7 @@ import {
   LockOpen,
   Sparkles,
   Download,
+  Upload,
   Volume2,
   X,
   MapPin,
@@ -34,10 +35,87 @@ import {
   Check,
   Play,
   Layers,
-  Search
+  Search,
+  FileJson,
+  Database,
+  CheckCircle2,
+  AlertCircle,
+  Headphones,
+  Settings,
+  UserPlus,
+  FolderPlus,
+  FolderOpen
 } from 'lucide-react';
 import { AppData, Person, Story, Artifact, ChatMessage } from './types';
 import { INITIAL_SEED } from './data/initialData';
+import { LocalImageUploader, PRESET_AVATARS, compressImageFile } from './components/LocalImageUploader';
+
+export interface TtsVoiceOption {
+  id: string;
+  name: string;
+  gender: '女声' | '男声';
+  character: string;
+  desc: string;
+  tags: string[];
+  previewQuote: string;
+}
+
+export const TTS_VOICES: TtsVoiceOption[] = [
+  {
+    id: 'zh-CN-XiaoxiaoNeural',
+    name: '素问',
+    gender: '女声',
+    character: '清雅书卷 · 岁华温婉',
+    desc: '微软神经语音。温婉知性、咬字清亮细腻，如在暖阳下翻阅泛黄书信般娓娓道来',
+    tags: ['知性温婉', '书卷气', '深情叙事'],
+    previewQuote: '岁华清照，拾年归处。我是素问，愿用温婉的书卷之声，陪你静静回味泛黄岁月里的温柔。'
+  },
+  {
+    id: 'zh-CN-XiaoyiNeural',
+    name: '微澜',
+    gender: '女声',
+    character: '空灵澄澈 · 治愈微光',
+    desc: '微软神经语音。轻柔空灵、明澈纯净，带有抚慰人心的温暖微光与治愈共情力',
+    tags: ['治愈微光', '空灵轻柔', '抚慰心灵'],
+    previewQuote: '风过林梢，时光微澜。我是微澜，愿如同一缕清风，为你轻声抚慰记忆里的点滴微光。'
+  },
+  {
+    id: 'zh-CN-XiaoyouNeural',
+    name: '拾光小语',
+    gender: '女声',
+    character: '灵动甜润 · 亲和陪伴',
+    desc: '微软神经语音。活泼明亮、甜润亲和，如邻家小妹伴你在午后闲话家常与童年回忆',
+    tags: ['灵动甜美', '亲和陪伴', '生动自然'],
+    previewQuote: '记忆的小匣子打开啦！我是拾光小语，陪你一起发现那些藏在日常角落里的美好与欢笑。'
+  },
+  {
+    id: 'zh-CN-YunxiNeural',
+    name: '初阳',
+    gender: '男声',
+    character: '温润明朗 · 少年朝气',
+    desc: '微软神经语音。温润明朗、朝气蓬勃，如林间晨曦般唤起青春校园与明媚回忆',
+    tags: ['少年感', '温润明朗', '真挚阳光'],
+    previewQuote: '阳光正好，青春未央！我是初阳，愿用明朗温润的少年朝气，带你重温那些热烈璀璨的时光。'
+  },
+  {
+    id: 'zh-CN-YunjianNeural',
+    name: '松风',
+    gender: '男声',
+    character: '沉稳醇厚 · 岁月磁性',
+    desc: '微软神经语音。沉稳低回、岁月厚重，如老友围炉夜话般富有深沉的故事感',
+    tags: ['磁性沉稳', '岁月厚重', '围炉夜话'],
+    previewQuote: '岁月如酒，沉静从容。我是松风，愿以沉稳磁性的声音，如老友围炉夜话般为你讲述旧日光阴。'
+  },
+  {
+    id: 'zh-CN-YunyangNeural',
+    name: '朗川',
+    gender: '男声',
+    character: '专业开阔 · 纪实叙事',
+    desc: '微软神经语音。富有新闻质感、大气开阔，适宜记录人生大事件与时代印记',
+    tags: ['大气开阔', '纪实播音', '厚重力量'],
+    previewQuote: '记录时代洪流与个体记忆的交汇。我是朗川，愿以铿锵有力的叙事之声，为你的十年历程留存最真实的见证。'
+  }
+];
 
 async function fetchGeminiWithBackoff(url: string, payload: any, retries = 3): Promise<any> {
   for (let i = 0; i < retries; i++) {
@@ -114,6 +192,43 @@ function pcmToWav(pcmInt16Array: Int16Array, sampleRate = 24000): Blob {
   }
 
   return new Blob([buffer], { type: 'audio/wav' });
+}
+
+// 自动根据生日计算星座
+export function getZodiacFromBirthday(birthdayStr: string): string {
+  if (!birthdayStr || !birthdayStr.trim()) return '未知';
+  const str = birthdayStr.trim();
+
+  let month = 0;
+  let day = 0;
+
+  // 尝试匹配 "X月X日"、"X.X"、"X-X"、"X/X" 或 "XXXX-XX-XX"
+  const match1 = str.match(/(\d{1,2})\s*月\s*(\d{1,2})\s*日?/);
+  const match2 = str.match(/(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})/);
+  const match3 = str.match(/(\d{1,2})[-/.](\d{1,2})/);
+
+  if (match1) {
+    month = parseInt(match1[1], 10);
+    day = parseInt(match1[2], 10);
+  } else if (match2) {
+    month = parseInt(match2[2], 10);
+    day = parseInt(match2[3], 10);
+  } else if (match3) {
+    month = parseInt(match3[1], 10);
+    day = parseInt(match3[2], 10);
+  }
+
+  if (!month || !day || month < 1 || month > 12 || day < 1 || day > 31) {
+    return '未知';
+  }
+
+  const days = [20, 19, 21, 20, 21, 22, 23, 23, 23, 24, 23, 22];
+  const signs = [
+    '摩羯座', '水瓶座', '双鱼座', '白羊座', '金牛座', '双子座',
+    '巨蟹座', '狮子座', '处女座', '天秤座', '天蝎座', '射手座', '摩羯座'
+  ];
+
+  return day < days[month - 1] ? signs[month - 1] : signs[month];
 }
 
 export interface HealingTheme {
@@ -257,6 +372,9 @@ export const HEALING_THEMES: HealingTheme[] = [
 
 type TabType = 'home' | 'timeline' | 'people' | 'stories' | 'artifacts' | 'letters';
 
+// In-memory TTS audio cache map to prevent redundant API calls and save quota
+const ttsAudioCache = new Map<string, string>();
+
 export default function App() {
   const [data, setData] = useState<AppData>(() => {
     const local = localStorage.getItem('shinian_app_data_v2');
@@ -267,6 +385,15 @@ export default function App() {
           // Clean up deleted 2021-09-01 node from existing local storage
           if (parsed.timeline) {
             parsed.timeline = parsed.timeline.filter((t: any) => t.date !== '2021-09-01');
+          }
+          // Clean up any historical "周梓童" or "周芷彤" records and replace with Lu Qingxun
+          if (parsed.people) {
+            parsed.people = parsed.people.map((p: any) => {
+              if (p.name === '周梓童' || p.name === '周芷彤') {
+                return INITIAL_SEED.people[0];
+              }
+              return p;
+            });
           }
           return parsed;
         }
@@ -282,7 +409,7 @@ export default function App() {
   const [isYearPickerOpen, setIsYearPickerOpen] = useState<boolean>(false);
   const [themeId, setThemeId] = useState<string>(() => localStorage.getItem('shinian_theme_id') || 'breeze-sage');
   const [isThemePickerOpen, setIsThemePickerOpen] = useState<boolean>(false);
-  const [isLocked, setIsLocked] = useState<boolean>(false);
+  const [isLocked, setIsLocked] = useState<boolean>(() => localStorage.getItem('shinian_is_locked') === 'true');
   const [lockPin, setLockPin] = useState<string>(() => localStorage.getItem('shinian_lock_pin') || '1234');
   const [pinInput, setPinInput] = useState<string>('');
   const [activeModal, setActiveModal] = useState<string | null>(null);
@@ -364,13 +491,66 @@ export default function App() {
   const [aiChatInput, setAiChatInput] = useState<string>('');
   const [isAiLoading, setIsAiLoading] = useState<boolean>(false);
   const [audioPlayingUrl, setAudioPlayingUrl] = useState<string | null>(null);
+  const [audioPlayingVoiceName, setAudioPlayingVoiceName] = useState<string>('');
   const [isTtsGenerating, setIsTtsGenerating] = useState<boolean>(false);
-  const [ttsSelectedVoice, setTtsSelectedVoice] = useState<string>('Sulafat');
+  const [ttsSelectedVoice, setTtsSelectedVoice] = useState<string>(() => {
+    const saved = localStorage.getItem('shinian_tts_voice');
+    if (saved) {
+      if (saved === 'Kore') return 'zh-CN-XiaoxiaoNeural';
+      if (saved === 'Zephyr') return 'zh-CN-XiaoyiNeural';
+      if (saved === 'Puck') return 'zh-CN-YunxiNeural';
+      if (saved === 'Fenrir') return 'zh-CN-YunjianNeural';
+      if (TTS_VOICES.some(v => v.id === saved)) return saved;
+    }
+    return 'zh-CN-XiaoxiaoNeural';
+  });
+  const [previewingVoiceId, setPreviewingVoiceId] = useState<string | null>(null);
+  const [isVoicePickerModalOpen, setIsVoicePickerModalOpen] = useState<boolean>(false);
+  const [voiceFilterGender, setVoiceFilterGender] = useState<'all' | '女声' | '男声'>('all');
+
+  // Backup Import States
+  const [importPreview, setImportPreview] = useState<{
+    data: AppData;
+    filename: string;
+    timelineCount: number;
+    peopleCount: number;
+    storiesCount: number;
+    artifactsCount: number;
+    lettersCount: number;
+  } | null>(null);
+  const [importMode, setImportMode] = useState<'merge' | 'overwrite'>('merge');
+  const [isDraggingFile, setIsDraggingFile] = useState<boolean>(false);
 
   // Form AI assistance state
   const [isAiGenImageLoading, setIsAiGenImageLoading] = useState<boolean>(false);
   const [isAiVisionLoading, setIsAiVisionLoading] = useState<boolean>(false);
   const [isAiPolishLoading, setIsAiPolishLoading] = useState<boolean>(false);
+
+  // Modal Local Image Upload States
+  const [formTimelineImage, setFormTimelineImage] = useState<string>('');
+  const [formPersonAvatar, setFormPersonAvatar] = useState<string>(PRESET_AVATARS[0]);
+  const [formPersonRel, setFormPersonRel] = useState<string>('挚友');
+  const [formPersonGroup, setFormPersonGroup] = useState<string>('未分组');
+  const [formArtifactImage, setFormArtifactImage] = useState<string>('');
+  const [editPersonAvatar, setEditPersonAvatar] = useState<string>('');
+  const [editPersonRel, setEditPersonRel] = useState<string>('');
+  const [editPersonGroup, setEditPersonGroup] = useState<string>('未分组');
+
+  // People QQ-style grouping & top status bar state
+  const [selectedPersonGroup, setSelectedPersonGroup] = useState<string>('all');
+  const [isGroupPickerOpen, setIsGroupPickerOpen] = useState<boolean>(false);
+  const [customGroups, setCustomGroups] = useState<string[]>(['大学同窗', '师长前辈', '青春同窗', '挚友亲朋', '未分组']);
+  const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
+  const [isAddingGroup, setIsAddingGroup] = useState<boolean>(false);
+  const [newGroupName, setNewGroupName] = useState<string>('');
+  const [movingPerson, setMovingPerson] = useState<Person | null>(null);
+
+  const filteredPeople = useMemo(() => {
+    return data.people.filter(p => {
+      if (selectedPersonGroup === 'all') return true;
+      return (p.group || '未分组') === selectedPersonGroup;
+    });
+  }, [data.people, selectedPersonGroup]);
 
   const chatEndRef = useRef<HTMLDivElement>(null);
 
@@ -485,12 +665,42 @@ export default function App() {
 
   const handleUpdatePerson = (updatedFields: Partial<Person>) => {
     if (!selectedPerson) return;
+    const updated = { ...selectedPerson, ...updatedFields };
     setData(prev => ({
       ...prev,
-      people: prev.people.map(p => p.id === selectedPerson.id ? { ...p, ...updatedFields } : p)
+      people: prev.people.map(p => p.id === selectedPerson.id ? updated : p)
     }));
+    setSelectedPerson(updated);
     setIsEditingPerson(false);
     showToast('人物资料信息已更新');
+  };
+
+  const handleAddGroup = (name: string) => {
+    const trimmed = name.trim();
+    if (!trimmed) {
+      showToast('请输入分组名称');
+      return;
+    }
+    if (customGroups.includes(trimmed)) {
+      showToast('该分组已存在');
+      return;
+    }
+    setCustomGroups(prev => [trimmed, ...prev.filter(g => g !== '未分组'), '未分组']);
+    setNewGroupName('');
+    setIsAddingGroup(false);
+    showToast(`已创建新分组「${trimmed}」`);
+  };
+
+  const handleAssignPersonGroup = (personId: string, groupName: string) => {
+    setData(prev => ({
+      ...prev,
+      people: prev.people.map(p => p.id === personId ? { ...p, group: groupName } : p)
+    }));
+    if (selectedPerson && selectedPerson.id === personId) {
+      setSelectedPerson(prev => prev ? { ...prev, group: groupName } : null);
+    }
+    setMovingPerson(null);
+    showToast(`已将好友移入「${groupName}」分组`);
   };
 
   const handleAddImpression = (e: React.FormEvent) => {
@@ -515,28 +725,80 @@ export default function App() {
     a.href = url;
     a.download = `拾年_记忆档案备份_${new Date().toISOString().slice(0, 10)}.json`;
     a.click();
-    showToast('离线记忆数据包导出成功');
+    showToast('离线记忆档案包导出成功');
+  };
+
+  const processBackupFile = (file: File) => {
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const parsed = JSON.parse(event.target?.result as string);
+        if (parsed && (Array.isArray(parsed.timeline) || Array.isArray(parsed.people) || Array.isArray(parsed.stories))) {
+          setImportPreview({
+            data: {
+              timeline: Array.isArray(parsed.timeline) ? parsed.timeline : [],
+              people: Array.isArray(parsed.people) ? parsed.people : [],
+              stories: Array.isArray(parsed.stories) ? parsed.stories : [],
+              artifacts: Array.isArray(parsed.artifacts) ? parsed.artifacts : [],
+              letters: Array.isArray(parsed.letters) ? parsed.letters : []
+            },
+            filename: file.name,
+            timelineCount: parsed.timeline?.length || 0,
+            peopleCount: parsed.people?.length || 0,
+            storiesCount: parsed.stories?.length || 0,
+            artifactsCount: parsed.artifacts?.length || 0,
+            lettersCount: parsed.letters?.length || 0
+          });
+          showToast('已成功解析备份档案文件');
+        } else {
+          showToast('文件格式不符合《拾年》档案标准');
+        }
+      } catch (err) {
+        showToast('JSON 文件解析失败，请检查文件格式');
+      }
+    };
+    reader.readAsText(file);
   };
 
   const handleImport = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      try {
-        const imported = JSON.parse(event.target?.result as string);
-        if (imported.timeline && imported.people) {
-          setData(imported);
-          showToast('记忆档案导入恢复成功');
-          setActiveModal(null);
-        } else {
-          showToast('无效的数据文件格式');
-        }
-      } catch (err) {
-        showToast('读取备份文件失败');
-      }
-    };
-    reader.readAsText(file);
+    processBackupFile(file);
+    e.target.value = '';
+  };
+
+  const handleConfirmImport = () => {
+    if (!importPreview) return;
+    if (importMode === 'overwrite') {
+      setData(importPreview.data);
+      showToast('已全量恢复备份档案');
+    } else {
+      // Merge mode
+      setData(prev => {
+        const existingTimelineIds = new Set(prev.timeline.map(t => t.id));
+        const existingPeopleIds = new Set(prev.people.map(p => p.id));
+        const existingStoryIds = new Set(prev.stories.map(s => s.id));
+        const existingArtifactIds = new Set(prev.artifacts.map(a => a.id));
+        const existingLetterIds = new Set(prev.letters.map(l => l.id));
+
+        const newTimeline = (importPreview.data.timeline || []).filter(t => !existingTimelineIds.has(t.id));
+        const newPeople = (importPreview.data.people || []).filter(p => !existingPeopleIds.has(p.id));
+        const newStories = (importPreview.data.stories || []).filter(s => !existingStoryIds.has(s.id));
+        const newArtifacts = (importPreview.data.artifacts || []).filter(a => !existingArtifactIds.has(a.id));
+        const newLetters = (importPreview.data.letters || []).filter(l => !existingLetterIds.has(l.id));
+
+        return {
+          timeline: [...prev.timeline, ...newTimeline],
+          people: [...prev.people, ...newPeople],
+          stories: [...prev.stories, ...newStories],
+          artifacts: [...prev.artifacts, ...newArtifacts],
+          letters: [...prev.letters, ...newLetters]
+        };
+      });
+      showToast('已增量合并备份档案');
+    }
+    setImportPreview(null);
+    setActiveModal(null);
   };
 
   const handleChangePassword = (e: React.FormEvent) => {
@@ -593,16 +855,24 @@ export default function App() {
       const aiResponseText = resJson.reply || "抱歉，我刚刚沉思了一下，未能返回回应。";
       setAiChatMessages([...newMessages, { role: 'model', text: aiResponseText }]);
     } catch (err: any) {
-      const errorMsg = err?.message || '连接受阻';
-      showToast(`AI 连接提示: ${errorMsg}`);
+      console.warn('AI Chat API fallback activated:', err);
+      const q = promptToUse.toLowerCase();
+      let fallbackText = '';
 
-      const lower = promptToUse.toLowerCase();
-      let fallbackText = "记忆如同一条静静流淌的小溪。在你的档案里，记录着许多珍贵的足迹。比如2021年踏入大学校门的梧桐落叶，与周梓童在通宵做建模方案的日夜，还有威海海边那场金黄而瑰丽的日落。只要用心铭记，时光便从未真正走远。";
-      if (lower.includes('朋友') || lower.includes('周梓童') || lower.includes('林夏') || lower.includes('陈导师')) {
-        fallbackText = `在你的拾人册中，记录着 ${data.people.map(p => p.name).join('、')}。周梓童陪你度过了无数通宵设计之夜，从青涩到如今入职心仪事务所；林夏则是从高中课桌同桌至今依然无话不谈的知心闺蜜；陈导师更是指导你秉持初心。这些长情陪伴是你成长中最坚韧的温暖底色。`;
-      } else if (lower.includes('成长') || lower.includes('轨迹')) {
-        fallbackText = `回顾从2021年至今的 ${data.timeline.length} 处时光节点与 ${data.stories.length} 篇故事，从最初拖着小皮箱踏入大学校门，到斩获设计大奖，再到夏日威海毕业旅行、搬入属于自己的温馨小公寓，你正一步一步走得越来越坚定笃实。`;
+      if (aiEngine === 'deepseek' && !deepSeekKey) {
+        fallbackText = "提示：当前选择 DeepSeek 引擎，尚未配置 API Key。可在右上角「设置」中填入你的专属密钥，或直接切换为内置推荐的标准模型。";
+      } else if (q.includes('朋友') || q.includes('周梓童') || q.includes('林夏') || q.includes('陈导师')) {
+        const names = data.people.map(p => p.name).join('、');
+        fallbackText = `在你的拾人册中，记录着重要的挚友伙伴：${names || '周梓童、林夏'}。其中周梓童曾与你并肩奋战无数个建模方案的日夜，林夏是从高中一路相伴至今的知心闺蜜。这些长情陪伴是你成长中最坚韧温暖的底色。`;
+      } else if (q.includes('成长') || q.includes('轨迹') || q.includes('几年') || q.includes('总结')) {
+        fallbackText = `回顾你的《拾年》档案，从踏入校门、获得设计大奖，到夏日威海旅行、搬入属于自己的温馨小公寓，你在 ${data.timeline.length} 处时光节点中一步步蜕变成长，逐渐走得越来越坚定笃实。`;
+      } else if (q.includes('旧物') || q.includes('物') || q.includes('相机') || q.includes('票根')) {
+        const artNames = data.artifacts.map(a => a.name).join('、');
+        fallbackText = `在你的拾物阁里，静静珍藏着 ${artNames || '理光GR相机、毕业旅行海边日落票根'}。这些旧物虽不言语，却承载着特定时光的温存记忆与指尖温度。`;
+      } else {
+        fallbackText = `岁月如一条静淌的小河。在你的档案里，记录着 ${data.timeline.length} 个时光瞬间、${data.people.length} 位同路人与 ${data.stories.length} 篇故事。无论走得多远，只要翻开回忆，那些美好的温暖与感动都依旧如初。`;
       }
+
       setAiChatMessages([...newMessages, { role: 'model', text: fallbackText }]);
     } finally {
       setIsAiLoading(false);
@@ -716,64 +986,90 @@ export default function App() {
     }
   };
 
-  const handlePlayTts = async (textToRead: string) => {
-    if (audioPlayingUrl) setAudioPlayingUrl(null);
+  const handlePlayTts = async (textToRead: string, voiceOverride?: string) => {
+    if (audioPlayingUrl) {
+      setAudioPlayingUrl(null);
+      setAudioPlayingVoiceName('');
+    }
+    let voiceToUse = voiceOverride || ttsSelectedVoice;
+    if (voiceToUse === 'Kore') voiceToUse = 'zh-CN-XiaoxiaoNeural';
+    if (voiceToUse === 'Zephyr') voiceToUse = 'zh-CN-XiaoyiNeural';
+    if (voiceToUse === 'Puck') voiceToUse = 'zh-CN-YunxiNeural';
+    if (voiceToUse === 'Fenrir') voiceToUse = 'zh-CN-YunjianNeural';
+
+    const voiceObj = TTS_VOICES.find(v => v.id === voiceToUse) || TTS_VOICES[0];
+    const cacheKey = `${voiceToUse}_${textToRead.trim()}`;
+
+    // Instant playback if already cached in memory
+    if (ttsAudioCache.has(cacheKey)) {
+      const cachedUrl = ttsAudioCache.get(cacheKey)!;
+      setAudioPlayingUrl(cachedUrl);
+      setAudioPlayingVoiceName(`${voiceObj.name} (${voiceObj.gender}) · ${voiceObj.character}`);
+      showToast(`正在播放【${voiceObj.name}】微软神经语音朗诵`);
+      return;
+    }
 
     setIsTtsGenerating(true);
+    showToast(`正在生成【${voiceObj.name}】微软神经语音朗诵...`);
     try {
       const res = await fetch('/api/ai/tts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           text: textToRead,
-          voice: ttsSelectedVoice,
-          customApiKey: aiApiKey
+          voice: voiceToUse
         })
       });
 
-      if (res.ok) {
-        const data = await res.json();
-        if (data.audioBase64) {
-          const matchRate = (data.mimeType || '').match(/rate=(\d+)/);
-          const sampleRate = matchRate ? parseInt(matchRate[1], 10) : 24000;
-          const pcmArrayBuffer = base64ToArrayBuffer(data.audioBase64);
-          const pcmInt16 = new Int16Array(pcmArrayBuffer);
-          const wavBlob = pcmToWav(pcmInt16, sampleRate);
-          const wavUrl = URL.createObjectURL(wavBlob);
-
-          setAudioPlayingUrl(wavUrl);
-          return;
-        }
+      const data = await res.json();
+      if (!res.ok || !data.audioBase64) {
+        throw new Error(data?.error || '语音朗诵生成失败');
       }
 
-      // Web Speech API fallback
-      if ('speechSynthesis' in window) {
-        const utterance = new SpeechSynthesisUtterance(textToRead);
-        utterance.lang = 'zh-CN';
-        utterance.rate = 0.92;
-        utterance.pitch = 1.0;
-        window.speechSynthesis.speak(utterance);
-        showToast('正在播放语音朗诵');
+      let audioUrl = '';
+      if (data.mimeType && data.mimeType.includes('mp3')) {
+        const arrayBuffer = base64ToArrayBuffer(data.audioBase64);
+        const blob = new Blob([arrayBuffer], { type: 'audio/mp3' });
+        audioUrl = URL.createObjectURL(blob);
       } else {
-        showToast('语音朗读功能初始化中');
+        const matchRate = (data.mimeType || '').match(/rate=(\d+)/);
+        const sampleRate = matchRate ? parseInt(matchRate[1], 10) : 24000;
+        const pcmArrayBuffer = base64ToArrayBuffer(data.audioBase64);
+        const pcmInt16 = new Int16Array(pcmArrayBuffer);
+        const wavBlob = pcmToWav(pcmInt16, sampleRate);
+        audioUrl = URL.createObjectURL(wavBlob);
       }
-    } catch (err) {
-      if ('speechSynthesis' in window) {
-        const utterance = new SpeechSynthesisUtterance(textToRead);
-        utterance.lang = 'zh-CN';
-        utterance.rate = 0.92;
-        window.speechSynthesis.speak(utterance);
-        showToast('正在播放语音朗诵');
-      }
+
+      // Cache the generated audio Blob URL for instant replay without consuming bandwidth
+      ttsAudioCache.set(cacheKey, audioUrl);
+
+      setAudioPlayingUrl(audioUrl);
+      setAudioPlayingVoiceName(`${voiceObj.name} (${voiceObj.gender}) · ${voiceObj.character}`);
+      showToast(`正在播放【${voiceObj.name}】微软神经语音朗诵`);
+    } catch (err: any) {
+      console.error('[Microsoft Edge TTS Error]', err);
+      showToast(err?.message || '语音合成遇到波动，请重试');
     } finally {
       setIsTtsGenerating(false);
+    }
+  };
+
+  const handlePreviewVoice = async (voice: TtsVoiceOption) => {
+    if (previewingVoiceId !== null || isTtsGenerating) return;
+    setPreviewingVoiceId(voice.id);
+    try {
+      await handlePlayTts(voice.previewQuote, voice.id);
+    } catch (err) {
+      console.error('Preview error:', err);
+    } finally {
+      setPreviewingVoiceId(null);
     }
   };
 
   // Lock Screen View
   if (isLocked) {
     return (
-      <div className="w-full h-screen bg-[#FAF8F5] flex flex-col items-center justify-center p-8 text-[#2B332E]">
+      <div className="w-full h-screen bg-[#FAF8F5] flex flex-col items-center justify-center p-8 pt-[max(2rem,env(safe-area-inset-top))] pb-[max(2rem,env(safe-area-inset-bottom))] text-[#2B332E]">
         <div className="w-16 h-16 rounded-2xl bg-[#FDF0EB] border border-[#E88765]/30 flex items-center justify-center mb-6 shadow-sm">
           <Lock className="text-[#E88765] w-7 h-7" />
         </div>
@@ -788,7 +1084,9 @@ export default function App() {
             setPinInput(e.target.value);
             if (e.target.value === lockPin) {
               setIsLocked(false);
+              localStorage.setItem('shinian_is_locked', 'false');
               setPinInput('');
+              showToast('已解锁私人时光空间');
             }
           }}
           placeholder="请输入私人空间口令"
@@ -884,8 +1182,8 @@ export default function App() {
     <div className="min-h-screen flex items-center justify-center p-0 sm:p-4 text-[#2B332E]">
       <div id="root-card" className="w-full max-w-md h-[100vh] sm:h-[880px] bg-[#FAF8F5] sm:rounded-3xl shadow-2xl overflow-hidden flex flex-col relative border border-[#E88765]/20 paper-texture">
 
-        {/* Top HeaderBar */}
-        <header className="px-4 py-2.5 bg-white/85 backdrop-blur-md text-[#2B332E] flex items-center justify-between border-b border-[#5B7B6D]/15 shadow-sm z-20 relative">
+        {/* Top HeaderBar with Safe Area Inset Support */}
+        <header className="px-4 pt-[max(0.625rem,env(safe-area-inset-top))] pb-2.5 bg-white/85 backdrop-blur-md text-[#2B332E] flex items-center justify-between border-b border-[#5B7B6D]/15 shadow-sm z-20 relative">
           <div className="flex flex-col">
             <div className="flex items-center gap-1.5">
               <h1 className="text-lg font-bold tracking-widest font-serif text-[#5B7B6D]">
@@ -980,51 +1278,92 @@ export default function App() {
           )}
 
           <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
-            {/* Silky Animated iOS Year Trigger Capsule */}
-            <button
-              onClick={() => setIsYearPickerOpen(true)}
-              className={`px-2.5 sm:px-3 py-1.5 rounded-xl border flex items-center gap-1.5 transition-all text-xs font-sans font-medium shadow-2xs active:scale-95 shrink-0 ${
-                selectedYear === 'all'
-                  ? 'bg-[#F2EFE9] text-[#5B7B6D] border-[#5B7B6D]/20 hover:bg-[#E88765]/10'
-                  : 'bg-[#FDF0EB] text-[#E88765] border-[#E88765]/35 hover:bg-[#FBE6DC]'
-              }`}
-              title="点击选择回溯年份或全景时光"
-            >
-              {selectedYear === 'all' ? (
-                <>
-                  <Compass className="w-3.5 h-3.5 text-[#5B7B6D] shrink-0" />
-                  <span className="font-semibold whitespace-nowrap">全景时光</span>
-                </>
-              ) : (
-                <>
-                  <Calendar className="w-3.5 h-3.5 text-[#E88765] shrink-0" />
-                  <span className="font-bold whitespace-nowrap">{selectedYear} 年</span>
-                  <span
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setSelectedYear('all');
-                      showToast('已切换至全景时光');
-                    }}
-                    className="p-0.5 rounded-full hover:bg-black/10 transition-colors ml-0.5"
-                    title="返回全景时光"
-                  >
-                    <X className="w-3 h-3" />
-                  </span>
-                </>
-              )}
-              <ChevronDown className="w-3 h-3 opacity-60 ml-0.5 shrink-0" />
-            </button>
+            {activeTab === 'people' ? (
+              /* Silky Animated iOS Friend Group Trigger Capsule */
+              <button
+                onClick={() => setIsGroupPickerOpen(true)}
+                className={`px-2.5 sm:px-3 py-1.5 rounded-xl border flex items-center gap-1.5 transition-all text-xs font-sans font-medium shadow-2xs active:scale-95 shrink-0 ${
+                  selectedPersonGroup === 'all'
+                    ? 'bg-[#F2EFE9] text-[#5B7B6D] border-[#5B7B6D]/20 hover:bg-[#E88765]/10'
+                    : 'bg-[#FDF0EB] text-[#E88765] border-[#E88765]/35 hover:bg-[#FBE6DC]'
+                }`}
+                title="点击选择好友分组"
+              >
+                {selectedPersonGroup === 'all' ? (
+                  <>
+                    <Users className="w-3.5 h-3.5 text-[#5B7B6D] shrink-0" />
+                    <span className="font-semibold whitespace-nowrap">全部好友</span>
+                  </>
+                ) : (
+                  <>
+                    <FolderOpen className="w-3.5 h-3.5 text-[#E88765] shrink-0" />
+                    <span className="font-bold whitespace-nowrap truncate max-w-[80px]">{selectedPersonGroup}</span>
+                    <span
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSelectedPersonGroup('all');
+                        showToast('已切换至全部好友');
+                      }}
+                      className="p-0.5 rounded-full hover:bg-black/10 transition-colors ml-0.5"
+                      title="返回全部好友"
+                    >
+                      <X className="w-3 h-3" />
+                    </span>
+                  </>
+                )}
+                <ChevronDown className="w-3 h-3 opacity-60 ml-0.5 shrink-0" />
+              </button>
+            ) : (
+              /* Silky Animated iOS Year Trigger Capsule */
+              <button
+                onClick={() => setIsYearPickerOpen(true)}
+                className={`px-2.5 sm:px-3 py-1.5 rounded-xl border flex items-center gap-1.5 transition-all text-xs font-sans font-medium shadow-2xs active:scale-95 shrink-0 ${
+                  selectedYear === 'all'
+                    ? 'bg-[#F2EFE9] text-[#5B7B6D] border-[#5B7B6D]/20 hover:bg-[#E88765]/10'
+                    : 'bg-[#FDF0EB] text-[#E88765] border-[#E88765]/35 hover:bg-[#FBE6DC]'
+                }`}
+                title="点击选择回溯年份或全景时光"
+              >
+                {selectedYear === 'all' ? (
+                  <>
+                    <Compass className="w-3.5 h-3.5 text-[#5B7B6D] shrink-0" />
+                    <span className="font-semibold whitespace-nowrap">全景时光</span>
+                  </>
+                ) : (
+                  <>
+                    <Calendar className="w-3.5 h-3.5 text-[#E88765] shrink-0" />
+                    <span className="font-bold whitespace-nowrap">{selectedYear} 年</span>
+                    <span
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSelectedYear('all');
+                        showToast('已切换至全景时光');
+                      }}
+                      className="p-0.5 rounded-full hover:bg-black/10 transition-colors ml-0.5"
+                      title="返回全景时光"
+                    >
+                      <X className="w-3 h-3" />
+                    </span>
+                  </>
+                )}
+                <ChevronDown className="w-3 h-3 opacity-60 ml-0.5 shrink-0" />
+              </button>
+            )}
 
             <button
               onClick={() => setActiveModal('backup')}
-              title="数据备份与空间管理"
+              title="空间设置与数据管理"
               className="p-2 rounded-xl bg-[#F2EFE9] border border-[#5B7B6D]/20 text-[#5B7B6D] hover:bg-[#5B7B6D] hover:text-white transition-all shadow-2xs shrink-0 active:scale-95"
             >
-              <Download className="w-4 h-4" />
+              <Settings className="w-4 h-4" />
             </button>
 
             <button
-              onClick={() => setIsLocked(true)}
+              onClick={() => {
+                setIsLocked(true);
+                localStorage.setItem('shinian_is_locked', 'true');
+                showToast('已锁定私人空间');
+              }}
               title="锁定私人空间"
               className="p-2 rounded-xl bg-[#F2EFE9] border border-[#5B7B6D]/20 text-[#5B7B6D] hover:bg-[#5B7B6D] hover:text-white transition-all shadow-2xs shrink-0 active:scale-95"
             >
@@ -1043,15 +1382,47 @@ export default function App() {
 
         {/* Audio Player Bar */}
         {audioPlayingUrl && (
-          <div className="bg-[#F5EACF]/90 border-b border-[#E88765]/30 px-4 py-2 flex items-center justify-between text-xs text-[#2B332E] animate-fadeIn z-10">
-            <div className="flex items-center gap-2">
-              <Volume2 className="w-4 h-4 text-[#E88765] animate-bounce" />
-              <span className="font-semibold text-[#3E564B]">AI 情感朗读中...</span>
+          <div className="bg-[#FAF6EC] border-b border-[#E88765]/30 px-3.5 py-2 flex items-center justify-between text-xs text-[#2B332E] animate-fadeIn z-20 shadow-xs">
+            <div className="flex items-center gap-2 min-w-0 mr-2">
+              <div className="w-7 h-7 rounded-full bg-[#FDF0EB] border border-[#E88765]/30 flex items-center justify-center text-[#E88765] shrink-0">
+                <Volume2 className="w-3.5 h-3.5 animate-pulse" />
+              </div>
+              <div className="min-w-0">
+                <div className="flex items-center gap-1.5">
+                  <span className="font-bold text-[#3E564B] text-[11px] truncate font-serif">
+                    {audioPlayingVoiceName || 'AI 情感朗读'}
+                  </span>
+                  <button
+                    onClick={() => setIsVoicePickerModalOpen(true)}
+                    className="text-[10px] text-[#E88765] hover:underline font-sans whitespace-nowrap"
+                  >
+                    换音色
+                  </button>
+                </div>
+              </div>
             </div>
-            <audio src={audioPlayingUrl} autoPlay controls className="h-6 w-40 sm:w-48" onEnded={() => setAudioPlayingUrl(null)} />
-            <button onClick={() => setAudioPlayingUrl(null)} className="text-[#6E7C75]/60 hover:text-[#2B332E]">
-              <X className="w-3.5 h-3.5" />
-            </button>
+            <div className="flex items-center gap-1.5 shrink-0">
+              <audio
+                src={audioPlayingUrl}
+                autoPlay
+                controls
+                className="h-7 w-32 xs:w-40 sm:w-48"
+                onEnded={() => {
+                  setAudioPlayingUrl(null);
+                  setAudioPlayingVoiceName('');
+                }}
+              />
+              <button
+                onClick={() => {
+                  setAudioPlayingUrl(null);
+                  setAudioPlayingVoiceName('');
+                }}
+                className="p-1 text-[#6E7C75]/60 hover:text-[#2B332E] hover:bg-stone-200/50 rounded-lg transition-colors"
+                title="关闭音频"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
           </div>
         )}
 
@@ -1227,7 +1598,7 @@ export default function App() {
                       <h3 className="text-xs font-bold text-[#2B332E] font-serif flex items-center gap-1.5">
                         拾年 · 时光 AI 陪伴
                         <span className="text-[10px] px-2 py-0.5 rounded-full font-sans font-normal border bg-white text-[#5B7B6D] border-[#5B7B6D]/20">
-                          {aiEngine === 'deepseek' ? '🐉 DeepSeek-V3' : '⚡ 免翻墙直连'}
+                          {aiEngine === 'deepseek' ? '🐉 DeepSeek-V3' : '⚡ 标准模型'}
                         </span>
                       </h3>
                       <p className="text-[10px] text-[#6E7C75]">回忆检索与情感对谈</p>
@@ -1239,7 +1610,7 @@ export default function App() {
                         const nextEngine = aiEngine === 'gemini' ? 'deepseek' : 'gemini';
                         setAiEngine(nextEngine);
                         localStorage.setItem('shinian_ai_engine', nextEngine);
-                        showToast(nextEngine === 'deepseek' ? '已切换为 DeepSeek 引擎' : '已切换为默认云端直连 (免翻墙)');
+                        showToast(nextEngine === 'deepseek' ? '已切换为 DeepSeek 引擎' : '已切换为标准 AI 模型');
                       }}
                       className="text-[10px] px-2 py-1 rounded-lg bg-white border border-[#5B7B6D]/20 text-[#5B7B6D] hover:bg-[#5B7B6D]/10 font-sans transition-all flex items-center gap-1"
                       title="点击切换 AI 驱动引擎"
@@ -1265,7 +1636,7 @@ export default function App() {
                     ✨ 总结成长轨迹
                   </button>
                   <button
-                    onClick={() => handleSendAiMessage("回顾一下我和重要朋友（比如周梓童、林夏）的故事与印象变化。")}
+                    onClick={() => handleSendAiMessage("回顾一下我和重要朋友（比如陆青寻、林夏）的故事与印象变化。")}
                     className="whitespace-nowrap px-2.5 py-1 rounded-full bg-white border border-[#5B7B6D]/20 text-[#5B7B6D] hover:bg-[#5B7B6D] hover:text-white transition-all shadow-2xs"
                   >
                     🤝 回顾重要朋友
@@ -1446,11 +1817,13 @@ export default function App() {
             </div>
           )}
 
-          {/* People List Tab */}
+          {/* People List Tab: Restored Original Elegant Card Layout */}
           {activeTab === 'people' && !selectedPerson && (
             <div className="space-y-4 animate-fadeIn">
-              <div className="flex justify-between items-center mb-2">
-                <h2 className="text-lg font-bold text-[#2B332E] tracking-wider font-serif">拾人册 ({data.people.length})</h2>
+              <div className="flex justify-between items-center mb-1">
+                <h2 className="text-lg font-bold text-[#2B332E] tracking-wider font-serif">
+                  拾人册 ({filteredPeople.length})
+                </h2>
                 <button
                   onClick={() => setActiveModal('addPerson')}
                   className="flex items-center gap-1 text-xs px-3 py-1.5 bg-[#5B7B6D] text-white rounded-xl shadow-sm hover:bg-[#3E564B] font-medium"
@@ -1459,49 +1832,112 @@ export default function App() {
                 </button>
               </div>
 
-              <div className="grid grid-cols-1 gap-3">
-                {data.people.map(person => (
-                  <div
-                    key={person.id}
-                    onClick={() => setSelectedPerson(person)}
-                    className="bg-white p-4 rounded-2xl border border-[#5B7B6D]/15 shadow-sm flex items-center justify-between gap-3 hover:border-[#E88765]/50 transition-all cursor-pointer group"
-                  >
-                    <div className="flex items-center gap-4 flex-1 min-w-0">
-                      <img src={person.avatar} alt={person.name} className="w-14 h-14 rounded-full object-cover border-2 border-[#E88765]/40 shadow-sm flex-shrink-0" />
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          <h3 className="font-bold text-[#2B332E] text-base group-hover:text-[#E88765] transition-colors font-serif">{person.name}</h3>
-                          {person.relationship && (
-                            <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#FDF0EB] text-[#E88765] font-medium font-sans">
-                              {person.relationship}
-                            </span>
-                          )}
-                        </div>
-                        <p className="text-xs text-[#6E7C75] line-clamp-1 mt-1 font-serif">{person.bio}</p>
+              {/* Group Filter Status Banner */}
+              {selectedPersonGroup !== 'all' && (
+                <div className="p-3 bg-[#5B7B6D]/10 rounded-2xl border border-[#5B7B6D]/20 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 text-xs text-[#5B7B6D] font-sans shadow-2xs">
+                  <div className="flex items-center gap-2 font-medium leading-normal">
+                    <Filter className="w-3.5 h-3.5 text-[#E88765] shrink-0" />
+                    <span>
+                      正在筛选【<strong className="font-bold text-[#E88765]">{selectedPersonGroup}</strong>】好友
+                      <span className="opacity-75 font-normal ml-1">（共 {filteredPeople.length} 人）</span>
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0 self-end sm:self-auto">
+                    <button
+                      onClick={() => setIsGroupPickerOpen(true)}
+                      className="text-[11px] font-semibold text-[#5B7B6D] bg-white/95 hover:bg-white px-2.5 py-1 rounded-xl border border-[#5B7B6D]/20 flex items-center gap-1 shadow-2xs transition-all active:scale-95"
+                    >
+                      <FolderOpen className="w-3 h-3 text-[#E88765]" /> 换分组
+                    </button>
+                    <button
+                      onClick={() => {
+                        setSelectedPersonGroup('all');
+                        showToast('已展示全部好友');
+                      }}
+                      className="text-[11px] font-bold text-[#E88765] hover:underline flex items-center gap-1 px-1.5 py-1"
+                    >
+                      <RotateCcw className="w-3 h-3" /> 全部好友
+                    </button>
+                  </div>
+                </div>
+              )}
 
-                        <div className="flex items-center gap-3 text-[10px] text-[#6E7C75]/70 mt-1.5 font-sans">
-                          {person.birthday && <span>🎂 {person.birthday}</span>}
-                          {person.zodiac && <span>✨ {person.zodiac}</span>}
-                          <span>📖 {person.impressions?.length || 0}条故事</span>
+              {/* People Cards Grid */}
+              {filteredPeople.length === 0 ? (
+                <div className="bg-white p-8 rounded-3xl border border-[#5B7B6D]/15 text-center space-y-3 shadow-sm">
+                  <div className="w-12 h-12 rounded-full bg-[#FAF8F5] border border-[#5B7B6D]/20 text-[#5B7B6D] flex items-center justify-center mx-auto text-xl">
+                    👥
+                  </div>
+                  <h3 className="font-bold text-[#2B332E] text-sm font-serif">该分组下暂无好友记录</h3>
+                  <p className="text-xs text-[#6E7C75]">您可以在编辑人物或添加新人物时指定此分组</p>
+                  <button
+                    onClick={() => setSelectedPersonGroup('all')}
+                    className="px-4 py-1.5 bg-[#5B7B6D] text-white text-xs rounded-xl font-medium"
+                  >
+                    返回查看全部好友
+                  </button>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 gap-3">
+                  {filteredPeople.map(person => (
+                    <div
+                      key={person.id}
+                      onClick={() => setSelectedPerson(person)}
+                      className="bg-white p-4 rounded-2xl border border-[#5B7B6D]/15 shadow-sm flex items-center justify-between gap-3 hover:border-[#E88765]/50 transition-all cursor-pointer group"
+                    >
+                      <div className="flex items-center gap-3.5 flex-1 min-w-0">
+                        <img
+                          src={person.avatar}
+                          alt={person.name}
+                          className="w-14 h-14 rounded-full object-cover border-2 border-[#E88765]/40 shadow-sm flex-shrink-0 group-hover:scale-105 transition-transform"
+                        />
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <h3 className="font-bold text-[#2B332E] text-base group-hover:text-[#E88765] transition-colors font-serif truncate">
+                              {person.name}
+                            </h3>
+                            {person.relationship && (
+                              <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#FDF0EB] text-[#E88765] font-medium font-sans border border-[#E88765]/20 shrink-0">
+                                {person.relationship}
+                              </span>
+                            )}
+                            {person.group && person.group !== '未分组' && (
+                              <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#5B7B6D]/10 text-[#5B7B6D] font-medium font-sans border border-[#5B7B6D]/20 shrink-0">
+                                {person.group}
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-xs text-[#6E7C75] line-clamp-1 mt-1 font-serif">
+                            {person.bio || '珍贵回忆的同路人'}
+                          </p>
+
+                          <div className="flex flex-wrap items-center gap-3 text-[10px] text-[#6E7C75]/80 mt-1.5 font-sans">
+                            {person.birthday && <span>🎂 {person.birthday}</span>}
+                            {person.zodiac && <span>✨ {person.zodiac}</span>}
+                            {person.customFields?.['认识地点'] && (
+                              <span className="truncate max-w-[140px]">📍 {person.customFields['认识地点']}</span>
+                            )}
+                            <span>📖 {person.impressions?.length || 0}条故事</span>
+                          </div>
                         </div>
                       </div>
+                      <div className="flex items-center gap-1 shrink-0">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            requestDelete('people', person.id, person.name);
+                          }}
+                          title="删除人物"
+                          className="p-2 text-[#6E7C75]/40 hover:text-red-500 rounded-lg hover:bg-red-50 transition-all"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                        <ChevronRight className="w-4 h-4 text-[#6E7C75]/40 group-hover:text-[#5B7B6D] transition-colors" />
+                      </div>
                     </div>
-                    <div className="flex items-center gap-1">
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          requestDelete('people', person.id, person.name);
-                        }}
-                        title="删除人物"
-                        className="p-2 text-[#6E7C75]/40 hover:text-red-500 rounded-lg hover:bg-red-50 transition-all"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                      <ChevronRight className="w-4 h-4 text-[#6E7C75]/40" />
-                    </div>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 
@@ -1553,6 +1989,11 @@ export default function App() {
                         {selectedPerson.relationship}
                       </span>
                     )}
+                    {selectedPerson.group && (
+                      <span className="text-xs px-2.5 py-0.5 rounded-full bg-[#5B7B6D]/10 text-[#5B7B6D] font-medium border border-[#5B7B6D]/20 font-sans">
+                        {selectedPerson.group}
+                      </span>
+                    )}
                   </div>
                   <p className="text-xs text-[#6E7C75] mt-1.5 max-w-xs mx-auto leading-relaxed font-serif">{selectedPerson.bio}</p>
                 </div>
@@ -1562,16 +2003,18 @@ export default function App() {
                   <div className="p-3 rounded-xl bg-[#F2EFE9]/60 border border-[#5B7B6D]/10 flex items-center gap-2.5">
                     <span className="text-lg shrink-0">🎂</span>
                     <div className="min-w-0 flex-1">
-                      <span className="text-[10px] text-[#6E7C75] block">生日</span>
-                      <span className="font-semibold text-[#2B332E] block truncate">{selectedPerson.birthday || '未设置'}</span>
+                      <span className="text-[10px] text-[#6E7C75] block">生日 & 星座</span>
+                      <span className="font-semibold text-[#2B332E] block truncate">
+                        {selectedPerson.birthday || '未设置'} {selectedPerson.zodiac ? `(${selectedPerson.zodiac})` : ''}
+                      </span>
                     </div>
                   </div>
 
                   <div className="p-3 rounded-xl bg-[#F2EFE9]/60 border border-[#5B7B6D]/10 flex items-center gap-2.5">
-                    <span className="text-lg shrink-0">✨</span>
+                    <span className="text-lg shrink-0">📍</span>
                     <div className="min-w-0 flex-1">
-                      <span className="text-[10px] text-[#6E7C75] block">星座</span>
-                      <span className="font-semibold text-[#2B332E] block truncate">{selectedPerson.zodiac || '未设置'}</span>
+                      <span className="text-[10px] text-[#6E7C75] block">初识地点</span>
+                      <span className="font-semibold text-[#2B332E] block truncate">{selectedPerson.customFields?.['认识地点'] || '时光长廊'}</span>
                     </div>
                   </div>
 
@@ -1775,13 +2218,24 @@ export default function App() {
                   >
                     ← 退出阅读
                   </button>
-                  <button
-                    onClick={() => handlePlayTts(`${readerStory.title}。${readerStory.content}`)}
-                    disabled={isTtsGenerating}
-                    className="flex items-center gap-1 text-xs px-3 py-1 bg-[#FDF0EB] text-[#E88765] rounded-full border border-[#E88765]/30 font-medium hover:bg-[#E88765] hover:text-white transition-all font-sans"
-                  >
-                    <Volume2 className="w-3.5 h-3.5" /> {isTtsGenerating ? 'AI 语音合成中...' : '朗诵此章节'}
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setIsVoicePickerModalOpen(true)}
+                      className="text-[11px] px-2.5 py-1 text-[#6E7C75] bg-stone-100 hover:bg-stone-200 rounded-full font-sans transition-all flex items-center gap-1"
+                      title="更换朗读音色"
+                    >
+                      <Headphones className="w-3 h-3 text-[#5B7B6D]" />
+                      <span>{TTS_VOICES.find(v => v.id === ttsSelectedVoice)?.name.split(' ')[0] || '选音色'}</span>
+                    </button>
+                    <button
+                      onClick={() => handlePlayTts(`${readerStory.title}。${readerStory.content}`)}
+                      disabled={isTtsGenerating}
+                      className="flex items-center gap-1 text-xs px-3 py-1 bg-[#FDF0EB] text-[#E88765] rounded-full border border-[#E88765]/30 font-medium hover:bg-[#E88765] hover:text-white transition-all font-sans active:scale-95"
+                    >
+                      <Volume2 className={`w-3.5 h-3.5 ${isTtsGenerating ? 'animate-bounce' : ''}`} />
+                      <span>{isTtsGenerating ? 'AI 语音合成中...' : '朗诵此章节'}</span>
+                    </button>
+                  </div>
                 </div>
                 <span className="text-xs font-bold text-[#E88765] tracking-widest uppercase font-sans">{readerStory.chapter}</span>
                 <h2 className="text-2xl font-bold text-[#2B332E] mb-4 font-serif">{readerStory.title}</h2>
@@ -2019,20 +2473,21 @@ export default function App() {
                     id: 't-' + Date.now(),
                     title: fd.get('title') as string,
                     date: fd.get('date') as string,
-                    location: fd.get('location') as string,
+                    location: (fd.get('location') as string) || '时光驿站',
                     content: fd.get('content') as string,
-                    tag: (fd.get('tag') as string) || '记忆',
-                    image: (fd.get('image') as string) || 'https://images.unsplash.com/photo-1517841905240-472988babdf9?w=600&auto=format&fit=crop&q=80'
+                    tag: (fd.get('tag') as string) || '时光印记',
+                    image: formTimelineImage || 'https://images.unsplash.com/photo-1517841905240-472988babdf9?w=600&auto=format&fit=crop&q=80'
                   });
-                }} className="space-y-3 text-xs font-sans">
+                  setFormTimelineImage('');
+                }} className="space-y-3.5 text-xs font-sans">
 
-                  <div className="p-3 bg-[#FDF0EB]/80 border border-[#E88765]/30 rounded-xl space-y-2">
+                  <div className="p-3 bg-[#FDF0EB]/80 border border-[#E88765]/30 rounded-2xl space-y-2">
                     <div className="flex justify-between items-center">
                       <span className="font-bold text-[#E88765] flex items-center gap-1">
                         <Sparkles className="w-3.5 h-3.5" /> 照片 AI 智能识图填表
                       </span>
-                      <label className="cursor-pointer text-[11px] px-2.5 py-1 bg-[#E88765] text-white rounded-lg font-medium shadow-sm hover:bg-[#E88765]/90 transition-all">
-                        {isAiVisionLoading ? 'AI 识别中...' : '选择照片/票据'}
+                      <label className="cursor-pointer text-[11px] px-2.5 py-1 bg-[#E88765] text-white rounded-lg font-medium shadow-xs hover:bg-[#E88765]/90 transition-all">
+                        {isAiVisionLoading ? 'AI 识别中...' : '选取照片/票据'}
                         <input type="file" accept="image/*" className="hidden" onChange={(e) => {
                           handleImageUploadVision(e, (data) => {
                             const form = document.getElementById('timelineForm') as HTMLFormElement;
@@ -2042,47 +2497,64 @@ export default function App() {
                               if (data.location) (form.elements.namedItem('location') as HTMLInputElement).value = data.location;
                               if (data.tag) (form.elements.namedItem('tag') as HTMLInputElement).value = data.tag;
                               if (data.story) (form.elements.namedItem('content') as HTMLTextAreaElement).value = data.story;
-                              if (data.image) (form.elements.namedItem('image') as HTMLInputElement).value = data.image;
                             }
+                            if (data.image) setFormTimelineImage(data.image);
                           });
                         }} />
                       </label>
                     </div>
-                    <p className="text-[10px] text-[#6E7C75]">上传老照片、车票或纪念物照片，AI 将自动填写标题、日期、地点与叙事内容！</p>
+                    <p className="text-[10px] text-[#6E7C75]">上传老照片、车票或纪念物，AI 将自动填写标题、日期、地点与叙事内容！</p>
                   </div>
 
-                  <input name="title" required placeholder="记忆标题" className="w-full p-3 rounded-xl border border-[#5B7B6D]/20 bg-white focus:outline-none focus:border-[#5B7B6D]" />
-
-                  <div className="grid grid-cols-2 gap-2">
-                    <input name="date" type="date" required defaultValue={new Date().toISOString().slice(0, 10)} className="p-3 rounded-xl border border-[#5B7B6D]/20 bg-white focus:outline-none focus:border-[#5B7B6D]" />
-                    <input name="location" placeholder="地点" className="p-3 rounded-xl border border-[#5B7B6D]/20 bg-white focus:outline-none focus:border-[#5B7B6D]" />
-                  </div>
-
-                  <input name="tag" placeholder="标签 (例: 青春 / 旅程)" className="w-full p-3 rounded-xl border border-[#5B7B6D]/20 bg-white focus:outline-none focus:border-[#5B7B6D]" />
-
-                  <div className="space-y-1">
-                    <div className="flex gap-2">
-                      <input name="image" id="timelineImageInput" placeholder="图片 URL 链接 或 使用 AI 生成" className="flex-1 p-3 rounded-xl border border-[#5B7B6D]/20 bg-white focus:outline-none focus:border-[#5B7B6D]" />
+                  {/* Local Image Uploader */}
+                  <LocalImageUploader
+                    value={formTimelineImage}
+                    onChange={setFormTimelineImage}
+                    label="时光配图 (本地上传)"
+                    helperText="支持本地选取/拖拽图片，自动压缩离线保存到本地档案"
+                    aspectRatio="video"
+                    extraAction={
                       <button
                         type="button"
                         onClick={() => {
                           const title = (document.querySelector('input[name="title"]') as HTMLInputElement)?.value || '时光记忆';
                           handleGenerateAiImage(title, (url) => {
-                            const imgInput = document.getElementById('timelineImageInput') as HTMLInputElement;
-                            if (imgInput) imgInput.value = url;
+                            setFormTimelineImage(url);
                           });
                         }}
                         disabled={isAiGenImageLoading}
-                        className="px-3 py-2 bg-[#5B7B6D] text-white rounded-xl font-medium hover:bg-[#3E564B] transition-all whitespace-nowrap"
+                        className="text-[11px] text-[#E88765] hover:text-[#D46C49] flex items-center gap-1 font-medium transition-colors"
                       >
-                        {isAiGenImageLoading ? '绘图中...' : '🎨 AI 绘图'}
+                        <Sparkles className="w-3 h-3" />
+                        {isAiGenImageLoading ? '绘图中...' : '🎨 AI 生成时光画'}
                       </button>
+                    }
+                  />
+
+                  <div>
+                    <label className="text-[10px] text-[#6E7C75] block mb-1">记忆标题 <span className="text-[#E88765] font-bold">* 必填</span></label>
+                    <input name="title" required placeholder="如：毕业季海边日落、第一次租房..." className="w-full p-3 rounded-xl border border-[#5B7B6D]/20 bg-white focus:outline-none focus:border-[#5B7B6D]" />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="text-[10px] text-[#6E7C75] block mb-1">记录日期 <span className="text-[#E88765] font-bold">* 必填</span></label>
+                      <input name="date" type="date" required defaultValue={new Date().toISOString().slice(0, 10)} className="w-full p-3 rounded-xl border border-[#5B7B6D]/20 bg-white focus:outline-none focus:border-[#5B7B6D]" />
                     </div>
+                    <div>
+                      <label className="text-[10px] text-[#6E7C75] block mb-1">地点 (选填)</label>
+                      <input name="location" placeholder="如：威海火炬八街、校园老图书馆" className="w-full p-3 rounded-xl border border-[#5B7B6D]/20 bg-white focus:outline-none focus:border-[#5B7B6D]" />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="text-[10px] text-[#6E7C75] block mb-1">标签分类 (选填)</label>
+                    <input name="tag" placeholder="如：青春、旅途、奋斗、家庭" className="w-full p-3 rounded-xl border border-[#5B7B6D]/20 bg-white focus:outline-none focus:border-[#5B7B6D]" />
                   </div>
 
                   <div className="space-y-1">
                     <div className="flex justify-between items-center px-1">
-                      <label className="text-[10px] text-[#6E7C75]">记忆故事与描述：</label>
+                      <label className="text-[10px] text-[#6E7C75]">记忆故事与描述 <span className="text-[#E88765] font-bold">* 必填</span>：</label>
                       <button
                         type="button"
                         onClick={() => handleAiPolishText('textarea[name="content"]', (val) => {
@@ -2095,7 +2567,7 @@ export default function App() {
                         <Wand2 className="w-3 h-3" /> {isAiPolishLoading ? '润色中...' : '✨ AI 润色故事'}
                       </button>
                     </div>
-                    <textarea name="content" required rows={3} placeholder="写下当时的感受与故事..." className="w-full p-3 rounded-xl border border-[#5B7B6D]/20 bg-white focus:outline-none focus:border-[#5B7B6D]" />
+                    <textarea name="content" required rows={3} placeholder="写下当时的感受、心境与难忘的细节..." className="w-full p-3 rounded-xl border border-[#5B7B6D]/20 bg-white focus:outline-none focus:border-[#5B7B6D]" />
                   </div>
 
                   <button type="submit" className="w-full py-3 bg-[#5B7B6D] text-white font-bold rounded-xl shadow-sm hover:bg-[#3E564B] transition-all">存入拾光轴</button>
@@ -2107,40 +2579,208 @@ export default function App() {
                 <form onSubmit={(e) => {
                   e.preventDefault();
                   const fd = new FormData(e.currentTarget);
+                  const nameVal = (fd.get('name') as string)?.trim();
+                  const relVal = formPersonRel || (fd.get('relationship') as string)?.trim();
+                  const birthdayVal = (fd.get('birthday') as string)?.trim() || '';
+                  const groupVal = formPersonGroup || (fd.get('group') as string)?.trim() || '未分组';
+                  const knowWhereVal = (fd.get('knowWhere') as string)?.trim() || '时光长廊';
+                  const zodiacVal = birthdayVal ? getZodiacFromBirthday(birthdayVal) : '未知';
+
+                  if (!nameVal) {
+                    showToast('请填写人物姓名或称谓（必填项）');
+                    return;
+                  }
+                  if (!relVal) {
+                    showToast('请填写或选择与该人物的关系（必填项）');
+                    return;
+                  }
                   addItem('people', {
                     id: 'p-' + Date.now(),
-                    name: fd.get('name') as string,
-                    avatar: (fd.get('avatar') as string) || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=300&auto=format&fit=crop&q=80',
-                    relationship: (fd.get('relationship') as string) || '朋友',
-                    birthday: (fd.get('birthday') as string) || '未填写',
-                    zodiac: (fd.get('zodiac') as string) || '未知',
-                    hobbies: (fd.get('hobbies') as string) || '未填写',
-                    color: (fd.get('color') as string) || '暖杏粉',
-                    bio: fd.get('bio') as string,
-                    customFields: { '认识地点': (fd.get('knowWhere') as string) || '未知' },
-                    impressions: [{ id: 'imp-0', year: new Date().getFullYear().toString(), text: fd.get('impression') as string }]
+                    name: nameVal,
+                    avatar: formPersonAvatar || PRESET_AVATARS[0],
+                    relationship: relVal,
+                    group: groupVal,
+                    birthday: birthdayVal || '未填写',
+                    zodiac: zodiacVal,
+                    hobbies: (fd.get('hobbies') as string)?.trim() || '未填写',
+                    color: (fd.get('color') as string)?.trim() || '暖杏粉',
+                    bio: (fd.get('bio') as string)?.trim() || `${relVal} · 珍贵回忆的同路人`,
+                    customFields: { '认识地点': knowWhereVal },
+                    impressions: (fd.get('impression') as string)?.trim()
+                      ? [{ id: 'imp-0', year: new Date().getFullYear().toString(), text: (fd.get('impression') as string)?.trim() }]
+                      : []
                   });
-                }} className="space-y-3 text-xs font-sans">
-                  <div className="grid grid-cols-2 gap-2">
-                    <input name="name" required placeholder="姓名 / 昵称" className="p-3 rounded-xl border border-[#5B7B6D]/20 bg-white focus:outline-none focus:border-[#5B7B6D]" />
-                    <input name="relationship" placeholder="关系 (例: 大学室友/高中闺蜜)" className="p-3 rounded-xl border border-[#5B7B6D]/20 bg-white focus:outline-none focus:border-[#5B7B6D]" />
+                  setFormPersonAvatar(PRESET_AVATARS[0]);
+                  setFormPersonRel('挚友');
+                  setFormPersonGroup('未分组');
+                }} className="space-y-4 text-xs font-sans">
+
+                  {/* Section 1: 必填核心档案 */}
+                  <div className="bg-white p-3.5 rounded-2xl border border-[#E88765]/30 shadow-2xs space-y-3">
+                    <div className="flex items-center justify-between pb-2 border-b border-[#5B7B6D]/10">
+                      <h4 className="font-bold text-[#2B332E] text-xs font-serif flex items-center gap-1.5">
+                        <span className="w-1.5 h-3.5 bg-[#E88765] rounded-full inline-block"></span>
+                        核心档案
+                      </h4>
+                      <span className="text-[10px] text-[#E88765] bg-[#FDF0EB] px-2 py-0.5 rounded-full font-medium border border-[#E88765]/20">
+                        * 必填项
+                      </span>
+                    </div>
+
+                    {/* Local Avatar Uploader with Presets */}
+                    <LocalImageUploader
+                      value={formPersonAvatar}
+                      onChange={setFormPersonAvatar}
+                      mode="avatar"
+                      label="人物头像 (本地相册/自拍上传)"
+                      helperText="本地上传照片或在下方快捷选用插画头像"
+                      presetAvatars={PRESET_AVATARS}
+                    />
+
+                    <div>
+                      <label className="text-[11px] font-medium text-[#2B332E] block mb-1">
+                        姓名 / 称谓 <span className="text-[#E88765] font-bold">* 必填</span>
+                      </label>
+                      <input
+                        name="name"
+                        required
+                        placeholder="如：陆青寻、林夏、老林、陈老师"
+                        className="w-full p-2.5 rounded-xl border border-[#5B7B6D]/20 bg-[#FAF8F5] focus:bg-white focus:outline-none focus:border-[#E88765] transition-colors"
+                      />
+                    </div>
+
+                    <div>
+                      <div className="flex justify-between items-center mb-1">
+                        <label className="text-[11px] font-medium text-[#2B332E]">
+                          与我的关系 <span className="text-[#E88765] font-bold">* 必填</span>
+                        </label>
+                        <span className="text-[10px] text-[#6E7C75]">可点击下方标签快捷选择</span>
+                      </div>
+                      <input
+                        name="relationship"
+                        required
+                        value={formPersonRel}
+                        onChange={(e) => setFormPersonRel(e.target.value)}
+                        placeholder="如：挚友、大学室友、高中闺蜜、父母、恩师"
+                        className="w-full p-2.5 rounded-xl border border-[#5B7B6D]/20 bg-[#FAF8F5] focus:bg-white focus:outline-none focus:border-[#E88765] transition-colors mb-2"
+                      />
+                      <div className="flex flex-wrap gap-1.5">
+                        {['挚友', '发小', '高中同窗', '大学室友', '父母家人', '恩师', '同行伙伴'].map((rel) => (
+                          <button
+                            key={rel}
+                            type="button"
+                            onClick={() => setFormPersonRel(rel)}
+                            className={`text-[10px] px-2.5 py-1 rounded-lg border transition-all ${
+                              formPersonRel === rel
+                                ? 'bg-[#5B7B6D] text-white border-[#5B7B6D]'
+                                : 'bg-[#FAF8F5] text-[#6E7C75] border-[#5B7B6D]/15 hover:border-[#5B7B6D]/40'
+                            }`}
+                          >
+                            {rel}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-2">
-                    <input name="birthday" placeholder="生日 (例: 10月24日)" className="p-3 rounded-xl border border-[#5B7B6D]/20 bg-white focus:outline-none focus:border-[#5B7B6D]" />
-                    <input name="zodiac" placeholder="星座 (例: 天蝎座)" className="p-3 rounded-xl border border-[#5B7B6D]/20 bg-white focus:outline-none focus:border-[#5B7B6D]" />
+                  {/* Section 2: 分组与特征喜好 (选填) */}
+                  <div className="bg-white p-3.5 rounded-2xl border border-[#5B7B6D]/15 shadow-2xs space-y-3">
+                    <div className="flex items-center justify-between pb-2 border-b border-[#5B7B6D]/10">
+                      <h4 className="font-bold text-[#2B332E] text-xs font-serif flex items-center gap-1.5">
+                        <span className="w-1.5 h-3.5 bg-[#5B7B6D] rounded-full inline-block"></span>
+                        分组归类与喜好 (选填)
+                      </h4>
+                      <span className="text-[10px] text-[#6E7C75] bg-stone-100 px-2 py-0.5 rounded-full font-medium">
+                        选填
+                      </span>
+                    </div>
+
+                    <div>
+                      <label className="text-[10px] text-[#6E7C75] block mb-1">好友分组 (选填)</label>
+                      <div className="flex flex-wrap gap-1.5 mb-1.5">
+                        {Array.from(new Set([...customGroups, '未分组'])).map(grp => (
+                          <button
+                            key={grp}
+                            type="button"
+                            onClick={() => setFormPersonGroup(grp)}
+                            className={`text-[10px] px-2.5 py-1 rounded-lg border transition-all ${
+                              formPersonGroup === grp
+                                ? 'bg-[#5B7B6D] text-white border-[#5B7B6D]'
+                                : 'bg-[#FAF8F5] text-[#6E7C75] border-[#5B7B6D]/15 hover:border-[#5B7B6D]/40'
+                            }`}
+                          >
+                            {grp}
+                          </button>
+                        ))}
+                      </div>
+                      <input
+                        name="group"
+                        value={formPersonGroup}
+                        onChange={(e) => setFormPersonGroup(e.target.value)}
+                        placeholder="或输入自定义分组名称"
+                        className="w-full p-2.5 rounded-xl border border-[#5B7B6D]/20 bg-[#FAF8F5] focus:bg-white focus:outline-none focus:border-[#5B7B6D]"
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2.5">
+                      <div>
+                        <label className="text-[10px] text-[#6E7C75] block mb-1">
+                          生日 (选填，自动匹配星座)
+                        </label>
+                        <input
+                          name="birthday"
+                          placeholder="如：10月24日、1998-05-12"
+                          className="w-full p-2.5 rounded-xl border border-[#5B7B6D]/20 bg-[#FAF8F5] focus:bg-white focus:outline-none focus:border-[#5B7B6D]"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[10px] text-[#6E7C75] block mb-1">认识地点 (选填)</label>
+                        <input
+                          name="knowWhere"
+                          placeholder="如：老校区林荫路、大一画室"
+                          className="w-full p-2.5 rounded-xl border border-[#5B7B6D]/20 bg-[#FAF8F5] focus:bg-white focus:outline-none focus:border-[#5B7B6D]"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2.5">
+                      <div>
+                        <label className="text-[10px] text-[#6E7C75] block mb-1">兴趣爱好 (选填)</label>
+                        <input name="hobbies" placeholder="如：摄影、黑胶、吉他" className="w-full p-2.5 rounded-xl border border-[#5B7B6D]/20 bg-[#FAF8F5] focus:bg-white focus:outline-none focus:border-[#5B7B6D]" />
+                      </div>
+                      <div>
+                        <label className="text-[10px] text-[#6E7C75] block mb-1">喜欢的颜色 (选填)</label>
+                        <input name="color" placeholder="如：鼠尾草绿、群青" className="w-full p-2.5 rounded-xl border border-[#5B7B6D]/20 bg-[#FAF8F5] focus:bg-white focus:outline-none focus:border-[#5B7B6D]" />
+                      </div>
+                    </div>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-2">
-                    <input name="hobbies" placeholder="爱好 (例: 摄影、黑胶)" className="p-3 rounded-xl border border-[#5B7B6D]/20 bg-white focus:outline-none focus:border-[#5B7B6D]" />
-                    <input name="color" placeholder="喜欢的颜色 (例: 鼠尾草绿)" className="p-3 rounded-xl border border-[#5B7B6D]/20 bg-white focus:outline-none focus:border-[#5B7B6D]" />
+                  {/* Section 3: 时光印记与简介 (选填) */}
+                  <div className="bg-white p-3.5 rounded-2xl border border-[#5B7B6D]/15 shadow-2xs space-y-3">
+                    <div className="flex items-center justify-between pb-2 border-b border-[#5B7B6D]/10">
+                      <h4 className="font-bold text-[#2B332E] text-xs font-serif flex items-center gap-1.5">
+                        <span className="w-1.5 h-3.5 bg-[#8C6D52] rounded-full inline-block"></span>
+                        生平寄语与初识印象 (选填)
+                      </h4>
+                      <span className="text-[10px] text-[#6E7C75] bg-stone-100 px-2 py-0.5 rounded-full font-medium">
+                        选填
+                      </span>
+                    </div>
+
+                    <div>
+                      <label className="text-[10px] text-[#6E7C75] block mb-1">一句话人物总结 (选填)</label>
+                      <input name="bio" placeholder="如：一起在晚自习后看过无数次晚霞的知心挚友" className="w-full p-2.5 rounded-xl border border-[#5B7B6D]/20 bg-[#FAF8F5] focus:bg-white focus:outline-none focus:border-[#5B7B6D]" />
+                    </div>
+
+                    <div>
+                      <label className="text-[10px] text-[#6E7C75] block mb-1">初识或目前记忆印象 (选填)</label>
+                      <textarea name="impression" rows={2} placeholder="如：还记得大一军训休息时递来的那瓶冰橘子汽水，眼睛笑起来像弯月..." className="w-full p-2.5 rounded-xl border border-[#5B7B6D]/20 bg-[#FAF8F5] focus:bg-white focus:outline-none focus:border-[#5B7B6D]" />
+                    </div>
                   </div>
 
-                  <input name="avatar" placeholder="头像图片 URL 链接" className="w-full p-3 rounded-xl border border-[#5B7B6D]/20 bg-white focus:outline-none focus:border-[#5B7B6D]" />
-                  <input name="knowWhere" placeholder="第一次认识地点" className="w-full p-3 rounded-xl border border-[#5B7B6D]/20 bg-white focus:outline-none focus:border-[#5B7B6D]" />
-                  <input name="bio" required placeholder="一句话人物总结简介" className="w-full p-3 rounded-xl border border-[#5B7B6D]/20 bg-white focus:outline-none focus:border-[#5B7B6D]" />
-                  <textarea name="impression" required rows={2} placeholder="初识或目前对这个人的独特记忆印象..." className="w-full p-3 rounded-xl border border-[#5B7B6D]/20 bg-white focus:outline-none focus:border-[#5B7B6D]" />
-                  <button type="submit" className="w-full py-3 bg-[#5B7B6D] text-white font-bold rounded-xl shadow-sm hover:bg-[#3E564B] transition-all">建立人物档案</button>
+                  <button type="submit" className="w-full py-3 bg-[#5B7B6D] text-white font-bold rounded-xl shadow-sm hover:bg-[#3E564B] transition-all">
+                    建立人物档案
+                  </button>
                 </form>
               )}
 
@@ -2195,31 +2835,50 @@ export default function App() {
                     name: fd.get('name') as string,
                     date: fd.get('date') as string,
                     story: fd.get('story') as string,
-                    image: (fd.get('image') as string) || 'https://images.unsplash.com/photo-1517604931442-7e0c8ed2963c?w=500&auto=format&fit=crop&q=80'
+                    image: formArtifactImage || 'https://images.unsplash.com/photo-1517604931442-7e0c8ed2963c?w=500&auto=format&fit=crop&q=80'
                   });
-                }} className="space-y-3 text-xs font-sans">
-                  <input name="name" required placeholder="物品名称" className="w-full p-3 rounded-xl border border-[#5B7B6D]/20 bg-white focus:outline-none focus:border-[#5B7B6D]" />
-                  <input name="date" type="date" required defaultValue={new Date().toISOString().slice(0, 10)} className="w-full p-3 rounded-xl border border-[#5B7B6D]/20 bg-white focus:outline-none focus:border-[#5B7B6D]" />
+                  setFormArtifactImage('');
+                }} className="space-y-3.5 text-xs font-sans">
 
-                  <div className="flex gap-2">
-                    <input name="image" id="artifactImageInput" placeholder="物品照片 URL 或 AI 绘图" className="flex-1 p-3 rounded-xl border border-[#5B7B6D]/20 bg-white focus:outline-none focus:border-[#5B7B6D]" />
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const name = (document.querySelector('input[name="name"]') as HTMLInputElement)?.value || '古老纪念物';
-                        handleGenerateAiImage(name, (url) => {
-                          const imgInput = document.getElementById('artifactImageInput') as HTMLInputElement;
-                          if (imgInput) imgInput.value = url;
-                        });
-                      }}
-                      disabled={isAiGenImageLoading}
-                      className="px-3 py-2 bg-[#5B7B6D] text-white rounded-xl font-medium hover:bg-[#3E564B] transition-all whitespace-nowrap"
-                    >
-                      {isAiGenImageLoading ? '绘图中...' : '🎨 AI 生成旧物画'}
-                    </button>
+                  <LocalImageUploader
+                    value={formArtifactImage}
+                    onChange={setFormArtifactImage}
+                    label="旧物照片 (本地上传)"
+                    helperText="上传纪念物、老物件实物照片，支持离线永久保存"
+                    aspectRatio="video"
+                    extraAction={
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const name = (document.querySelector('input[name="name"]') as HTMLInputElement)?.value || '古老纪念物';
+                          handleGenerateAiImage(name, (url) => {
+                            setFormArtifactImage(url);
+                          });
+                        }}
+                        disabled={isAiGenImageLoading}
+                        className="text-[11px] text-[#E88765] hover:text-[#D46C49] flex items-center gap-1 font-medium transition-colors"
+                      >
+                        <Sparkles className="w-3 h-3" />
+                        {isAiGenImageLoading ? '绘图中...' : '🎨 AI 生成旧物画'}
+                      </button>
+                    }
+                  />
+
+                  <div>
+                    <label className="text-[10px] text-[#6E7C75] block mb-1">物品名称 <span className="text-[#E88765] font-bold">* 必填</span></label>
+                    <input name="name" required placeholder="如：理光GR胶片机、毕业明信片、第一台随身听" className="w-full p-3 rounded-xl border border-[#5B7B6D]/20 bg-white focus:outline-none focus:border-[#5B7B6D]" />
                   </div>
 
-                  <textarea name="story" required rows={3} placeholder="物品背后的回忆与意义..." className="w-full p-3 rounded-xl border border-[#5B7B6D]/20 bg-white focus:outline-none focus:border-[#5B7B6D]" />
+                  <div>
+                    <label className="text-[10px] text-[#6E7C75] block mb-1">获得/纪念日期 <span className="text-[#E88765] font-bold">* 必填</span></label>
+                    <input name="date" type="date" required defaultValue={new Date().toISOString().slice(0, 10)} className="w-full p-3 rounded-xl border border-[#5B7B6D]/20 bg-white focus:outline-none focus:border-[#5B7B6D]" />
+                  </div>
+
+                  <div>
+                    <label className="text-[10px] text-[#6E7C75] block mb-1">物品背后的回忆与意义 <span className="text-[#E88765] font-bold">* 必填</span></label>
+                    <textarea name="story" required rows={3} placeholder="写下这件旧物与你之间的专属故事与温存回忆..." className="w-full p-3 rounded-xl border border-[#5B7B6D]/20 bg-white focus:outline-none focus:border-[#5B7B6D]" />
+                  </div>
+
                   <button type="submit" className="w-full py-3 bg-[#5B7B6D] text-white font-bold rounded-xl shadow-sm hover:bg-[#3E564B] transition-all">展出旧物</button>
                 </form>
               )}
@@ -2250,60 +2909,78 @@ export default function App() {
               {/* Modal: Backup, Password, and Gemini Settings */}
               {activeModal === 'backup' && (
                 <div className="space-y-4 text-xs font-sans">
-                  {/* Security PIN Section */}
-                  <div className="p-3.5 bg-white rounded-2xl border border-[#5B7B6D]/15 space-y-2">
+                  {/* Security PIN & Persistent Lock Section */}
+                  <div className="p-3.5 bg-white rounded-2xl border border-[#5B7B6D]/15 space-y-2.5">
                     <div className="flex justify-between items-center">
-                      <h4 className="font-bold text-[#2B332E] flex items-center gap-1.5">
-                        <KeyRound className="w-4 h-4 text-[#E88765]" /> 私人空间口令设置
+                      <h4 className="font-bold text-[#2B332E] flex items-center gap-1.5 text-xs font-serif">
+                        <ShieldCheck className="w-4 h-4 text-[#E88765]" /> 私人空间安全与锁定
                       </h4>
+                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#5B7B6D]/10 text-[#5B7B6D] font-medium font-sans">
+                        已启用持久防护
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-[#6E7C75] leading-relaxed">
+                      锁定后即使彻底关闭后台或重启 App，重新打开依旧保持锁定状态，需输入口令方可进入。
+                    </p>
+                    <div className="flex gap-2 pt-1">
                       <button
+                        type="button"
+                        onClick={() => {
+                          setIsLocked(true);
+                          localStorage.setItem('shinian_is_locked', 'true');
+                          setActiveModal(null);
+                          showToast('私人空间已锁定');
+                        }}
+                        className="flex-1 py-2 bg-[#5B7B6D] text-white rounded-xl text-xs font-bold hover:bg-[#3E564B] transition-all flex items-center justify-center gap-1.5 shadow-2xs"
+                      >
+                        <Lock className="w-3.5 h-3.5" /> 即刻锁定空间
+                      </button>
+                      <button
+                        type="button"
                         onClick={() => {
                           setActiveModal(null);
                           setIsChangingPin(true);
                         }}
-                        className="text-[11px] px-2.5 py-1 rounded-lg bg-[#FDF0EB] text-[#E88765] border border-[#E88765]/30 font-medium hover:bg-[#E88765] hover:text-white transition-all"
+                        className="py-2 px-3 bg-[#FAF8F5] text-[#E88765] border border-[#E88765]/30 rounded-xl text-xs font-medium hover:bg-[#FDF0EB] transition-all flex items-center justify-center gap-1"
                       >
-                        修改密码
+                        <KeyRound className="w-3.5 h-3.5" /> 修改口令
                       </button>
                     </div>
-                    <p className="text-[11px] text-[#6E7C75]">当前空间保护口令已启用，可在离线环境下随时保护你的私人记忆隐私。</p>
                   </div>
 
-                  {/* Dual AI Engine & Voice Settings Section */}
-                  <div className="p-4 bg-[#FDF0EB]/70 rounded-2xl border border-[#E88765]/30 space-y-3">
+                  {/* Minimalist AI Engine Settings */}
+                  <div className="p-3.5 bg-[#FAF8F5] rounded-2xl border border-[#5B7B6D]/20 space-y-3">
                     <div className="flex justify-between items-center">
-                      <h4 className="font-bold text-[#E88765] flex items-center gap-1.5 text-xs">
-                        <Sparkles className="w-4 h-4" /> 智能时光伴侣与双引擎切换
+                      <h4 className="font-bold text-[#2B332E] flex items-center gap-1.5 text-xs font-serif">
+                        <Sparkles className="w-4 h-4 text-[#E88765]" /> AI 智能引擎
                       </h4>
-                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#E88765] text-white font-medium">
-                        {aiEngine === 'deepseek' ? 'DeepSeek 模式' : '云端直连免翻墙'}
+                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-white border border-[#5B7B6D]/20 text-[#5B7B6D] font-medium font-sans">
+                        {aiEngine === 'deepseek' ? 'DeepSeek 模式' : '标准模型'}
                       </span>
                     </div>
 
-                    <p className="text-[#6E7C75] text-[11px] leading-relaxed">
-                      《拾年》提供双引擎支持。无需 VPN，国内网络即可直接享受极速回忆对话与智能识图。
-                    </p>
-
                     {/* Engine Selection Radios */}
-                    <div className="grid grid-cols-2 gap-2 pt-1">
+                    <div className="grid grid-cols-2 gap-2">
                       <button
                         type="button"
                         onClick={() => {
                           setAiEngine('gemini');
                           localStorage.setItem('shinian_ai_engine', 'gemini');
-                          showToast('已设为默认云端直连（国内免翻墙）');
+                          showToast('已切换为标准 AI 模型');
                         }}
                         className={`p-2.5 rounded-xl border text-left transition-all ${
                           aiEngine === 'gemini'
-                            ? 'bg-white border-[#5B7B6D] shadow-xs'
-                            : 'bg-white/60 border-[#5B7B6D]/20 hover:bg-white'
+                            ? 'bg-white border-[#5B7B6D] ring-1 ring-[#5B7B6D]/30 shadow-xs'
+                            : 'bg-white/60 border-[#5B7B6D]/15 hover:bg-white'
                         }`}
                       >
                         <div className="flex items-center justify-between mb-1">
-                          <span className="font-bold text-[11px] text-[#2B332E]">⚡ 云端直连</span>
+                          <span className="font-bold text-[11px] text-[#2B332E] flex items-center gap-1">
+                            ⚡ 标准模型
+                          </span>
                           {aiEngine === 'gemini' && <Check className="w-3.5 h-3.5 text-[#5B7B6D]" />}
                         </div>
-                        <p className="text-[9px] text-[#6E7C75]">Gemini 3.7 Flash · 免翻墙开箱即用</p>
+                        <p className="text-[10px] text-[#6E7C75] leading-relaxed">内置快速响应，支持回忆对谈与识图</p>
                       </button>
 
                       <button
@@ -2311,27 +2988,29 @@ export default function App() {
                         onClick={() => {
                           setAiEngine('deepseek');
                           localStorage.setItem('shinian_ai_engine', 'deepseek');
-                          showToast('已设为 DeepSeek 官方大模型引擎');
+                          showToast('已切换为 DeepSeek 引擎');
                         }}
                         className={`p-2.5 rounded-xl border text-left transition-all ${
                           aiEngine === 'deepseek'
-                            ? 'bg-white border-[#E88765] shadow-xs'
-                            : 'bg-white/60 border-[#5B7B6D]/20 hover:bg-white'
+                            ? 'bg-white border-[#E88765] ring-1 ring-[#E88765]/30 shadow-xs'
+                            : 'bg-white/60 border-[#5B7B6D]/15 hover:bg-white'
                         }`}
                       >
                         <div className="flex items-center justify-between mb-1">
-                          <span className="font-bold text-[11px] text-[#2B332E]">🐉 DeepSeek</span>
+                          <span className="font-bold text-[11px] text-[#2B332E] flex items-center gap-1">
+                            🐉 DeepSeek
+                          </span>
                           {aiEngine === 'deepseek' && <Check className="w-3.5 h-3.5 text-[#E88765]" />}
                         </div>
-                        <p className="text-[9px] text-[#6E7C75]">DeepSeek-V3 · 官方大模型</p>
+                        <p className="text-[10px] text-[#6E7C75] leading-relaxed">DeepSeek-V3 深度文本推理</p>
                       </button>
                     </div>
 
                     {/* Conditional DeepSeek API Key Input */}
                     {aiEngine === 'deepseek' && (
-                      <div className="space-y-1.5 pt-1 animate-fadeIn">
+                      <div className="space-y-1.5 pt-1 animate-fadeIn bg-white p-2.5 rounded-xl border border-[#E88765]/25">
                         <label className="text-[10px] text-[#2B332E] font-bold flex items-center justify-between">
-                          <span>DeepSeek 官方 API Key (sk-...)：</span>
+                          <span>DeepSeek API Key (sk-...)：</span>
                           <a
                             href="https://platform.deepseek.com"
                             target="_blank"
@@ -2348,60 +3027,219 @@ export default function App() {
                             setDeepSeekKey(e.target.value);
                             localStorage.setItem('shinian_deepseek_key', e.target.value);
                           }}
-                          placeholder="粘贴在 DeepSeek 开放平台申请的 API Key (以 sk- 开头)"
-                          className="w-full p-2.5 rounded-xl border border-[#E88765]/40 bg-white focus:outline-none font-mono text-[11px]"
-                        />
-                        <p className="text-[9px] text-[#6E7C75]">密钥仅安全存储在你的本地浏览器或随服务转发至 DeepSeek 官方接口。</p>
-                      </div>
-                    )}
-
-                    {/* Gemini Key Input (Optional fallback) */}
-                    {aiEngine === 'gemini' && (
-                      <div className="space-y-1.5 pt-1">
-                        <label className="text-[10px] text-[#6E7C75] block">
-                          （可选）自定义专属云端 Key：
-                        </label>
-                        <input
-                          type="password"
-                          value={aiApiKey}
-                          onChange={(e) => {
-                            setAiApiKey(e.target.value);
-                            localStorage.setItem('shinian_gemini_key', e.target.value);
-                          }}
-                          placeholder="留空则自动使用内置免费云端通道，免翻墙直接畅享"
-                          className="w-full p-2.5 rounded-xl border border-[#5B7B6D]/20 bg-white focus:outline-none font-mono text-[11px]"
+                          placeholder="粘贴你的 DeepSeek API Key"
+                          className="w-full p-2 rounded-lg border border-[#E88765]/30 bg-[#FAF8F5] focus:outline-none font-mono text-[11px]"
                         />
                       </div>
                     )}
+                  </div>
 
-                    {/* TTS Voice Selector */}
-                    <div className="flex items-center justify-between text-[11px] text-[#6E7C75] pt-2 border-t border-[#E88765]/20">
-                      <span className="font-medium text-[#2B332E]">朗诵音色偏好：</span>
-                      <select
-                        value={ttsSelectedVoice}
-                        onChange={(e) => setTtsSelectedVoice(e.target.value)}
-                        className="bg-white border border-[#5B7B6D]/20 rounded-xl px-2.5 py-1 text-[11px] focus:outline-none"
+                  {/* AI Voice Selection Compact Trigger Card (Optimized for Mobile) */}
+                  {(() => {
+                    const currentVoiceObj = TTS_VOICES.find(v => v.id === ttsSelectedVoice) || TTS_VOICES[0];
+                    return (
+                      <div
+                        onClick={() => setIsVoicePickerModalOpen(true)}
+                        className="p-3.5 bg-white rounded-2xl border border-[#5B7B6D]/15 hover:border-[#5B7B6D]/40 transition-all cursor-pointer flex flex-col xs:flex-row xs:items-center justify-between gap-3 shadow-2xs group"
                       >
-                        <option value="Sulafat">Sulafat (温情柔和)</option>
-                        <option value="Kore">Kore (庄重沉静)</option>
-                        <option value="Zephyr">Zephyr (明朗舒缓)</option>
-                        <option value="Puck">Puck (欢快活力)</option>
-                      </select>
+                        <div className="flex items-center gap-3 min-w-0 flex-1">
+                          <div className="w-10 h-10 rounded-xl bg-[#FAF8F5] border border-[#5B7B6D]/20 flex items-center justify-center shrink-0 group-hover:bg-[#5B7B6D]/10 transition-colors">
+                            <Headphones className="w-5 h-5 text-[#5B7B6D]" />
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              <h4 className="font-bold text-[#2B332E] text-xs font-serif whitespace-nowrap">AI 朗诵音色偏好</h4>
+                              <span className={`text-[10px] px-2 py-0.5 rounded-md font-sans font-medium shrink-0 whitespace-nowrap ${
+                                currentVoiceObj.gender === '女声'
+                                  ? 'bg-[#FDF0EB] text-[#E88765]'
+                                  : currentVoiceObj.gender === '男声'
+                                  ? 'bg-[#5B7B6D]/10 text-[#5B7B6D]'
+                                  : 'bg-stone-100 text-stone-600'
+                              }`}>
+                                {currentVoiceObj.gender} · {currentVoiceObj.name}
+                              </span>
+                            </div>
+                            <p className="text-[10px] text-[#6E7C75] truncate mt-0.5 leading-tight">{currentVoiceObj.desc}</p>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center justify-center gap-1 shrink-0 text-[#5B7B6D] text-[11px] font-medium font-sans bg-[#FAF8F5] group-hover:bg-[#5B7B6D] group-hover:text-white px-3 py-1.5 rounded-xl border border-[#5B7B6D]/20 transition-all shadow-2xs self-end xs:self-center">
+                          <span className="whitespace-nowrap">选择音色</span>
+                          <ChevronRight className="w-3.5 h-3.5" />
+                        </div>
+                      </div>
+                    );
+                  })()}
+
+                  {/* Export & Import Full Offline Archive */}
+                  <div className="p-3.5 bg-white rounded-2xl border border-[#5B7B6D]/15 space-y-3">
+                    <div className="flex justify-between items-center">
+                      <h4 className="font-bold text-[#2B332E] flex items-center gap-1.5 text-xs font-serif">
+                        <Database className="w-4 h-4 text-[#5B7B6D]" /> 离线档案备份与恢复
+                      </h4>
+                      <span className="text-[10px] text-[#6E7C75]">纯本地单机存储</span>
                     </div>
-                  </div>
 
-                  <div className="p-3.5 bg-white rounded-2xl border border-[#5B7B6D]/15 space-y-2">
-                    <h4 className="font-bold text-[#2B332E]">导出全量离线档案</h4>
-                    <p className="text-[#6E7C75] text-[11px]">将数据库所有记录打包为标准 JSON 文件保存至本地。</p>
-                    <button onClick={handleExport} className="w-full py-2.5 bg-[#5B7B6D] text-white font-bold rounded-xl flex items-center justify-center gap-2 hover:bg-[#3E564B] transition-all">
-                      <Download className="w-3.5 h-3.5" /> 下载离线备份包
-                    </button>
-                  </div>
+                    {/* Export Card */}
+                    <div className="p-3 bg-[#FAF8F5] rounded-xl border border-[#5B7B6D]/15 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="font-medium text-[#2B332E] text-[11px] flex items-center gap-1">
+                          <Download className="w-3.5 h-3.5 text-[#5B7B6D]" /> 导出全量离线档案
+                        </span>
+                        <span className="text-[10px] text-[#6E7C75]">
+                          共 {data.timeline.length + data.people.length + data.stories.length + data.artifacts.length + data.letters.length} 项记录
+                        </span>
+                      </div>
+                      <p className="text-[#6E7C75] text-[10px]">将全部时间轴、人物档案、故事长篇、旧物及寄年胶囊打包下载保存为标准 JSON 备份包。</p>
+                      <button
+                        type="button"
+                        onClick={handleExport}
+                        className="w-full py-2 bg-[#5B7B6D] text-white font-bold rounded-xl flex items-center justify-center gap-2 hover:bg-[#3E564B] transition-all shadow-xs"
+                      >
+                        <Download className="w-3.5 h-3.5" /> 下载离线档案包 (.json)
+                      </button>
+                    </div>
 
-                  <div className="p-3.5 bg-white rounded-2xl border border-[#5B7B6D]/15 space-y-2">
-                    <h4 className="font-bold text-[#2B332E]">导入恢复档案</h4>
-                    <p className="text-[#6E7C75] text-[11px]">选择先前导出的 JSON 备份文件以还原私人记忆。</p>
-                    <input type="file" accept=".json" onChange={handleImport} className="block w-full text-xs text-[#6E7C75] file:mr-2 file:py-2 file:px-3 file:rounded-xl file:border-0 file:text-xs file:font-medium file:bg-[#FDF0EB] file:text-[#E88765] hover:file:bg-[#E88765]/20" />
+                    {/* Import Card / Center */}
+                    <div className="p-3 bg-[#FAF8F5] rounded-xl border border-[#5B7B6D]/15 space-y-2.5">
+                      <div className="flex items-center justify-between">
+                        <span className="font-medium text-[#2B332E] text-[11px] flex items-center gap-1">
+                          <Upload className="w-3.5 h-3.5 text-[#E88765]" /> 导入恢复离线档案
+                        </span>
+                        {importPreview && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 font-medium">
+                            已解析文件
+                          </span>
+                        )}
+                      </div>
+
+                      {!importPreview ? (
+                        <div
+                          onDragOver={(e) => {
+                            e.preventDefault();
+                            setIsDraggingFile(true);
+                          }}
+                          onDragLeave={() => setIsDraggingFile(false)}
+                          onDrop={(e) => {
+                            e.preventDefault();
+                            setIsDraggingFile(false);
+                            const file = e.dataTransfer.files?.[0];
+                            if (file) processBackupFile(file);
+                          }}
+                          className={`p-4 rounded-xl border-2 border-dashed text-center transition-all cursor-pointer relative ${
+                            isDraggingFile
+                              ? 'border-[#E88765] bg-[#FDF0EB]/60'
+                              : 'border-[#5B7B6D]/20 bg-white hover:border-[#5B7B6D]/50'
+                          }`}
+                        >
+                          <input
+                            type="file"
+                            accept=".json"
+                            onChange={handleImport}
+                            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                          />
+                          <FileJson className="w-7 h-7 mx-auto text-[#5B7B6D]/60 mb-1.5" />
+                          <p className="text-[11px] font-bold text-[#2B332E]">点击选择或拖放 JSON 备份文件至此</p>
+                          <p className="text-[10px] text-[#6E7C75] mt-0.5">支持从其他设备或先前导出的《拾年》离线数据包</p>
+                        </div>
+                      ) : (
+                        <div className="p-3 bg-white rounded-xl border border-[#5B7B6D]/20 space-y-3 animate-fadeIn">
+                          <div className="flex items-center justify-between border-b border-[#5B7B6D]/10 pb-2">
+                            <div className="flex items-center gap-2">
+                              <FileJson className="w-4 h-4 text-[#5B7B6D]" />
+                              <span className="font-bold text-[11px] text-[#2B332E] truncate max-w-[180px]">{importPreview.filename}</span>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => setImportPreview(null)}
+                              className="text-[10px] text-[#6E7C75] hover:text-[#E88765] underline"
+                            >
+                              重新选择
+                            </button>
+                          </div>
+
+                          {/* Data preview badges */}
+                          <div className="grid grid-cols-3 sm:grid-cols-5 gap-1.5 text-center text-[10px]">
+                            <div className="p-1.5 rounded-lg bg-[#FAF8F5] border border-[#5B7B6D]/10">
+                              <span className="block text-[#6E7C75] text-[9px]">时光轴</span>
+                              <strong className="text-[#5B7B6D] font-bold">{importPreview.timelineCount}</strong>
+                            </div>
+                            <div className="p-1.5 rounded-lg bg-[#FAF8F5] border border-[#5B7B6D]/10">
+                              <span className="block text-[#6E7C75] text-[9px]">拾人册</span>
+                              <strong className="text-[#5B7B6D] font-bold">{importPreview.peopleCount}</strong>
+                            </div>
+                            <div className="p-1.5 rounded-lg bg-[#FAF8F5] border border-[#5B7B6D]/10">
+                              <span className="block text-[#6E7C75] text-[9px]">故事篇</span>
+                              <strong className="text-[#5B7B6D] font-bold">{importPreview.storiesCount}</strong>
+                            </div>
+                            <div className="p-1.5 rounded-lg bg-[#FAF8F5] border border-[#5B7B6D]/10">
+                              <span className="block text-[#6E7C75] text-[9px]">旧物阁</span>
+                              <strong className="text-[#5B7B6D] font-bold">{importPreview.artifactsCount}</strong>
+                            </div>
+                            <div className="p-1.5 rounded-lg bg-[#FAF8F5] border border-[#5B7B6D]/10">
+                              <span className="block text-[#6E7C75] text-[9px]">寄年胶囊</span>
+                              <strong className="text-[#5B7B6D] font-bold">{importPreview.lettersCount}</strong>
+                            </div>
+                          </div>
+
+                          {/* Import Mode Selector */}
+                          <div className="space-y-1.5">
+                            <label className="text-[10px] text-[#2B332E] font-bold block">选择恢复导入方式：</label>
+                            <div className="grid grid-cols-2 gap-2">
+                              <button
+                                type="button"
+                                onClick={() => setImportMode('merge')}
+                                className={`p-2 rounded-xl border text-left transition-all ${
+                                  importMode === 'merge'
+                                    ? 'bg-[#FAF8F5] border-[#5B7B6D] ring-1 ring-[#5B7B6D]/30'
+                                    : 'bg-white border-stone-200'
+                                }`}
+                              >
+                                <div className="flex items-center justify-between mb-0.5">
+                                  <span className="font-bold text-[10px] text-[#2B332E]">增量合并 (推荐)</span>
+                                  {importMode === 'merge' && <Check className="w-3 h-3 text-[#5B7B6D]" />}
+                                </div>
+                                <p className="text-[9px] text-[#6E7C75]">保留现有数据，仅合入不重复的新增记录</p>
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => setImportMode('overwrite')}
+                                className={`p-2 rounded-xl border text-left transition-all ${
+                                  importMode === 'overwrite'
+                                    ? 'bg-[#FDF0EB] border-[#E88765] ring-1 ring-[#E88765]/30'
+                                    : 'bg-white border-stone-200'
+                                }`}
+                              >
+                                <div className="flex items-center justify-between mb-0.5">
+                                  <span className="font-bold text-[10px] text-[#E88765]">全量覆盖还原</span>
+                                  {importMode === 'overwrite' && <Check className="w-3 h-3 text-[#E88765]" />}
+                                </div>
+                                <p className="text-[9px] text-[#6E7C75]">清空当前记录，完全以该备份为准</p>
+                              </button>
+                            </div>
+                          </div>
+
+                          <div className="flex gap-2 pt-1">
+                            <button
+                              type="button"
+                              onClick={() => setImportPreview(null)}
+                              className="flex-1 py-2 rounded-xl border border-stone-200 text-[#6E7C75] hover:bg-stone-50 text-[11px]"
+                            >
+                              取消
+                            </button>
+                            <button
+                              type="button"
+                              onClick={handleConfirmImport}
+                              className="flex-2 py-2 bg-[#E88765] text-white font-bold rounded-xl hover:bg-[#E88765]/90 transition-all text-[11px] shadow-xs flex items-center justify-center gap-1.5"
+                            >
+                              <CheckCircle2 className="w-3.5 h-3.5" />
+                              确认恢复档案
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
               )}
@@ -2413,9 +3251,12 @@ export default function App() {
         {/* Modal for Editing Person Profile */}
         {isEditingPerson && selectedPerson && (
           <div className="absolute inset-0 bg-[#2B332E]/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fadeIn font-sans">
-            <div className="bg-[#FAF8F5] w-full max-w-sm p-5 rounded-3xl border border-[#5B7B6D]/20 shadow-2xl space-y-3 text-xs">
+            <div className="bg-[#FAF8F5] w-full max-w-sm max-h-[90vh] overflow-y-auto p-5 rounded-3xl border border-[#5B7B6D]/20 shadow-2xl space-y-3.5 text-xs">
               <div className="flex justify-between items-center border-b border-[#5B7B6D]/10 pb-2">
-                <h3 className="font-bold text-[#2B332E] text-sm font-serif">修改【{selectedPerson.name}】基础资料</h3>
+                <h3 className="font-bold text-[#2B332E] text-sm font-serif flex items-center gap-1.5">
+                  <UserPlus className="w-4 h-4 text-[#5B7B6D]" />
+                  修改【{selectedPerson.name}】档案
+                </h3>
                 <button onClick={() => setIsEditingPerson(false)} className="text-[#6E7C75] hover:text-[#2B332E]">
                   <X className="w-4 h-4" />
                 </button>
@@ -2424,62 +3265,202 @@ export default function App() {
               <form onSubmit={(e) => {
                 e.preventDefault();
                 const fd = new FormData(e.currentTarget);
+                const nameVal = (fd.get('name') as string)?.trim();
+                const relVal = editPersonRel || (fd.get('relationship') as string)?.trim() || selectedPerson.relationship;
+                const birthdayVal = (fd.get('birthday') as string)?.trim() || selectedPerson.birthday || '';
+                const groupVal = editPersonGroup || (fd.get('group') as string)?.trim() || selectedPerson.group || '未分组';
+                const knowWhereVal = (fd.get('knowWhere') as string)?.trim() || selectedPerson.customFields?.['认识地点'] || '时光长廊';
+                const zodiacVal = birthdayVal && birthdayVal !== '未填写' ? getZodiacFromBirthday(birthdayVal) : (selectedPerson.zodiac || '未知');
+
+                if (!nameVal) {
+                  showToast('请填写人物姓名（必填项）');
+                  return;
+                }
+                if (!relVal) {
+                  showToast('请填写与该人物的关系（必填项）');
+                  return;
+                }
                 handleUpdatePerson({
-                  name: fd.get('name') as string,
-                  relationship: fd.get('relationship') as string,
-                  birthday: fd.get('birthday') as string,
-                  zodiac: fd.get('zodiac') as string,
-                  hobbies: fd.get('hobbies') as string,
-                  color: fd.get('color') as string,
-                  bio: fd.get('bio') as string,
-                  avatar: fd.get('avatar') as string
+                  name: nameVal,
+                  relationship: relVal,
+                  group: groupVal,
+                  birthday: birthdayVal || '未填写',
+                  zodiac: zodiacVal,
+                  hobbies: (fd.get('hobbies') as string)?.trim() || '未填写',
+                  color: (fd.get('color') as string)?.trim() || '暖杏粉',
+                  bio: (fd.get('bio') as string)?.trim() || `${relVal} · 珍贵回忆的同路人`,
+                  avatar: editPersonAvatar || selectedPerson.avatar || PRESET_AVATARS[0],
+                  customFields: {
+                    ...(selectedPerson.customFields || {}),
+                    '认识地点': knowWhereVal
+                  }
                 });
-              }} className="space-y-2.5">
-                <div>
-                  <label className="text-[10px] text-[#6E7C75]">姓名/昵称：</label>
-                  <input name="name" defaultValue={selectedPerson.name} required className="w-full p-2.5 rounded-xl border border-[#5B7B6D]/20 bg-white focus:outline-none focus:border-[#E88765]" />
-                </div>
+              }} className="space-y-3.5">
 
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <label className="text-[10px] text-[#6E7C75]">关系身份：</label>
-                    <input name="relationship" defaultValue={selectedPerson.relationship} className="w-full p-2.5 rounded-xl border border-[#5B7B6D]/20 bg-white focus:outline-none focus:border-[#E88765]" />
+                {/* Section 1: 核心必填档案 */}
+                <div className="bg-white p-3.5 rounded-2xl border border-[#E88765]/30 shadow-2xs space-y-3">
+                  <div className="flex items-center justify-between pb-2 border-b border-[#5B7B6D]/10">
+                    <h4 className="font-bold text-[#2B332E] text-xs font-serif flex items-center gap-1.5">
+                      <span className="w-1.5 h-3.5 bg-[#E88765] rounded-full inline-block"></span>
+                      核心档案
+                    </h4>
+                    <span className="text-[10px] text-[#E88765] bg-[#FDF0EB] px-2 py-0.5 rounded-full font-medium border border-[#E88765]/20">
+                      * 必填项
+                    </span>
                   </div>
+
+                  {/* Local Avatar Uploader with Presets */}
+                  <LocalImageUploader
+                    value={editPersonAvatar || selectedPerson.avatar}
+                    onChange={setEditPersonAvatar}
+                    mode="avatar"
+                    label="人物头像 (本地相册/自拍上传)"
+                    helperText="本地上传照片或在下方快捷选用插画头像"
+                    presetAvatars={PRESET_AVATARS}
+                  />
+
                   <div>
-                    <label className="text-[10px] text-[#6E7C75]">生日：</label>
-                    <input name="birthday" defaultValue={selectedPerson.birthday} className="w-full p-2.5 rounded-xl border border-[#5B7B6D]/20 bg-white focus:outline-none focus:border-[#E88765]" />
+                    <label className="text-[11px] font-medium text-[#2B332E] block mb-1">
+                      姓名 / 称谓 <span className="text-[#E88765] font-bold">* 必填</span>
+                    </label>
+                    <input
+                      name="name"
+                      defaultValue={selectedPerson.name}
+                      required
+                      placeholder="如：陆青寻、林夏、老林、陈老师"
+                      className="w-full p-2.5 rounded-xl border border-[#5B7B6D]/20 bg-[#FAF8F5] focus:bg-white focus:outline-none focus:border-[#E88765] transition-colors"
+                    />
+                  </div>
+
+                  <div>
+                    <div className="flex justify-between items-center mb-1">
+                      <label className="text-[11px] font-medium text-[#2B332E]">
+                        与我的关系 <span className="text-[#E88765] font-bold">* 必填</span>
+                      </label>
+                      <span className="text-[10px] text-[#6E7C75]">可点击下方标签快捷选择</span>
+                    </div>
+                    <input
+                      name="relationship"
+                      required
+                      value={editPersonRel || selectedPerson.relationship}
+                      onChange={(e) => setEditPersonRel(e.target.value)}
+                      placeholder="如：挚友、大学室友、高中闺蜜、父母、恩师"
+                      className="w-full p-2.5 rounded-xl border border-[#5B7B6D]/20 bg-[#FAF8F5] focus:bg-white focus:outline-none focus:border-[#E88765] transition-colors mb-2"
+                    />
+                    <div className="flex flex-wrap gap-1.5">
+                      {['挚友', '发小', '高中同窗', '大学室友', '父母家人', '恩师', '同行伙伴'].map((rel) => (
+                        <button
+                          key={rel}
+                          type="button"
+                          onClick={() => setEditPersonRel(rel)}
+                          className={`text-[10px] px-2.5 py-1 rounded-lg border transition-all ${
+                            (editPersonRel || selectedPerson.relationship) === rel
+                              ? 'bg-[#5B7B6D] text-white border-[#5B7B6D]'
+                              : 'bg-[#FAF8F5] text-[#6E7C75] border-[#5B7B6D]/15 hover:border-[#5B7B6D]/40'
+                          }`}
+                        >
+                          {rel}
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <label className="text-[10px] text-[#6E7C75]">星座：</label>
-                    <input name="zodiac" defaultValue={selectedPerson.zodiac} className="w-full p-2.5 rounded-xl border border-[#5B7B6D]/20 bg-white focus:outline-none focus:border-[#E88765]" />
+                {/* Section 2: 分组与特征喜好 (选填) */}
+                <div className="bg-white p-3.5 rounded-2xl border border-[#5B7B6D]/15 shadow-2xs space-y-3">
+                  <div className="flex items-center justify-between pb-2 border-b border-[#5B7B6D]/10">
+                    <h4 className="font-bold text-[#2B332E] text-xs font-serif flex items-center gap-1.5">
+                      <span className="w-1.5 h-3.5 bg-[#5B7B6D] rounded-full inline-block"></span>
+                      分组归类与喜好 (选填)
+                    </h4>
+                    <span className="text-[10px] text-[#6E7C75] bg-stone-100 px-2 py-0.5 rounded-full font-medium">
+                      选填
+                    </span>
                   </div>
+
                   <div>
-                    <label className="text-[10px] text-[#6E7C75]">喜欢的颜色：</label>
-                    <input name="color" defaultValue={selectedPerson.color} className="w-full p-2.5 rounded-xl border border-[#5B7B6D]/20 bg-white focus:outline-none focus:border-[#E88765]" />
+                    <label className="text-[10px] text-[#6E7C75] block mb-1">好友分组 (选填)</label>
+                    <div className="flex flex-wrap gap-1.5 mb-1.5">
+                      {Array.from(new Set([...customGroups, '未分组'])).map(grp => (
+                        <button
+                          key={grp}
+                          type="button"
+                          onClick={() => setEditPersonGroup(grp)}
+                          className={`text-[10px] px-2.5 py-1 rounded-lg border transition-all ${
+                            (editPersonGroup || selectedPerson.group || '未分组') === grp
+                              ? 'bg-[#5B7B6D] text-white border-[#5B7B6D]'
+                              : 'bg-[#FAF8F5] text-[#6E7C75] border-[#5B7B6D]/15 hover:border-[#5B7B6D]/40'
+                          }`}
+                        >
+                          {grp}
+                        </button>
+                      ))}
+                    </div>
+                    <input
+                      name="group"
+                      value={editPersonGroup || selectedPerson.group || '未分组'}
+                      onChange={(e) => setEditPersonGroup(e.target.value)}
+                      placeholder="或输入自定义分组名称"
+                      className="w-full p-2.5 rounded-xl border border-[#5B7B6D]/20 bg-[#FAF8F5] focus:bg-white focus:outline-none focus:border-[#5B7B6D]"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2.5">
+                    <div>
+                      <label className="text-[10px] text-[#6E7C75] block mb-1">
+                        生日 (选填，自动匹配星座)
+                      </label>
+                      <input
+                        name="birthday"
+                        defaultValue={selectedPerson.birthday}
+                        placeholder="如：10月24日、1998-05-12"
+                        className="w-full p-2.5 rounded-xl border border-[#5B7B6D]/20 bg-[#FAF8F5] focus:bg-white focus:outline-none focus:border-[#5B7B6D]"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] text-[#6E7C75] block mb-1">认识地点 (选填)</label>
+                      <input
+                        name="knowWhere"
+                        defaultValue={selectedPerson.customFields?.['认识地点'] || ''}
+                        placeholder="如：老校区林荫路、大一画室"
+                        className="w-full p-2.5 rounded-xl border border-[#5B7B6D]/20 bg-[#FAF8F5] focus:bg-white focus:outline-none focus:border-[#5B7B6D]"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2.5">
+                    <div>
+                      <label className="text-[10px] text-[#6E7C75] block mb-1">兴趣爱好 (选填)</label>
+                      <input name="hobbies" defaultValue={selectedPerson.hobbies} placeholder="如：摄影、黑胶、吉他" className="w-full p-2.5 rounded-xl border border-[#5B7B6D]/20 bg-[#FAF8F5] focus:bg-white focus:outline-none focus:border-[#5B7B6D]" />
+                    </div>
+                    <div>
+                      <label className="text-[10px] text-[#6E7C75] block mb-1">喜欢的颜色 (选填)</label>
+                      <input name="color" defaultValue={selectedPerson.color} placeholder="如：鼠尾草绿、群青" className="w-full p-2.5 rounded-xl border border-[#5B7B6D]/20 bg-[#FAF8F5] focus:bg-white focus:outline-none focus:border-[#5B7B6D]" />
+                    </div>
                   </div>
                 </div>
 
-                <div>
-                  <label className="text-[10px] text-[#6E7C75]">兴趣爱好：</label>
-                  <input name="hobbies" defaultValue={selectedPerson.hobbies} className="w-full p-2.5 rounded-xl border border-[#5B7B6D]/20 bg-white focus:outline-none focus:border-[#E88765]" />
-                </div>
+                {/* Section 3: 生平寄语 (选填) */}
+                <div className="bg-white p-3.5 rounded-2xl border border-[#5B7B6D]/15 shadow-2xs space-y-3">
+                  <div className="flex items-center justify-between pb-2 border-b border-[#5B7B6D]/10">
+                    <h4 className="font-bold text-[#2B332E] text-xs font-serif flex items-center gap-1.5">
+                      <span className="w-1.5 h-3.5 bg-[#8C6D52] rounded-full inline-block"></span>
+                      生平寄语与概述 (选填)
+                    </h4>
+                    <span className="text-[10px] text-[#6E7C75] bg-stone-100 px-2 py-0.5 rounded-full font-medium">
+                      选填
+                    </span>
+                  </div>
 
-                <div>
-                  <label className="text-[10px] text-[#6E7C75]">头像链接：</label>
-                  <input name="avatar" defaultValue={selectedPerson.avatar} className="w-full p-2.5 rounded-xl border border-[#5B7B6D]/20 bg-white focus:outline-none focus:border-[#E88765]" />
-                </div>
-
-                <div>
-                  <label className="text-[10px] text-[#6E7C75]">一句话简介：</label>
-                  <textarea name="bio" defaultValue={selectedPerson.bio} rows={2} className="w-full p-2.5 rounded-xl border border-[#5B7B6D]/20 bg-white focus:outline-none focus:border-[#E88765]" />
+                  <div>
+                    <label className="text-[10px] text-[#6E7C75] block mb-1">一句话人物总结 (选填)</label>
+                    <textarea name="bio" defaultValue={selectedPerson.bio} rows={2} placeholder="如：一起在晚自习后看过无数次晚霞的知心挚友" className="w-full p-2.5 rounded-xl border border-[#5B7B6D]/20 bg-[#FAF8F5] focus:bg-white focus:outline-none focus:border-[#5B7B6D]" />
+                  </div>
                 </div>
 
                 <div className="flex gap-2 pt-2">
                   <button type="button" onClick={() => setIsEditingPerson(false)} className="flex-1 py-2.5 rounded-xl border border-[#5B7B6D]/20 bg-white text-[#6E7C75] font-medium">取消</button>
-                  <button type="submit" className="flex-1 py-2.5 rounded-xl bg-[#5B7B6D] text-white font-bold hover:bg-[#3E564B] transition-all">保存更新</button>
+                  <button type="submit" className="flex-1 py-2.5 rounded-xl bg-[#5B7B6D] text-white font-bold hover:bg-[#3E564B] transition-all shadow-xs">保存更新</button>
                 </div>
               </form>
             </div>
@@ -2608,6 +3589,144 @@ export default function App() {
           </div>
         )}
 
+        {/* Dedicated AI Voice Picker Modal */}
+        {isVoicePickerModalOpen && (
+          <div className="absolute inset-0 bg-[#2B332E]/60 backdrop-blur-xs z-50 flex items-center justify-center p-3 sm:p-4 animate-fadeIn font-sans">
+            <div className="bg-[#FAF8F5] w-full max-w-sm rounded-3xl shadow-2xl border border-[#5B7B6D]/20 overflow-hidden flex flex-col max-h-[88%] paper-texture">
+              {/* Modal Header */}
+              <div className="p-4 bg-white/90 backdrop-blur-md border-b border-[#5B7B6D]/15 flex items-center justify-between shrink-0">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className="w-8 h-8 rounded-xl bg-[#FAF8F5] border border-[#5B7B6D]/20 flex items-center justify-center text-[#5B7B6D] shrink-0">
+                    <Headphones className="w-4 h-4" />
+                  </div>
+                  <div className="min-w-0">
+                    <h3 className="font-bold text-sm text-[#2B332E] font-serif truncate">选择时光朗读者音色</h3>
+                    <p className="text-[10px] text-[#6E7C75] truncate">高品质情感人声 · 区分男女性格质感</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setIsVoicePickerModalOpen(false)}
+                  className="p-1.5 text-[#6E7C75] hover:text-[#2B332E] hover:bg-stone-100 rounded-lg transition-colors shrink-0"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* Gender Filter Tabs */}
+              <div className="px-3.5 py-2 flex items-center gap-1.5 border-b border-[#5B7B6D]/10 bg-white/60 shrink-0">
+                {(['all', '女声', '男声'] as const).map((filter) => (
+                  <button
+                    key={filter}
+                    onClick={() => setVoiceFilterGender(filter)}
+                    className={`flex-1 whitespace-nowrap px-2.5 py-1.5 rounded-xl text-xs font-medium transition-all text-center ${
+                      voiceFilterGender === filter
+                        ? 'bg-[#5B7B6D] text-white shadow-2xs font-semibold'
+                        : 'bg-white text-[#6E7C75] border border-[#5B7B6D]/15 hover:text-[#2B332E]'
+                    }`}
+                  >
+                    {filter === 'all' ? '全部音色' : filter}
+                  </button>
+                ))}
+              </div>
+
+              {/* Voice Cards List */}
+              <div className="p-3.5 space-y-2.5 overflow-y-auto flex-1">
+                {TTS_VOICES
+                  .filter(v => voiceFilterGender === 'all' || v.gender === voiceFilterGender)
+                  .map((v) => {
+                    const isSelected = ttsSelectedVoice === v.id;
+                    const isPreviewing = previewingVoiceId === v.id;
+
+                    return (
+                      <div
+                        key={v.id}
+                        onClick={() => {
+                          setTtsSelectedVoice(v.id);
+                          localStorage.setItem('shinian_tts_voice', v.id);
+                          showToast(`已选用朗诵音色：${v.name}`);
+                        }}
+                        className={`p-3.5 rounded-2xl border text-left cursor-pointer transition-all flex flex-col justify-between space-y-2.5 ${
+                          isSelected
+                            ? 'bg-white border-[#5B7B6D] ring-2 ring-[#5B7B6D]/25 shadow-xs'
+                            : 'bg-white/80 border-[#5B7B6D]/15 hover:border-[#5B7B6D]/40 hover:bg-white'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className="font-bold text-xs text-[#2B332E] font-serif truncate">{v.name}</span>
+                            <span className={`text-[10px] px-2 py-0.5 rounded-md font-medium font-sans shrink-0 ${
+                              v.gender === '女声'
+                                ? 'bg-[#FDF0EB] text-[#E88765] border border-[#E88765]/20'
+                                : 'bg-[#5B7B6D]/10 text-[#5B7B6D] border border-[#5B7B6D]/20'
+                            }`}>
+                              {v.gender}
+                            </span>
+                            <span className="text-[10px] text-[#6E7C75] font-serif hidden xs:inline truncate">
+                              · {v.character}
+                            </span>
+                          </div>
+                          {isSelected && (
+                            <span className="text-[10px] text-[#5B7B6D] font-bold flex items-center gap-1 bg-[#5B7B6D]/10 px-2 py-0.5 rounded-full font-sans shrink-0">
+                              <Check className="w-3 h-3" /> 已选用
+                            </span>
+                          )}
+                        </div>
+
+                        <p className="text-[11px] text-[#6E7C75] leading-relaxed font-serif">{v.desc}</p>
+
+                        <div className="flex flex-wrap items-center justify-between gap-2 pt-1.5 border-t border-[#5B7B6D]/10">
+                          <div className="flex flex-wrap gap-1">
+                            {v.tags.map(t => (
+                              <span key={t} className="text-[9px] px-1.5 py-0.5 rounded-md bg-[#FAF8F5] border border-[#5B7B6D]/10 text-[#6E7C75] font-sans whitespace-nowrap">
+                                #{t}
+                              </span>
+                            ))}
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handlePreviewVoice(v);
+                            }}
+                            disabled={isTtsGenerating || previewingVoiceId !== null}
+                            className={`text-[11px] px-3 py-1 rounded-xl flex items-center gap-1.5 transition-all font-medium font-sans shrink-0 ${
+                              isPreviewing
+                                ? 'bg-[#E88765] text-white animate-pulse shadow-xs'
+                                : 'bg-[#5B7B6D]/10 text-[#5B7B6D] hover:bg-[#5B7B6D] hover:text-white'
+                            }`}
+                          >
+                            {isPreviewing ? (
+                              <>
+                                <Volume2 className="w-3.5 h-3.5 animate-bounce" />
+                                <span className="whitespace-nowrap">试听中...</span>
+                              </>
+                            ) : (
+                              <>
+                                <Play className="w-3 h-3" />
+                                <span className="whitespace-nowrap">试听声线</span>
+                              </>
+                            )}
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+              </div>
+
+              {/* Modal Footer */}
+              <div className="p-3 bg-white/90 backdrop-blur-md border-t border-[#5B7B6D]/15 shrink-0">
+                <button
+                  onClick={() => setIsVoicePickerModalOpen(false)}
+                  className="w-full py-2.5 bg-[#5B7B6D] text-white font-bold rounded-xl hover:bg-[#3E564B] transition-all text-xs shadow-xs"
+                >
+                  确定并完成
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Custom Delete Confirmation Modal */}
         {confirmDialog && (
           <div className="absolute inset-0 bg-[#2B332E]/50 backdrop-blur-sm z-50 flex items-center justify-center p-6 animate-fadeIn font-sans">
@@ -2640,14 +3759,34 @@ export default function App() {
           </div>
         )}
 
-        {/* Bottom Navigation Bar: Exactly 5 Core Tabs */}
-        <nav className="bg-white/90 backdrop-blur-md text-[#2B332E] border-t border-[#5B7B6D]/15 px-2 py-1.5 flex justify-around items-center z-20">
+        {/* Bottom Navigation Bar: Exactly 5 Core Tabs with Safe Area Inset */}
+        <nav className="bg-white/90 backdrop-blur-md text-[#2B332E] border-t border-[#5B7B6D]/15 px-2 pt-1.5 pb-[max(0.375rem,env(safe-area-inset-bottom))] flex justify-around items-center z-20">
           <NavItem id="home" label="首页" icon={Landmark} active={activeTab} onClick={() => setActiveTab('home')} />
           <NavItem id="timeline" label="拾光轴" icon={Clock} active={activeTab} onClick={() => setActiveTab('timeline')} />
           <NavItem id="people" label="拾人册" icon={Users} active={activeTab} onClick={() => { setSelectedPerson(null); setActiveTab('people'); }} />
           <NavItem id="stories" label="拾忆篇" icon={BookOpen} active={activeTab} onClick={() => { setReaderStory(null); setActiveTab('stories'); }} />
           <NavItem id="artifacts" label="拾物阁" icon={Package} active={activeTab} onClick={() => setActiveTab('artifacts')} />
         </nav>
+
+        {/* Friend Group Picker Bottom Sheet Modal */}
+        <AnimatePresence>
+          {isGroupPickerOpen && (
+            <FriendGroupPickerModal
+              isOpen={isGroupPickerOpen}
+              onClose={() => setIsGroupPickerOpen(false)}
+              selectedGroup={selectedPersonGroup}
+              onSelectGroup={(grp) => {
+                setSelectedPersonGroup(grp);
+                setIsGroupPickerOpen(false);
+                showToast(grp === 'all' ? '已切换至全部好友全览' : `已切换至【${grp}】分组`);
+              }}
+              people={data.people}
+              customGroups={customGroups}
+              onAddGroup={handleAddGroup}
+              theme={currentTheme}
+            />
+          )}
+        </AnimatePresence>
 
         {/* Chrono Year Picker Bottom Sheet Modal */}
         <AnimatePresence>
@@ -2689,64 +3828,46 @@ interface SplashScreenProps {
 }
 
 function SplashScreen({ theme, onDismiss }: SplashScreenProps) {
-  const [progress, setProgress] = useState(0);
-
-  useEffect(() => {
-    const start = Date.now();
-    const duration = 2600;
-    const interval = setInterval(() => {
-      const elapsed = Date.now() - start;
-      const pct = Math.min(100, (elapsed / duration) * 100);
-      setProgress(pct);
-      if (pct >= 100) {
-        clearInterval(interval);
-      }
-    }, 25);
-    return () => clearInterval(interval);
-  }, []);
-
   return (
     <motion.div
       key="app-splash-screen"
-      initial={{ opacity: 0 }}
+      initial={{ opacity: 1 }}
       animate={{ opacity: 1 }}
       exit={{
         opacity: 0,
-        scale: 1.05,
-        filter: 'blur(20px)',
-        transition: { duration: 0.65, ease: [0.16, 1, 0.3, 1] }
+        scale: 1.02,
+        transition: { duration: 0.45, ease: [0.32, 0.72, 0, 1] }
       }}
-      className="absolute inset-0 z-50 flex flex-col items-center justify-between p-6 sm:p-8 bg-[#FAF8F5] overflow-hidden select-none cursor-pointer"
+      className="absolute inset-0 z-50 flex flex-col items-center justify-between p-6 sm:p-8 bg-[#FAF8F5] overflow-hidden select-none cursor-pointer transform-gpu"
       onClick={onDismiss}
     >
-      {/* Background Liquid Glass Fluid Orbs (Dynamic Floating Aura) */}
+      {/* Background Ambient Fluid Glows (Hardware Accelerated) */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        {/* Orb 1 - Primary Brand Liquid */}
+        {/* Ambient Top Left Glow */}
         <div
-          className="absolute -top-12 -left-12 w-80 h-80 rounded-full blur-3xl opacity-35 animate-orb-1 transition-colors duration-1000"
-          style={{ backgroundColor: theme.primary }}
+          className="absolute -top-20 -left-20 w-80 h-80 rounded-full opacity-35 transform-gpu transition-colors duration-700"
+          style={{
+            background: `radial-gradient(circle, ${theme.primary} 0%, rgba(250, 248, 245, 0) 70%)`
+          }}
         />
-        {/* Orb 2 - Accent Warm Liquid */}
+        {/* Ambient Bottom Right Glow */}
         <div
-          className="absolute -bottom-16 -right-12 w-88 h-88 rounded-full blur-3xl opacity-30 animate-orb-2 transition-colors duration-1000"
-          style={{ backgroundColor: theme.accent }}
+          className="absolute -bottom-20 -right-20 w-96 h-96 rounded-full opacity-30 transform-gpu transition-colors duration-700"
+          style={{
+            background: `radial-gradient(circle, ${theme.accent} 0%, rgba(250, 248, 245, 0) 70%)`
+          }}
         />
-        {/* Orb 3 - Center Radiant Prismatic Core */}
-        <div
-          className="absolute top-1/3 left-1/4 w-72 h-72 rounded-full blur-3xl opacity-20 animate-orb-3 transition-colors duration-1000"
-          style={{ backgroundColor: theme.paper }}
-        />
-        {/* Subtle Paper & Light Refraction Texture */}
-        <div className="absolute inset-0 paper-texture opacity-45" />
+        {/* Subtle Paper Texture */}
+        <div className="absolute inset-0 paper-texture opacity-40" />
       </div>
 
-      {/* Top Header: Pure Minimalist Glass Badge (No Skip Button) */}
+      {/* Top Header: Pure Minimalist Glass Badge */}
       <div className="w-full flex items-center justify-center relative z-10 pt-2">
         <motion.div
-          initial={{ opacity: 0, y: -10 }}
+          initial={{ opacity: 0, y: -6 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6, delay: 0.1 }}
-          className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-white/40 backdrop-blur-xl border border-white/70 shadow-xs"
+          transition={{ duration: 0.4, delay: 0.05 }}
+          className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-white/70 border border-[#5B7B6D]/15 shadow-2xs"
         >
           <span
             className="w-1.5 h-1.5 rounded-full animate-ping"
@@ -2758,23 +3879,20 @@ function SplashScreen({ theme, onDismiss }: SplashScreenProps) {
         </motion.div>
       </div>
 
-      {/* Center Hero: Floating Dynamic Frosted Glass Slab */}
+      {/* Center Hero: Floating Dynamic Frosted Glass Card */}
       <div className="flex flex-col items-center justify-center relative z-10 my-auto w-full max-w-sm px-3">
         <motion.div
-          initial={{ opacity: 0, scale: 0.88, y: 20 }}
+          initial={{ opacity: 0, scale: 0.94, y: 12 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
           transition={{
-            duration: 0.9,
-            delay: 0.15,
-            ease: [0.16, 1, 0.3, 1]
+            duration: 0.6,
+            delay: 0.1,
+            ease: [0.32, 0.72, 0, 1]
           }}
-          className="w-full ios-glass-card rounded-[32px] p-7 sm:p-9 relative overflow-hidden flex flex-col items-center text-center transition-all"
+          className="w-full bg-white/75 border border-white/90 shadow-xl rounded-[32px] p-7 sm:p-9 relative overflow-hidden flex flex-col items-center text-center transition-all transform-gpu"
         >
-          {/* Dynamic Light Sheen Sweep Effect across the Glass Surface */}
-          <div className="dynamic-glass-sheen" />
-
-          {/* Frosted Lens Top Inner Glow */}
-          <div className="absolute inset-x-0 top-0 h-1/2 bg-gradient-to-b from-white/40 to-transparent pointer-events-none rounded-t-[32px]" />
+          {/* Top Lens Inner Glow */}
+          <div className="absolute inset-x-0 top-0 h-1/2 bg-gradient-to-b from-white/50 to-transparent pointer-events-none rounded-t-[32px]" />
 
           {/* Chrono Index Label */}
           <div className="flex items-center gap-2.5 mb-5 relative z-10">
@@ -2785,21 +3903,20 @@ function SplashScreen({ theme, onDismiss }: SplashScreenProps) {
             <div className="w-6 h-[0.5px] bg-[#5B7B6D]/30" />
           </div>
 
-          {/* Main Title: 拾 年 (Artistic High-Contrast Calligraphic Typography) */}
+          {/* Main Title: 拾 年 */}
           <motion.div
-            initial={{ opacity: 0, filter: 'blur(10px)', y: 10 }}
-            animate={{ opacity: 1, filter: 'blur(0px)', y: 0 }}
-            transition={{ duration: 0.8, delay: 0.3, ease: [0.16, 1, 0.3, 1] }}
+            initial={{ opacity: 0, y: 6 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, delay: 0.2, ease: [0.32, 0.72, 0, 1] }}
             className="relative mb-4 z-10"
           >
-            {/* Ambient Word Glow */}
             <div
-              className="absolute inset-0 blur-xl opacity-25 -z-10 scale-125"
+              className="absolute inset-0 blur-lg opacity-20 -z-10 scale-125"
               style={{ backgroundColor: theme.primary }}
             />
 
             <h1
-              className="text-6xl sm:text-7xl font-bold font-serif text-[#2B332E] select-none drop-shadow-sm tracking-[0.32em] pl-[0.32em]"
+              className="text-6xl sm:text-7xl font-bold font-serif text-[#2B332E] select-none drop-shadow-2xs tracking-[0.32em] pl-[0.32em]"
               style={{
                 fontFamily: '"Noto Serif SC", "Ma Shan Zheng", Georgia, serif'
               }}
@@ -2812,7 +3929,7 @@ function SplashScreen({ theme, onDismiss }: SplashScreenProps) {
           <motion.div
             initial={{ scaleX: 0, opacity: 0 }}
             animate={{ scaleX: 1, opacity: 1 }}
-            transition={{ duration: 0.6, delay: 0.45, ease: 'easeOut' }}
+            transition={{ duration: 0.45, delay: 0.3, ease: 'easeOut' }}
             className="flex items-center justify-center gap-2 mb-5 w-full relative z-10"
           >
             <div className="h-[0.5px] w-10 bg-gradient-to-r from-transparent to-[#5B7B6D]/35" />
@@ -2825,9 +3942,9 @@ function SplashScreen({ theme, onDismiss }: SplashScreenProps) {
 
           {/* Poetic Subtitles */}
           <motion.div
-            initial={{ opacity: 0, y: 10 }}
+            initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.7, delay: 0.5, ease: [0.16, 1, 0.3, 1] }}
+            transition={{ duration: 0.5, delay: 0.35, ease: [0.32, 0.72, 0, 1] }}
             className="space-y-2 relative z-10"
           >
             <p
@@ -2844,14 +3961,12 @@ function SplashScreen({ theme, onDismiss }: SplashScreenProps) {
         </motion.div>
       </div>
 
-      {/* Bottom Footer: Dynamic Glass Indicator & Progress Bar */}
+      {/* Bottom Footer: Hardware-Accelerated Progress Track */}
       <div className="w-full flex flex-col items-center gap-3 relative z-10 pb-2">
-        {/* Subtle Frosted Capsule Progress Track */}
-        <div className="w-36 h-1.5 bg-white/50 backdrop-blur-md border border-white/60 rounded-full p-[1px] shadow-2xs overflow-hidden">
-          <motion.div
-            className="h-full rounded-full transition-all duration-75 shadow-xs"
+        <div className="w-36 h-1.5 bg-white/70 border border-[#5B7B6D]/20 rounded-full p-[1px] shadow-2xs overflow-hidden">
+          <div
+            className="h-full rounded-full splash-progress-bar shadow-xs"
             style={{
-              width: `${progress}%`,
               backgroundColor: theme.primary
             }}
           />
@@ -2994,25 +4109,26 @@ function ChronoYearPickerModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
-      {/* Dim backdrop with blur */}
+      {/* Dim backdrop */}
       <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
-        transition={{ duration: 0.2 }}
+        transition={{ duration: 0.22 }}
         onClick={onClose}
-        className="absolute inset-0 bg-[#2B332E]/45 backdrop-blur-sm"
+        className="absolute inset-0 bg-[#2B332E]/40"
       />
 
-      {/* iOS Glass Modal Card */}
+      {/* iOS Modal Sheet Card */}
       <motion.div
-        initial={{ y: '100%', opacity: 0.5, scale: 0.98 }}
-        animate={{ y: 0, opacity: 1, scale: 1 }}
-        exit={{ y: '100%', opacity: 0, scale: 0.98 }}
-        transition={{ type: 'spring', damping: 28, stiffness: 320 }}
-        className="relative w-full max-w-lg bg-[#FAF8F5]/95 backdrop-blur-2xl rounded-t-[32px] sm:rounded-[28px] border border-white/60 shadow-2xl overflow-hidden flex flex-col max-h-[85vh] sm:max-h-[80vh] z-10 font-sans"
+        initial={{ y: '100%' }}
+        animate={{ y: 0 }}
+        exit={{ y: '100%' }}
+        transition={{ duration: 0.28, ease: [0.32, 0.72, 0, 1] }}
+        className="relative w-full max-w-lg bg-[#FAF8F5] rounded-t-[32px] sm:rounded-[28px] border border-[#5B7B6D]/20 shadow-2xl overflow-hidden flex flex-col max-h-[85vh] sm:max-h-[80vh] z-10 font-sans transform-gpu"
         style={{
-          boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25), 0 0 0 1px rgba(255, 255, 255, 0.4) inset'
+          boxShadow: '0 -10px 40px -10px rgba(43, 51, 46, 0.2), 0 0 0 1px rgba(255, 255, 255, 0.8) inset',
+          willChange: 'transform'
         }}
       >
         {/* iOS Grabber */}
@@ -3104,13 +4220,13 @@ function ChronoYearPickerModal({
             )}
           </div>
 
-          {/* Quick Filter Navigation Tabs */}
-          <div className="flex items-center justify-between gap-1.5 pt-1">
-            <div className="flex items-center gap-1.5 bg-black/5 p-1 rounded-xl">
+          {/* Quick Filter Navigation Tabs & Search (Responsive mobile layout) */}
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 pt-1">
+            <div className="flex items-center gap-1 bg-black/5 p-1 rounded-xl w-full sm:w-auto">
               <button
                 type="button"
                 onClick={() => setFilterMode('all_recorded')}
-                className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all ${
+                className={`flex-1 sm:flex-initial whitespace-nowrap px-3 py-1.5 rounded-lg text-xs font-medium transition-all text-center ${
                   filterMode === 'all_recorded'
                     ? 'bg-white text-[#2B332E] shadow-2xs font-semibold'
                     : 'text-[#6E7C75] hover:text-[#2B332E]'
@@ -3121,7 +4237,7 @@ function ChronoYearPickerModal({
               <button
                 type="button"
                 onClick={() => setFilterMode('recent')}
-                className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all ${
+                className={`flex-1 sm:flex-initial whitespace-nowrap px-3 py-1.5 rounded-lg text-xs font-medium transition-all text-center ${
                   filterMode === 'recent'
                     ? 'bg-white text-[#2B332E] shadow-2xs font-semibold'
                     : 'text-[#6E7C75] hover:text-[#2B332E]'
@@ -3132,7 +4248,7 @@ function ChronoYearPickerModal({
               <button
                 type="button"
                 onClick={() => setFilterMode('custom')}
-                className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all ${
+                className={`flex-1 sm:flex-initial whitespace-nowrap px-3 py-1.5 rounded-lg text-xs font-medium transition-all text-center ${
                   filterMode === 'custom'
                     ? 'bg-white text-[#2B332E] shadow-2xs font-semibold'
                     : 'text-[#6E7C75] hover:text-[#2B332E]'
@@ -3144,15 +4260,15 @@ function ChronoYearPickerModal({
 
             {/* Quick Search */}
             {filterMode !== 'custom' && years.length > 4 && (
-              <div className="relative w-28 sm:w-36">
+              <div className="relative w-full sm:w-36">
                 <input
                   type="text"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   placeholder="搜索年份..."
-                  className="w-full pl-6 pr-2 py-1 bg-white/70 border border-[#5B7B6D]/15 rounded-xl text-[11px] focus:outline-none focus:border-[#5B7B6D]"
+                  className="w-full pl-7 pr-2.5 py-1.5 bg-white/80 border border-[#5B7B6D]/15 rounded-xl text-xs focus:outline-none focus:border-[#5B7B6D] transition-colors"
                 />
-                <Search className="w-3 h-3 text-[#6E7C75] absolute left-2 top-2" />
+                <Search className="w-3.5 h-3.5 text-[#6E7C75] absolute left-2 top-2.5" />
               </div>
             )}
           </div>
@@ -3304,6 +4420,404 @@ function ChronoYearPickerModal({
               className="text-[#E88765] hover:underline font-medium flex items-center gap-1"
             >
               <RotateCcw className="w-3 h-3" /> 重置为全景时光
+            </button>
+          )}
+        </div>
+      </motion.div>
+    </div>
+  );
+}
+
+// ----------------------------------------------------
+// iOS Styled QQ Friend Group Sheet Modal
+// ----------------------------------------------------
+
+interface FriendGroupPickerModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  selectedGroup: string;
+  onSelectGroup: (group: string) => void;
+  people: Person[];
+  customGroups: string[];
+  onAddGroup: (groupName: string) => void;
+  theme: HealingTheme;
+}
+
+function FriendGroupPickerModal({
+  isOpen: _isOpen,
+  onClose,
+  selectedGroup,
+  onSelectGroup,
+  people,
+  customGroups,
+  onAddGroup,
+  theme
+}: FriendGroupPickerModalProps) {
+  const [filterMode, setFilterMode] = useState<'all_groups' | 'create_group'>('all_groups');
+  const [newGroupNameInput, setNewGroupNameInput] = useState<string>('');
+  const [searchQuery, setSearchQuery] = useState<string>('');
+
+  // Collect all unique group names
+  const allGroups = useMemo(() => {
+    const set = new Set<string>([...customGroups, ...people.map(p => p.group || '未分组')]);
+    const list = Array.from(set).filter(Boolean);
+    return [
+      ...list.filter(g => g !== '未分组'),
+      ...(list.includes('未分组') ? ['未分组'] : [])
+    ];
+  }, [customGroups, people]);
+
+  // Group stats & members map
+  const groupStatsMap = useMemo(() => {
+    const map: Record<string, Person[]> = {};
+    allGroups.forEach(g => {
+      map[g] = people.filter(p => (p.group || '未分组') === g);
+    });
+    return map;
+  }, [allGroups, people]);
+
+  const displayedGroups = useMemo(() => {
+    let list = [...allGroups];
+    if (searchQuery.trim()) {
+      const q = searchQuery.trim().toLowerCase();
+      list = list.filter(g => {
+        if (g.toLowerCase().includes(q)) return true;
+        const members = groupStatsMap[g] || [];
+        return members.some(m => m.name.toLowerCase().includes(q));
+      });
+    }
+    return list;
+  }, [allGroups, searchQuery, groupStatsMap]);
+
+  const maxGroupCount = useMemo(() => {
+    let max = 1;
+    (Object.values(groupStatsMap) as Person[][]).forEach(list => {
+      if (list && list.length > max) max = list.length;
+    });
+    return max;
+  }, [groupStatsMap]);
+
+  const handleCreateSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const clean = newGroupNameInput.trim();
+    if (clean) {
+      onAddGroup(clean);
+      setNewGroupNameInput('');
+      setFilterMode('all_groups');
+      onSelectGroup(clean);
+    }
+  };
+
+  const presetSuggestions = ['高中密友', '摄影伙伴', '工作搭子', '社团同道', '旅行驴友', '家族亲人', '导师同门'];
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
+      {/* Dim backdrop */}
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        transition={{ duration: 0.22 }}
+        onClick={onClose}
+        className="absolute inset-0 bg-[#2B332E]/40"
+      />
+
+      {/* iOS Modal Sheet Card */}
+      <motion.div
+        initial={{ y: '100%' }}
+        animate={{ y: 0 }}
+        exit={{ y: '100%' }}
+        transition={{ duration: 0.28, ease: [0.32, 0.72, 0, 1] }}
+        className="relative w-full max-w-lg bg-[#FAF8F5] rounded-t-[32px] sm:rounded-[28px] border border-[#5B7B6D]/20 shadow-2xl overflow-hidden flex flex-col max-h-[85vh] sm:max-h-[80vh] z-10 font-sans transform-gpu"
+        style={{
+          boxShadow: '0 -10px 40px -10px rgba(43, 51, 46, 0.2), 0 0 0 1px rgba(255, 255, 255, 0.8) inset',
+          willChange: 'transform'
+        }}
+      >
+        {/* iOS Grabber */}
+        <div className="w-full flex justify-center pt-3 pb-1 sm:hidden">
+          <div className="w-10 h-1 bg-black/20 rounded-full" />
+        </div>
+
+        {/* Modal Header */}
+        <div className="px-5 py-3.5 border-b border-[#5B7B6D]/10 flex items-center justify-between bg-white/40">
+          <div className="flex items-center gap-2.5">
+            <div
+              className="p-2 rounded-2xl shadow-xs"
+              style={{ backgroundColor: `${theme.primary}20`, color: theme.primaryDark }}
+            >
+              <Users className="w-4 h-4" />
+            </div>
+            <div>
+              <h3 className="font-bold text-[#2B332E] text-sm font-serif flex items-center gap-1.5">
+                好友分组 · 拾人图谱
+              </h3>
+              <p className="text-[10px] text-[#6E7C75] font-serif">
+                QQ好友分组式管理 · 沉淀相遇缘起
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            className="p-1.5 rounded-full bg-black/5 hover:bg-black/10 text-[#6E7C75] hover:text-[#2B332E] transition-all active:scale-90"
+            title="关闭"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        {/* Main Content Area */}
+        <div className="p-4 sm:p-5 overflow-y-auto space-y-4 flex-1">
+          {/* Hero Selection Card: 「全部好友」 (All Friends) */}
+          <div
+            onClick={() => onSelectGroup('all')}
+            className={`p-3.5 rounded-2xl border transition-all cursor-pointer relative overflow-hidden group ${
+              selectedGroup === 'all'
+                ? 'bg-gradient-to-br from-white via-[#FAF8F5] to-[#F2EFE9] border-[#5B7B6D] shadow-md ring-2 ring-[#5B7B6D]/20'
+                : 'bg-white/80 border-[#5B7B6D]/15 hover:border-[#5B7B6D]/40 hover:bg-white'
+            }`}
+          >
+            <div className="flex items-start justify-between relative z-10">
+              <div className="flex items-center gap-3">
+                <div
+                  className={`w-10 h-10 rounded-2xl flex items-center justify-center transition-all ${
+                    selectedGroup === 'all'
+                      ? 'bg-[#5B7B6D] text-white shadow-sm'
+                      : 'bg-[#F2EFE9] text-[#5B7B6D] group-hover:bg-[#E8E4DC]'
+                  }`}
+                >
+                  <Users className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h4 className="font-bold text-sm text-[#2B332E] font-serif">
+                      🌟 全部好友 · 拾人全览
+                    </h4>
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#5B7B6D]/10 text-[#5B7B6D] font-medium">
+                      默认全览
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-[#6E7C75] mt-0.5 font-serif">
+                    汇聚全部相遇的同路人（共 {people.length} 位好友）
+                  </p>
+                </div>
+              </div>
+
+              {selectedGroup === 'all' ? (
+                <div className="w-6 h-6 rounded-full bg-[#5B7B6D] text-white flex items-center justify-center shadow-xs">
+                  <Check className="w-3.5 h-3.5" />
+                </div>
+              ) : (
+                <span className="text-[11px] font-medium text-[#5B7B6D] opacity-0 group-hover:opacity-100 transition-opacity">
+                  切换全览 →
+                </span>
+              )}
+            </div>
+
+            {/* Micro subtle sheen bar */}
+            {selectedGroup === 'all' && (
+              <div
+                className="absolute bottom-0 left-0 right-0 h-1"
+                style={{ backgroundColor: theme.primary }}
+              />
+            )}
+          </div>
+
+          {/* Quick Filter Navigation Tabs & Search */}
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 pt-1">
+            <div className="flex items-center gap-1 bg-black/5 p-1 rounded-xl w-full sm:w-auto">
+              <button
+                type="button"
+                onClick={() => setFilterMode('all_groups')}
+                className={`flex-1 sm:flex-initial whitespace-nowrap px-3 py-1.5 rounded-lg text-xs font-medium transition-all text-center ${
+                  filterMode === 'all_groups'
+                    ? 'bg-white text-[#2B332E] shadow-2xs font-semibold'
+                    : 'text-[#6E7C75] hover:text-[#2B332E]'
+                }`}
+              >
+                全部已建分组 ({allGroups.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setFilterMode('create_group')}
+                className={`flex-1 sm:flex-initial whitespace-nowrap px-3 py-1.5 rounded-lg text-xs font-medium transition-all text-center ${
+                  filterMode === 'create_group'
+                    ? 'bg-white text-[#2B332E] shadow-2xs font-semibold'
+                    : 'text-[#6E7C75] hover:text-[#2B332E]'
+                }`}
+              >
+                + 新建分组
+              </button>
+            </div>
+
+            {/* Quick Search */}
+            {filterMode === 'all_groups' && allGroups.length > 2 && (
+              <div className="relative w-full sm:w-40">
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="搜索分组或成员..."
+                  className="w-full pl-7 pr-2.5 py-1.5 bg-white/80 border border-[#5B7B6D]/15 rounded-xl text-xs focus:outline-none focus:border-[#5B7B6D] transition-colors"
+                />
+                <Search className="w-3.5 h-3.5 text-[#6E7C75] absolute left-2 top-2.5" />
+              </div>
+            )}
+          </div>
+
+          {/* Create Group Tab View */}
+          {filterMode === 'create_group' ? (
+            <div className="p-4 bg-white rounded-2xl border border-[#5B7B6D]/20 shadow-xs space-y-3.5">
+              <div className="text-xs text-[#2B332E] font-medium font-serif flex items-center gap-1.5">
+                <FolderPlus className="w-4 h-4 text-[#5B7B6D]" /> 自定义新建好友分组：
+              </div>
+              <form onSubmit={handleCreateSubmit} className="flex gap-2">
+                <input
+                  type="text"
+                  value={newGroupNameInput}
+                  onChange={(e) => setNewGroupNameInput(e.target.value)}
+                  placeholder="例如: 高中密友、摄影伙伴、工作搭子"
+                  className="flex-1 p-2.5 bg-[#FAF8F5] border border-[#5B7B6D]/20 rounded-xl text-xs focus:outline-none focus:border-[#E88765]"
+                  autoFocus
+                />
+                <button
+                  type="submit"
+                  disabled={!newGroupNameInput.trim()}
+                  className="px-4 py-2.5 bg-[#5B7B6D] text-white rounded-xl text-xs font-bold hover:bg-[#3E564B] transition-all disabled:opacity-40"
+                >
+                  创建并筛选
+                </button>
+              </form>
+
+              <div>
+                <span className="text-[10px] text-[#6E7C75] block mb-1.5">推荐快捷灵感：</span>
+                <div className="flex flex-wrap gap-1.5">
+                  {presetSuggestions.map(sug => (
+                    <button
+                      key={sug}
+                      type="button"
+                      onClick={() => {
+                        onAddGroup(sug);
+                        setFilterMode('all_groups');
+                        onSelectGroup(sug);
+                      }}
+                      className="text-[10px] px-2.5 py-1 rounded-lg bg-[#FAF8F5] border border-[#5B7B6D]/15 text-[#6E7C75] hover:border-[#5B7B6D] hover:text-[#2B332E] transition-all"
+                    >
+                      + {sug}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          ) : (
+            /* Groups Cards Grid */
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+              {displayedGroups.map(grpName => {
+                const isCurrentSelected = selectedGroup === grpName;
+                const members = groupStatsMap[grpName] || [];
+                const count = members.length;
+                const densityPercent = Math.min(100, Math.max(12, (count / maxGroupCount) * 100));
+
+                return (
+                  <div
+                    key={grpName}
+                    onClick={() => onSelectGroup(grpName)}
+                    className={`p-3 rounded-2xl border transition-all cursor-pointer relative overflow-hidden group active:scale-[0.98] ${
+                      isCurrentSelected
+                        ? 'bg-[#FDF0EB] border-[#E88765] shadow-sm ring-2 ring-[#E88765]/25'
+                        : 'bg-white hover:bg-[#FAF8F5] border-[#5B7B6D]/15 hover:border-[#5B7B6D]/30'
+                    }`}
+                  >
+                    <div className="flex justify-between items-start">
+                      <div className="flex items-center gap-2">
+                        <div
+                          className={`w-7 h-7 rounded-xl flex items-center justify-center text-xs ${
+                            isCurrentSelected
+                              ? 'bg-[#E88765] text-white'
+                              : 'bg-[#FAF8F5] text-[#5B7B6D] border border-[#5B7B6D]/15'
+                          }`}
+                        >
+                          <FolderOpen className="w-3.5 h-3.5" />
+                        </div>
+                        <span className={`text-sm font-bold font-serif ${
+                          isCurrentSelected ? 'text-[#E88765]' : 'text-[#2B332E]'
+                        }`}>
+                          {grpName}
+                        </span>
+                      </div>
+
+                      {isCurrentSelected ? (
+                        <div className="w-5 h-5 rounded-full bg-[#E88765] text-white flex items-center justify-center shadow-2xs">
+                          <Check className="w-3 h-3" />
+                        </div>
+                      ) : (
+                        <span className="text-[10px] font-bold font-mono text-[#5B7B6D] bg-[#F2EFE9] px-2 py-0.5 rounded-full">
+                          {count} 人
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Member Avatars Overlapping Stack & Names Preview */}
+                    <div className="flex items-center justify-between gap-2 mt-2.5 pt-2 border-t border-[#5B7B6D]/10">
+                      <div className="flex items-center">
+                        {members.slice(0, 3).map((m) => (
+                          <img
+                            key={m.id}
+                            src={m.avatar}
+                            alt={m.name}
+                            className="w-5 h-5 rounded-full object-cover border-2 border-white shadow-2xs -ml-1.5 first:ml-0"
+                          />
+                        ))}
+                        {members.length > 3 && (
+                          <span className="w-5 h-5 rounded-full bg-[#F2EFE9] border border-white text-[9px] font-bold text-[#6E7C75] flex items-center justify-center -ml-1.5">
+                            +{members.length - 3}
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="text-[10px] text-[#6E7C75] truncate max-w-[150px] font-serif">
+                        {members.length > 0
+                          ? members.map(m => m.name).join('、')
+                          : '暂无成员归类'}
+                      </div>
+                    </div>
+
+                    {/* Density Meter Bar */}
+                    <div className="mt-2.5 w-full bg-black/5 h-1 rounded-full overflow-hidden">
+                      <div
+                        className={`h-full rounded-full transition-all duration-300 ${
+                          isCurrentSelected ? 'bg-[#E88765]' : 'bg-[#5B7B6D]/60 group-hover:bg-[#5B7B6D]'
+                        }`}
+                        style={{ width: `${densityPercent}%` }}
+                      />
+                    </div>
+                  </div>
+                );
+              })}
+
+              {displayedGroups.length === 0 && (
+                <div className="col-span-full py-8 text-center bg-white rounded-2xl border border-dashed border-[#5B7B6D]/20 text-xs text-[#6E7C75] font-serif">
+                  未找到与搜索匹配的分组
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Footer Info */}
+        <div className="p-3 bg-white/70 border-t border-[#5B7B6D]/10 flex items-center justify-between text-[11px] text-[#6E7C75]">
+          <span className="font-serif">
+            已选状态：
+            <strong className="text-[#2B332E] font-medium ml-1">
+              {selectedGroup === 'all' ? '全部好友（无分组限制）' : `仅浏览「${selectedGroup}」分组`}
+            </strong>
+          </span>
+          {selectedGroup !== 'all' && (
+            <button
+              onClick={() => onSelectGroup('all')}
+              className="text-[#E88765] hover:underline font-medium flex items-center gap-1"
+            >
+              <RotateCcw className="w-3 h-3" /> 重置为全部好友
             </button>
           )}
         </div>

@@ -2,7 +2,8 @@ import express from 'express';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { createServer as createViteServer } from 'vite';
-import { GoogleGenAI, Modality } from '@google/genai';
+import { GoogleGenAI } from '@google/genai';
+import { MsEdgeTTS, OUTPUT_FORMAT } from 'msedge-tts';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -39,7 +40,7 @@ async function callDeepSeekAPI({
 }) {
   const key = apiKey || process.env.DEEPSEEK_API_KEY;
   if (!key) {
-    throw new Error('未配置 DeepSeek API Key。请在设置中填入你的专属 DeepSeek 密钥');
+    throw new Error('未配置 DeepSeek API Key，请在设置中填入你的专属密钥');
   }
 
   const formattedMessages = [];
@@ -64,12 +65,12 @@ async function callDeepSeekAPI({
 
   if (!response.ok) {
     const errorText = await response.text();
-    throw new Error(`DeepSeek API 响应异常 (${response.status}): ${errorText}`);
+    throw new Error(`DeepSeek 服务响应异常 (${response.status}): ${errorText}`);
   }
 
   const data = (await response.json()) as any;
   const reply = data.choices?.[0]?.message?.content;
-  if (!reply) throw new Error('DeepSeek API 未返回有效内容');
+  if (!reply) throw new Error('DeepSeek 未返回有效文本');
   return reply;
 }
 
@@ -91,15 +92,32 @@ app.post('/api/ai/chat', async (req, res) => {
     } = req.body;
 
     if (!prompt && (!messages || messages.length === 0)) {
-      return res.status(400).json({ error: '缺少有效的对话输入' });
+      return res.status(400).json({ error: '缺少有效的对话内容' });
     }
 
-    const systemPrompt = `你是一个名叫“拾年”的私人离线记忆陪伴AI助手。你知晓用户在《拾年》个人成长记忆档案中存储的所有真实记录。
-你的性格特点：温和、细腻、沉静、具有人文关怀与情感共鸣。
-请基于用户提供或关联的记忆档案数据回答用户的提问，帮助用户梳理过去时光的成长脉络、珍贵瞬间与故人故事。如果用户问到档案中具体的时间、人物或事件，请准确结合档案中的细节进行回顾。
+    // Build memory context summaries compactly
+    let memorySummary = '暂无加载的档案数据';
+    if (memoryData) {
+      try {
+        const timelineCount = memoryData.timeline?.length || 0;
+        const peopleList = (memoryData.people || []).map((p: any) => `${p.name}(${p.relationship || '朋友'}, ${p.bio || ''})`).join('; ');
+        const storyTitles = (memoryData.stories || []).map((s: any) => s.title).join('、');
+        const artifactNames = (memoryData.artifacts || []).map((a: any) => a.name).join('、');
 
-【用户当前的记忆档案数据】
-${memoryData ? JSON.stringify(memoryData, null, 2) : '暂无加载的离线数据'}`;
+        memorySummary = `【记忆概览】包含 ${timelineCount} 个时光节点。
+【重要人物】${peopleList || '无'}
+【故事篇章】${storyTitles || '无'}
+【旧物宝藏】${artifactNames || '无'}`;
+      } catch {
+        memorySummary = '档案已加载';
+      }
+    }
+
+    const systemPrompt = `你是一个名叫“拾年”的私人记忆陪伴助手。
+你的性格特点：温和、细腻、沉静，充满人文关怀与治愈感。
+请基于用户在《拾年》档案中的真实回忆内容回答提问，帮助用户梳理过去时光的成长脉络、珍贵瞬间与故人故事。语言风格温润优雅，不生硬。
+
+${memorySummary}`;
 
     // DeepSeek Route
     if (engine === 'deepseek' || (customApiKey && customApiKey.startsWith('sk-'))) {
@@ -120,11 +138,11 @@ ${memoryData ? JSON.stringify(memoryData, null, 2) : '暂无加载的离线数�
 
       return res.json({
         reply,
-        engineUsed: 'deepseek-chat (DeepSeek-V3)',
+        engineUsed: 'DeepSeek-V3',
       });
     }
 
-    // Default Gemini Route (Runs on server, domestic users need NO VPN)
+    // Gemini Route
     const ai = getGeminiClient(customApiKey);
     const userPrompt = prompt || (messages.length > 0 ? messages[messages.length - 1].text : '');
 
@@ -133,14 +151,14 @@ ${memoryData ? JSON.stringify(memoryData, null, 2) : '暂无加载的离线数�
       contents: userPrompt,
       config: {
         systemInstruction: systemPrompt,
-        temperature: 0.75,
+        temperature: 0.7,
       },
     });
 
-    const reply = response.text || '我刚刚沉思了一下，但未能找到恰当的言语。';
+    const reply = response.text || '岁华悠悠，若有所思。请问你还想聊聊过去的哪段时光？';
     return res.json({
       reply,
-      engineUsed: 'gemini-3.7-flash (云端免翻墙直连)',
+      engineUsed: 'Gemini 3.7 Flash',
     });
   } catch (err: any) {
     console.error('Error in /api/ai/chat:', err);
@@ -159,21 +177,21 @@ app.post('/api/ai/polish', async (req, res) => {
     }
 
     const systemPrompt =
-      '你是一位极具文采与温情的记忆故事润色师。将用户的简短随笔或草稿润色成富有画面感、温情细腻的记忆文字（150字左右），保留原意，增强情感感染力。只输出润色后的正文，不要带有任何额外的开头或解释。';
+      '你是一位文采斐然且情感细腻的记忆故事润色师。将用户的简短随笔或草稿润色成富有画面感、温情细腻的记忆文字（约120-180字），保留原意，增强文学美感。只输出润色后的正文，不要带有任何额外的解释或标记。';
 
     if (engine === 'deepseek' || (customApiKey && customApiKey.startsWith('sk-'))) {
       const reply = await callDeepSeekAPI({
         apiKey: customApiKey,
-        messages: [{ role: 'user', content: `请帮我润色这段记忆随笔：\n${text}` }],
+        messages: [{ role: 'user', content: `请润色这段记忆随笔：\n${text}` }],
         systemPrompt,
       });
-      return res.json({ polished: reply.trim(), engineUsed: 'deepseek' });
+      return res.json({ polished: reply.trim(), engineUsed: 'DeepSeek' });
     }
 
     const ai = getGeminiClient(customApiKey);
     const response = await ai.models.generateContent({
       model: 'gemini-3.7-flash',
-      contents: `请帮我润色这段记忆随笔：\n${text}`,
+      contents: `请润色这段记忆随笔：\n${text}`,
       config: {
         systemInstruction: systemPrompt,
         temperature: 0.7,
@@ -181,11 +199,11 @@ app.post('/api/ai/polish', async (req, res) => {
     });
 
     const polished = response.text?.trim() || text;
-    return res.json({ polished, engineUsed: 'gemini-3.7-flash' });
+    return res.json({ polished, engineUsed: 'Gemini 3.7 Flash' });
   } catch (err: any) {
     console.error('Error in /api/ai/polish:', err);
     return res.status(500).json({
-      error: err.message || '润色失败',
+      error: err.message || '润色服务繁忙',
     });
   }
 });
@@ -195,7 +213,7 @@ app.post('/api/ai/vision', async (req, res) => {
   try {
     const { base64Data, mimeType = 'image/jpeg', customApiKey = '' } = req.body;
     if (!base64Data) {
-      return res.status(400).json({ error: '缺少图片 Base64 数据' });
+      return res.status(400).json({ error: '缺少图片数据' });
     }
 
     const ai = getGeminiClient(customApiKey);
@@ -207,7 +225,7 @@ app.post('/api/ai/vision', async (req, res) => {
     };
 
     const textPart = {
-      text: '分析这张照片/老旧物件/票据，提取其可能蕴含的记忆要素，严格以 JSON 格式输出：\n{\n  "title": "简短而温暖的名称",\n  "date": "YYYY-MM-DD格式推测日期",\n  "location": "推测地点",\n  "tag": "核心标签如青春/旅程/旧物/美食",\n  "story": "200字左右富有情感色彩的生动细节描述"\n}',
+      text: '分析这张照片/老物件/纪念票据，提取其蕴含的时光记忆要素，严格以 JSON 格式输出：\n{\n  "title": "简短温暖的标题",\n  "date": "推测日期(YYYY-MM-DD格式)",\n  "location": "推测地点",\n  "tag": "核心标签如青春/旅程/旧物/校园",\n  "story": "150字左右温情生动的细节描述"\n}',
     };
 
     const response = await ai.models.generateContent({
@@ -228,46 +246,92 @@ app.post('/api/ai/vision', async (req, res) => {
   } catch (err: any) {
     console.error('Error in /api/ai/vision:', err);
     return res.status(500).json({
-      error: err.message || '智能识图分析失败',
+      error: err.message || '图像分析遇到波动',
     });
   }
 });
 
-// 4. AI TTS: Speech Generation
+// 4. AI TTS: Microsoft Edge Neural High-Fidelity Speech Generation (Free, Unlimited, Emotive)
 app.post('/api/ai/tts', async (req, res) => {
   try {
-    const { text, voice = 'Sulafat', customApiKey = '' } = req.body;
+    const { text, voice = 'zh-CN-XiaoxiaoNeural' } = req.body;
     if (!text || !text.trim()) {
       return res.status(400).json({ error: '缺少朗读文本' });
     }
 
-    const ai = getGeminiClient(customApiKey);
-    const response = await ai.models.generateContent({
-      model: 'gemini-3.1-flash-tts-preview',
-      contents: [{ parts: [{ text: `用温和、深情、平缓的语气为你朗诵这段记忆内容：\n\n${text}` }] }],
-      config: {
-        responseModalities: [Modality.AUDIO],
-        speechConfig: {
-          voiceConfig: {
-            prebuiltVoiceConfig: { voiceName: voice || 'Sulafat' },
-          },
-        },
-      },
-    });
+    // Clean input text for natural, emotive speech flow
+    const cleanText = text
+      .replace(/[#*`_~\[\]()<>{}]/g, '')
+      .replace(/[\r\n]+/g, '，')
+      .replace(/\s+/g, ' ')
+      .trim();
 
-    const part = response.candidates?.[0]?.content?.parts?.[0];
-    const audioBase64 = part?.inlineData?.data;
-    const mimeType = part?.inlineData?.mimeType || 'audio/L16;rate=24000';
+    // Map voice IDs to Microsoft Edge Neural voices with tuned rate & pitch
+    let neuralVoice = 'zh-CN-XiaoxiaoNeural';
+    let prosodyRate = '-3%';
+    let prosodyPitch = '0Hz';
 
-    if (audioBase64) {
-      return res.json({ audioBase64, mimeType });
+    if (voice === 'Zephyr' || voice === 'zh-CN-XiaoyiNeural') {
+      neuralVoice = 'zh-CN-XiaoyiNeural';
+      prosodyRate = '-2%';
+      prosodyPitch = '+1Hz';
+    } else if (voice === 'zh-CN-XiaoyouNeural') {
+      neuralVoice = 'zh-CN-XiaoyouNeural';
+      prosodyRate = '+2%';
+      prosodyPitch = '+2Hz';
+    } else if (voice === 'Puck' || voice === 'zh-CN-YunxiNeural') {
+      neuralVoice = 'zh-CN-YunxiNeural';
+      prosodyRate = '+0%';
+      prosodyPitch = '0Hz';
+    } else if (voice === 'Fenrir' || voice === 'zh-CN-YunjianNeural') {
+      neuralVoice = 'zh-CN-YunjianNeural';
+      prosodyRate = '-5%';
+      prosodyPitch = '-1Hz';
+    } else if (voice === 'zh-CN-YunyangNeural') {
+      neuralVoice = 'zh-CN-YunyangNeural';
+      prosodyRate = '-2%';
+      prosodyPitch = '-1Hz';
+    } else {
+      // Default: 素问 (Xiaoxiao)
+      neuralVoice = 'zh-CN-XiaoxiaoNeural';
+      prosodyRate = '-3%';
+      prosodyPitch = '0Hz';
     }
 
-    return res.status(500).json({ error: '未能生成语音音频' });
+    // Generate high-fidelity MP3 using Microsoft Edge Neural TTS
+    const tts = new MsEdgeTTS();
+    await tts.setMetadata(neuralVoice, OUTPUT_FORMAT.AUDIO_24KHZ_48KBITRATE_MONO_MP3);
+    const { audioStream } = tts.toStream(cleanText, {
+      rate: prosodyRate,
+      pitch: prosodyPitch,
+    });
+
+    const chunks: Buffer[] = [];
+    await new Promise<void>((resolve, reject) => {
+      audioStream.on('data', (chunk: Buffer) => chunks.push(chunk));
+      audioStream.on('end', () => {
+        tts.close();
+        resolve();
+      });
+      audioStream.on('error', (err) => {
+        tts.close();
+        reject(err);
+      });
+    });
+
+    const audioBuffer = Buffer.concat(chunks);
+    const audioBase64 = audioBuffer.toString('base64');
+
+    return res.json({
+      audioBase64,
+      mimeType: 'audio/mp3',
+      voiceUsed: neuralVoice,
+      engine: 'Microsoft Edge Neural TTS',
+    });
   } catch (err: any) {
     console.error('Error in /api/ai/tts:', err);
     return res.status(500).json({
-      error: err.message || '语音生成失败',
+      error: err.message || '微软神经语音引擎暂时繁忙，请重试',
     });
   }
 });
@@ -295,3 +359,4 @@ async function startServer() {
 }
 
 startServer();
+

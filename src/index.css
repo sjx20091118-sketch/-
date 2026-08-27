@@ -200,7 +200,27 @@ body {
   animation: fadeIn 0.25s ease-out forwards;
 }
 
-/* iOS Dynamic Glassmorphism Effects */
+/* iOS Dynamic Glassmorphism Effects & Performance Optimization */
+@keyframes splashProgress {
+  0% {
+    width: 0%;
+  }
+  100% {
+    width: 100%;
+  }
+}
+
+.splash-progress-bar {
+  animation: splashProgress 2.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  will-change: width;
+}
+
+.transform-gpu {
+  transform: translate3d(0, 0, 0);
+  backface-visibility: hidden;
+  perspective: 1000px;
+}
+
 @keyframes glassSheen {
   0% {
     transform: translateX(-180%) rotate(25deg);
@@ -294,4 +314,28 @@ body {
     0 1px 2px 0 rgba(255, 255, 255, 0.8) inset,
     0 -1px 2px 0 rgba(0, 0, 0, 0.04) inset;
 }
+
+/* Mobile & Android Edge-to-Edge Immersive Safe Area Utilities */
+.safe-top {
+  padding-top: max(10px, env(safe-area-inset-top, 0px));
+}
+
+.safe-bottom {
+  padding-bottom: max(8px, env(safe-area-inset-bottom, 0px));
+}
+
+.safe-left {
+  padding-left: env(safe-area-inset-left, 0px);
+}
+
+.safe-right {
+  padding-right: env(safe-area-inset-right, 0px);
+}
+
+/* Prevent unwanted mobile rubber-band scrolling on fixed boundaries */
+html, body {
+  overscroll-behavior-y: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
 
