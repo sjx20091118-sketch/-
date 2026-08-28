@@ -25,6 +25,10 @@ export interface Person {
   zodiac: string;
   hobbies: string;
   color: string;
+  knownDate?: string; // 相识起始日期，如 "2021-09-01"
+  wechat?: string;    // 微信号
+  qq?: string;        // QQ号
+  phone?: string;     // 手机号/电话
   customFields?: Record<string, string>;
   impressions: Impression[];
 }

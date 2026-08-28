@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { Upload, Camera, X, Image as ImageIcon, Sparkles, Check, RefreshCw } from 'lucide-react';
+import { Upload, Camera, X, Image as ImageIcon, Sparkles, Check, RefreshCw, Plus } from 'lucide-react';
 
 export interface LocalImageUploaderProps {
   value?: string;
@@ -123,13 +123,13 @@ export const LocalImageUploader: React.FC<LocalImageUploaderProps> = ({
 
   if (mode === 'avatar') {
     return (
-      <div className={`space-y-3 font-sans ${className}`}>
+      <div className={`space-y-2.5 font-sans ${className}`}>
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-1.5">
             <span className="font-bold text-[#2B332E] text-xs font-serif">{label}</span>
             {required ? (
               <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#FDF0EB] text-[#E88765] border border-[#E88765]/30 font-semibold font-sans">
-                * 必选/必传
+                * 必填
               </span>
             ) : (
               <span className="text-[10px] px-1.5 py-0.5 rounded bg-stone-100 text-stone-600 font-sans">
@@ -141,72 +141,59 @@ export const LocalImageUploader: React.FC<LocalImageUploaderProps> = ({
         </div>
 
         <div className="flex items-center gap-3.5 bg-white p-3 rounded-2xl border border-[#5B7B6D]/15 shadow-2xs">
-          {/* Avatar Preview */}
+          {/* Avatar Preview / Blank Plus Placeholder */}
           <div className="relative group shrink-0">
-            <div className="w-16 h-16 rounded-full overflow-hidden border-2 border-[#E88765]/40 shadow-sm bg-[#FAF8F5]">
-              {value ? (
+            {value ? (
+              <div className="w-16 h-16 rounded-full overflow-hidden border-2 border-[#E88765]/50 shadow-sm bg-[#FAF8F5]">
                 <img src={value} alt="Avatar Preview" className="w-full h-full object-cover" />
-              ) : (
-                <div className="w-full h-full flex items-center justify-center text-[#6E7C75]/50 bg-[#FAF8F5]">
-                  <Camera className="w-6 h-6" />
-                </div>
-              )}
-            </div>
-            <button
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-              className="absolute inset-0 bg-black/40 rounded-full flex items-center justify-center text-white opacity-0 group-hover:opacity-100 transition-opacity"
-              title="点击更换本地头像"
-            >
-              <Camera className="w-4 h-4" />
-            </button>
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="absolute inset-0 bg-black/40 rounded-full flex items-center justify-center text-white opacity-0 group-hover:opacity-100 transition-opacity"
+                  title="点击更换本地相片"
+                >
+                  <Camera className="w-4 h-4" />
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="w-16 h-16 rounded-full border-2 border-dashed border-[#5B7B6D]/35 bg-[#FAF8F5] flex flex-col items-center justify-center text-[#5B7B6D] hover:border-[#E88765] hover:text-[#E88765] hover:bg-[#FDF0EB]/60 transition-all cursor-pointer shadow-2xs active:scale-95 group"
+                title="点击上传本地相片"
+              >
+                <Plus className="w-6 h-6 stroke-[2.2] group-hover:scale-110 transition-transform" />
+              </button>
+            )}
           </div>
 
-          {/* Action Buttons & Quick Presets */}
-          <div className="flex-1 min-w-0 space-y-2">
+          {/* Action Buttons */}
+          <div className="flex-1 min-w-0 space-y-1.5">
             <div className="flex items-center gap-2">
               <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
                 disabled={isProcessing}
-                className="px-3 py-1.5 bg-[#5B7B6D] hover:bg-[#3E564B] text-white rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all shadow-2xs active:scale-95 shrink-0"
+                className="min-h-[44px] px-4 py-2 bg-[#5B7B6D] hover:bg-[#3E564B] active:bg-[#3E564B] text-white rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition-all shadow-2xs active:scale-95 shrink-0 select-none touch-manipulation"
               >
-                <Upload className="w-3.5 h-3.5" />
-                {isProcessing ? '优化中...' : '上传本地照片'}
+                <Upload className="w-4 h-4" />
+                <span>{isProcessing ? '优化中...' : (value ? '更换本地相片' : '上传本地相片')}</span>
               </button>
 
               {value && (
                 <button
                   type="button"
-                  onClick={() => onChange(presetAvatars[0])}
-                  className="p-1.5 text-[#6E7C75] hover:text-red-500 rounded-lg hover:bg-red-50 transition-colors"
-                  title="恢复默认头像"
+                  onClick={() => onChange('')}
+                  className="min-h-[44px] min-w-[44px] px-3 py-2 text-[#6E7C75] hover:text-red-500 active:text-red-600 rounded-xl hover:bg-red-50 active:bg-red-100 text-xs transition-colors border border-dashed border-[#5B7B6D]/20 active:scale-95 flex items-center justify-center select-none touch-manipulation"
+                  title="清除头像"
                 >
-                  <RefreshCw className="w-3.5 h-3.5" />
+                  清除
                 </button>
               )}
             </div>
-
-            {/* Quick Preset Avatars Picker */}
-            <div className="space-y-1">
-              <span className="text-[10px] text-[#6E7C75] block">或选择经典预设头像：</span>
-              <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5 custom-scrollbar">
-                {presetAvatars.map((av, idx) => (
-                  <button
-                    key={idx}
-                    type="button"
-                    onClick={() => onChange(av)}
-                    className={`w-7 h-7 rounded-full overflow-hidden border-2 shrink-0 transition-all ${
-                      value === av
-                        ? 'border-[#E88765] scale-105 ring-2 ring-[#E88765]/30'
-                        : 'border-transparent opacity-70 hover:opacity-100 hover:scale-105'
-                    }`}
-                  >
-                    <img src={av} alt={`Preset ${idx + 1}`} className="w-full h-full object-cover" />
-                  </button>
-                ))}
-              </div>
-            </div>
+            <p className="text-[10px] text-[#6E7C75] leading-relaxed">
+              支持手机相册选取、即时拍照 · 本地压缩离线保存在设备中
+            </p>
           </div>
         </div>
 
@@ -254,29 +241,29 @@ export const LocalImageUploader: React.FC<LocalImageUploaderProps> = ({
                 <button
                   type="button"
                   onClick={() => fileInputRef.current?.click()}
-                  className="px-2.5 py-1 bg-white/90 hover:bg-white text-[#2B332E] text-xs rounded-lg font-medium shadow-sm transition-all"
+                  className="min-h-[38px] px-3.5 py-1.5 bg-white/95 hover:bg-white active:bg-[#F2EFE9] text-[#2B332E] text-xs rounded-xl font-medium shadow-sm transition-all active:scale-95 touch-manipulation"
                 >
                   更换照片
                 </button>
                 <button
                   type="button"
                   onClick={() => onChange('')}
-                  className="p-1 bg-red-500 hover:bg-red-600 text-white rounded-lg shadow-sm transition-all"
+                  className="min-h-[38px] min-w-[38px] p-2 bg-red-500 hover:bg-red-600 active:bg-red-700 text-white rounded-xl shadow-sm transition-all active:scale-95 flex items-center justify-center touch-manipulation"
                   title="移除照片"
                 >
-                  <X className="w-3.5 h-3.5" />
+                  <X className="w-4 h-4" />
                 </button>
               </div>
             </div>
           </div>
-          <div className="p-2 bg-white/80 border-t border-[#5B7B6D]/10 flex items-center justify-between text-[10px] text-[#6E7C75]">
+          <div className="p-2.5 bg-white/90 border-t border-[#5B7B6D]/10 flex items-center justify-between text-[11px] text-[#6E7C75]">
             <span className="flex items-center gap-1 text-[#5B7B6D] font-medium">
-              <Check className="w-3 h-3 text-emerald-600" /> 本地离线存储已就绪
+              <Check className="w-3.5 h-3.5 text-emerald-600" /> 本地离线存储已就绪
             </span>
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
-              className="text-[#5B7B6D] hover:underline font-semibold"
+              className="text-[#5B7B6D] hover:underline font-semibold active:opacity-75 touch-manipulation p-1"
             >
               重新上传
             </button>
@@ -288,13 +275,13 @@ export const LocalImageUploader: React.FC<LocalImageUploaderProps> = ({
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
           onClick={() => fileInputRef.current?.click()}
-          className={`p-5 rounded-2xl border-2 border-dashed transition-all cursor-pointer text-center space-y-2.5 ${
+          className={`p-6 rounded-2xl border-2 border-dashed transition-all cursor-pointer text-center space-y-2.5 touch-manipulation select-none active:scale-[0.99] ${
             isDragging
               ? 'border-[#E88765] bg-[#FDF0EB]/60'
-              : 'border-[#5B7B6D]/25 bg-[#FAF8F5]/80 hover:bg-white hover:border-[#5B7B6D]/50'
+              : 'border-[#5B7B6D]/25 bg-[#FAF8F5]/80 hover:bg-white active:bg-[#F2EFE9] hover:border-[#5B7B6D]/50'
           }`}
         >
-          <div className="w-10 h-10 rounded-full bg-white shadow-2xs border border-[#5B7B6D]/15 flex items-center justify-center text-[#5B7B6D] mx-auto">
+          <div className="w-12 h-12 rounded-full bg-white shadow-2xs border border-[#5B7B6D]/15 flex items-center justify-center text-[#5B7B6D] mx-auto">
             {isProcessing ? (
               <RefreshCw className="w-5 h-5 animate-spin text-[#E88765]" />
             ) : (
@@ -303,10 +290,10 @@ export const LocalImageUploader: React.FC<LocalImageUploaderProps> = ({
           </div>
           <div>
             <p className="text-xs font-bold text-[#2B332E]">
-              {isProcessing ? '正在优化图片并载入本地...' : '点击选择本地图片 / 拖拽照片至此'}
+              {isProcessing ? '正在优化图片并载入本地...' : '点击选择手机本地照片 / 拍照'}
             </p>
             <p className="text-[10px] text-[#6E7C75] mt-0.5">
-              支持 JPG、PNG、WEBP · 纯本地单机离线存储，无需网络链接
+              支持 JPG、PNG、WEBP · 纯单机本地存储，离线可查
             </p>
           </div>
 
@@ -316,10 +303,10 @@ export const LocalImageUploader: React.FC<LocalImageUploaderProps> = ({
                 type="button"
                 onClick={aiGenerateButton.onGenerate}
                 disabled={aiGenerateButton.isLoading}
-                className="px-3 py-1.5 rounded-xl bg-white border border-[#5B7B6D]/20 hover:border-[#E88765] text-[#5B7B6D] hover:text-[#E88765] text-[11px] font-medium transition-all shadow-2xs flex items-center gap-1.5"
+                className="min-h-[40px] px-3.5 py-1.5 rounded-xl bg-white border border-[#5B7B6D]/20 hover:border-[#E88765] active:bg-[#FDF0EB] text-[#5B7B6D] active:text-[#E88765] text-xs font-medium transition-all shadow-2xs flex items-center gap-1.5 active:scale-95 touch-manipulation"
               >
                 <Sparkles className="w-3.5 h-3.5 text-[#E88765]" />
-                {aiGenerateButton.isLoading ? '绘图中...' : (aiGenerateButton.text || 'AI 绘制画面')}
+                <span>{aiGenerateButton.isLoading ? '绘图中...' : (aiGenerateButton.text || 'AI 绘制画面')}</span>
               </button>
             </div>
           )}

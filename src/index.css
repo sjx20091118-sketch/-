@@ -31,15 +31,70 @@
   --font-sans: Inter, system-ui, sans-serif;
 }
 
-body {
-  background-color: var(--theme-paper);
+html, body {
+  background-color: var(--theme-canvas);
   font-family: 'Noto Serif SC', Georgia, serif;
   user-select: none;
+  -webkit-user-select: none;
   transition: background-color 0.3s ease;
+  margin: 0;
+  padding: 0;
+  min-height: 100vh;
+  min-height: 100dvh;
+  width: 100%;
+  overflow-x: hidden;
+  overscroll-behavior-y: none;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+/* Ensure mobile inputs never trigger auto-zoom on Android / iOS */
+input, textarea, select, button {
+  -webkit-tap-highlight-color: transparent;
+  font-family: inherit;
+}
+
+/* Reading and memory text is freely selectable and copyable */
+.select-text, .user-story-text, .user-bio-text, .memory-content {
+  user-select: text !important;
+  -webkit-user-select: text !important;
+}
+
+/* Native Android Touch Interaction Micro-feedbacks */
+.touch-active {
+  transition: transform 0.12s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.12s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.touch-active:active {
+  transform: scale(0.96);
+  opacity: 0.88;
+}
+
+.touch-active-subtle:active {
+  transform: scale(0.98);
+  opacity: 0.92;
+}
+
+.touch-target {
+  min-width: 44px;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.touch-target-row {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+}
+
+.custom-scrollbar {
+  -webkit-overflow-scrolling: touch;
 }
 
 .custom-scrollbar::-webkit-scrollbar {
-  width: 4px;
+  width: 3px;
+  height: 3px;
 }
 .custom-scrollbar::-webkit-scrollbar-track {
   background: transparent;
@@ -48,7 +103,8 @@ body {
   background: rgba(var(--accent-rgb), 0.25);
   border-radius: 4px;
 }
-.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+.custom-scrollbar::-webkit-scrollbar-thumb:hover,
+.custom-scrollbar::-webkit-scrollbar-thumb:active {
   background: rgba(var(--accent-rgb), 0.55);
 }
 
@@ -61,7 +117,23 @@ body {
   transition: background-color 0.3s ease;
 }
 
-/* Dynamic Healing Theme Overrides across all application UI */
+/* Dynamic Frosted Glass Bottom Navigation Bar */
+.dynamic-glass-navbar {
+  /* Dynamic semi-transparent frosted tint blended with current theme canvas and primary tone */
+  background-color: rgba(var(--primary-rgb), 0.14);
+  background-color: color-mix(in srgb, var(--theme-canvas) 72%, rgba(var(--primary-rgb), 0.24));
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.60);
+  border-top: 1px solid rgba(255, 255, 255, 0.95);
+  box-shadow: 
+    0 8px 26px -4px rgba(0, 0, 0, 0.07),
+    0 2px 6px 0 rgba(var(--primary-rgb), 0.06),
+    inset 0 1px 1.5px 0 rgba(255, 255, 255, 0.95),
+    inset 0 -1px 1px 0 rgba(var(--primary-rgb), 0.05);
+  transition: background-color 0.35s ease, border-color 0.35s ease, box-shadow 0.35s ease;
+}
+
 /* Primary text & hovers */
 .text-\[\#5B7B6D\] { color: var(--theme-primary) !important; }
 .hover\:text-\[\#5B7B6D\]:hover { color: var(--theme-primary) !important; }

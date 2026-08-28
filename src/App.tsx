@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Lock,
@@ -14,6 +14,7 @@ import {
   BookOpen,
   Package,
   Mail,
+  MailOpen,
   Plus,
   Calendar,
   CalendarRange,
@@ -44,9 +45,12 @@ import {
   Settings,
   UserPlus,
   FolderPlus,
-  FolderOpen
+  FolderOpen,
+  Copy,
+  MessageCircle,
+  Phone
 } from 'lucide-react';
-import { AppData, Person, Story, Artifact, ChatMessage } from './types';
+import { AppData, Person, Story, Artifact, Letter, ChatMessage } from './types';
 import { INITIAL_SEED } from './data/initialData';
 import { LocalImageUploader, PRESET_AVATARS, compressImageFile } from './components/LocalImageUploader';
 
@@ -231,6 +235,17 @@ export function getZodiacFromBirthday(birthdayStr: string): string {
   return day < days[month - 1] ? signs[month - 1] : signs[month];
 }
 
+// 自动根据相识起始日期计算相识天数
+export function calculateDaysKnown(knownDate?: string): number | null {
+  if (!knownDate || !knownDate.trim()) return null;
+  const str = knownDate.trim();
+  const start = new Date(str).getTime();
+  if (isNaN(start)) return null;
+  const now = Date.now();
+  const diff = Math.floor((now - start) / (1000 * 60 * 60 * 24));
+  return diff >= 0 ? diff : 0;
+}
+
 export interface HealingTheme {
   id: string;
   name: string;
@@ -377,24 +392,11 @@ const ttsAudioCache = new Map<string, string>();
 
 export default function App() {
   const [data, setData] = useState<AppData>(() => {
-    const local = localStorage.getItem('shinian_app_data_v2');
+    const local = localStorage.getItem('shinian_app_data_v3');
     if (local) {
       try {
         const parsed = JSON.parse(local);
         if (parsed.people && parsed.people.length > 0) {
-          // Clean up deleted 2021-09-01 node from existing local storage
-          if (parsed.timeline) {
-            parsed.timeline = parsed.timeline.filter((t: any) => t.date !== '2021-09-01');
-          }
-          // Clean up any historical "周梓童" or "周芷彤" records and replace with Lu Qingxun
-          if (parsed.people) {
-            parsed.people = parsed.people.map((p: any) => {
-              if (p.name === '周梓童' || p.name === '周芷彤') {
-                return INITIAL_SEED.people[0];
-              }
-              return p;
-            });
-          }
           return parsed;
         }
       } catch (e) {
@@ -416,6 +418,7 @@ export default function App() {
   const [readerStory, setReaderStory] = useState<Story | null>(null);
   const [selectedPerson, setSelectedPerson] = useState<Person | null>(null);
   const [selectedArtifact, setSelectedArtifact] = useState<Artifact | null>(null);
+  const [selectedLetter, setSelectedLetter] = useState<Letter | null>(null);
   const [showSplash, setShowSplash] = useState<boolean>(true);
 
   // Auto-dismiss splash screen after 2.5 seconds
@@ -443,6 +446,15 @@ export default function App() {
     root.style.setProperty('--primary-rgb', currentTheme.primaryRgb);
     root.style.setProperty('--primary-dark-rgb', currentTheme.primaryDarkRgb);
     root.style.setProperty('--accent-rgb', currentTheme.accentRgb);
+
+    // Sync Android Status Bar Theme Color
+    const metaTheme = document.getElementById('meta-theme-color') || document.querySelector('meta[name="theme-color"]');
+    if (metaTheme) {
+      metaTheme.setAttribute('content', currentTheme.canvas);
+    }
+    try {
+      (window as any).Capacitor?.Plugins?.StatusBar?.setBackgroundColor?.({ color: currentTheme.canvas });
+    } catch (e) {}
   }, [currentTheme]);
 
   // Custom UI Notifications & Dialogs
@@ -455,6 +467,15 @@ export default function App() {
     toastTimerRef.current = setTimeout(() => {
       setToast(null);
     }, duration);
+  };
+
+  const handleCopyText = (text: string, label = '内容') => {
+    if (!text) return;
+    navigator.clipboard.writeText(text).then(() => {
+      showToast(`已复制${label}：${text}`);
+    }).catch(() => {
+      showToast(`已选定：${text}`);
+    });
   };
 
   const handleSelectTheme = (id: string) => {
@@ -528,7 +549,7 @@ export default function App() {
 
   // Modal Local Image Upload States
   const [formTimelineImage, setFormTimelineImage] = useState<string>('');
-  const [formPersonAvatar, setFormPersonAvatar] = useState<string>(PRESET_AVATARS[0]);
+  const [formPersonAvatar, setFormPersonAvatar] = useState<string>('');
   const [formPersonRel, setFormPersonRel] = useState<string>('挚友');
   const [formPersonGroup, setFormPersonGroup] = useState<string>('未分组');
   const [formArtifactImage, setFormArtifactImage] = useState<string>('');
@@ -536,14 +557,29 @@ export default function App() {
   const [editPersonRel, setEditPersonRel] = useState<string>('');
   const [editPersonGroup, setEditPersonGroup] = useState<string>('未分组');
 
-  // People QQ-style grouping & top status bar state
+  // People grouping & top status bar state
   const [selectedPersonGroup, setSelectedPersonGroup] = useState<string>('all');
   const [isGroupPickerOpen, setIsGroupPickerOpen] = useState<boolean>(false);
-  const [customGroups, setCustomGroups] = useState<string[]>(['大学同窗', '师长前辈', '青春同窗', '挚友亲朋', '未分组']);
+  const [customGroups, setCustomGroups] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem('shinian_custom_groups');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch (e) {}
+    return ['大学同窗', '师长前辈', '青春同窗', '挚友亲朋', '未分组'];
+  });
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
   const [isAddingGroup, setIsAddingGroup] = useState<boolean>(false);
   const [newGroupName, setNewGroupName] = useState<string>('');
   const [movingPerson, setMovingPerson] = useState<Person | null>(null);
+
+  // Story Edit State
+  const [editingStory, setEditingStory] = useState<Story | null>(null);
+
+  // Letter Unsealing Animation State
+  const [isUnsealingLetter, setIsUnsealingLetter] = useState<boolean>(false);
 
   const filteredPeople = useMemo(() => {
     return data.people.filter(p => {
@@ -555,14 +591,231 @@ export default function App() {
   const chatEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    localStorage.setItem('shinian_app_data_v2', JSON.stringify(data));
+    localStorage.setItem('shinian_app_data_v3', JSON.stringify(data));
   }, [data]);
 
   useEffect(() => {
-    if (chatEndRef.current) {
+    localStorage.setItem('shinian_custom_groups', JSON.stringify(customGroups));
+  }, [customGroups]);
+
+  // Mobile Hardware / Gesture Back Button Interception (Full Android Native Stack)
+  // Priority: Confirm Dialogs -> Sub Modals/Drawers -> Detail Readers -> Secondary Tabs -> Double Tap to Exit App
+  const lastBackPressRef = useRef<number>(0);
+  const mainContentRef = useRef<HTMLElement | null>(null);
+
+  const currentOpenLayer = useMemo(() => {
+    if (confirmDialog) return `confirm-dialog-${confirmDialog.id}`;
+    if (movingPerson) return `moving-person-${movingPerson.id}`;
+    if (isAddingGroup) return 'adding-group';
+    if (isChangingPin) return 'changing-pin';
+    if (activeModal) return `modal-${activeModal}`;
+    if (editingStory) return `edit-story-${editingStory.id}`;
+    if (readerStory) return `story-${readerStory.id}`;
+    if (selectedPerson) return `person-${selectedPerson.id}`;
+    if (selectedArtifact) return `artifact-${selectedArtifact.id}`;
+    if (selectedLetter) return `letter-${selectedLetter.id}`;
+    if (isGroupPickerOpen) return 'group-picker';
+    if (isThemePickerOpen) return 'theme-picker';
+    if (isVoicePickerModalOpen) return 'voice-picker';
+    if (isYearPickerOpen) return 'year-picker';
+    if (activeTab !== 'home') return `tab-${activeTab}`;
+    return null;
+  }, [
+    confirmDialog,
+    movingPerson,
+    isAddingGroup,
+    isChangingPin,
+    activeModal,
+    editingStory,
+    readerStory,
+    selectedPerson,
+    selectedArtifact,
+    selectedLetter,
+    isGroupPickerOpen,
+    isThemePickerOpen,
+    isVoicePickerModalOpen,
+    isYearPickerOpen,
+    activeTab,
+  ]);
+
+  const prevLayerRef = useRef<string | null>(null);
+  const isPoppingStateRef = useRef<boolean>(false);
+
+  useEffect(() => {
+    if (isPoppingStateRef.current) {
+      isPoppingStateRef.current = false;
+      prevLayerRef.current = currentOpenLayer;
+      return;
+    }
+
+    if (currentOpenLayer && currentOpenLayer !== prevLayerRef.current) {
+      window.history.pushState({ layer: currentOpenLayer }, '');
+    }
+    prevLayerRef.current = currentOpenLayer;
+  }, [currentOpenLayer]);
+
+  // Unified Android Back Button Consumer
+  const handleNativeBackAction = useCallback((): boolean => {
+    // 1. Confirm dialog
+    if (confirmDialog) {
+      setConfirmDialog(null);
+      return true;
+    }
+    // 2. Move person dialog
+    if (movingPerson) {
+      setMovingPerson(null);
+      return true;
+    }
+    // 3. Add group popup
+    if (isAddingGroup) {
+      setIsAddingGroup(false);
+      return true;
+    }
+    // 4. Change PIN popup
+    if (isChangingPin) {
+      setIsChangingPin(false);
+      return true;
+    }
+    // 5. Active modal (add/edit items, backups, search)
+    if (activeModal) {
+      setActiveModal(null);
+      return true;
+    }
+    // 6. Story edit modal
+    if (editingStory) {
+      setEditingStory(null);
+      return true;
+    }
+    // 7. Full-screen story reader
+    if (readerStory) {
+      setReaderStory(null);
+      return true;
+    }
+    // 8. Person detail modal / editor
+    if (selectedPerson) {
+      if (isEditingPerson) {
+        setIsEditingPerson(false);
+      } else {
+        setSelectedPerson(null);
+      }
+      return true;
+    }
+    // 9. Artifact detail modal
+    if (selectedArtifact) {
+      setSelectedArtifact(null);
+      return true;
+    }
+    // 10. Letter modal
+    if (selectedLetter) {
+      setSelectedLetter(null);
+      return true;
+    }
+    // 11. Bottom drawer pickers
+    if (isGroupPickerOpen) {
+      setIsGroupPickerOpen(false);
+      return true;
+    }
+    if (isThemePickerOpen) {
+      setIsThemePickerOpen(false);
+      return true;
+    }
+    if (isVoicePickerModalOpen) {
+      setIsVoicePickerModalOpen(false);
+      return true;
+    }
+    if (isYearPickerOpen) {
+      setIsYearPickerOpen(false);
+      return true;
+    }
+    // 12. Return from secondary tabs back to home
+    if (activeTab !== 'home') {
+      setActiveTab('home');
+      return true;
+    }
+
+    // 13. On Home tab with zero modals open: Double-tap back button to exit
+    const now = Date.now();
+    if (now - lastBackPressRef.current < 2000) {
+      try {
+        (window as any).Capacitor?.Plugins?.App?.exitApp?.();
+      } catch (e) {}
+      return false;
+    } else {
+      lastBackPressRef.current = now;
+      showToast('再按一次返回键退出「拾年」', 1800);
+      return true;
+    }
+  }, [
+    confirmDialog,
+    movingPerson,
+    isAddingGroup,
+    isChangingPin,
+    activeModal,
+    editingStory,
+    readerStory,
+    selectedPerson,
+    isEditingPerson,
+    selectedArtifact,
+    selectedLetter,
+    isGroupPickerOpen,
+    isThemePickerOpen,
+    isVoicePickerModalOpen,
+    isYearPickerOpen,
+    activeTab,
+  ]);
+
+  // Web PopState Listener
+  useEffect(() => {
+    const handlePopState = () => {
+      isPoppingStateRef.current = true;
+      handleNativeBackAction();
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, [handleNativeBackAction]);
+
+  // Android Capacitor & Cordova Hardware Back Button Listener
+  useEffect(() => {
+    const onDocumentBackButton = (e: Event) => {
+      e.preventDefault();
+      handleNativeBackAction();
+    };
+
+    document.addEventListener('backbutton', onDocumentBackButton as any);
+
+    // If Capacitor App plugin is available
+    let capacitorListener: any = null;
+    const capacitorApp = (window as any).Capacitor?.Plugins?.App;
+    if (capacitorApp?.addListener) {
+      capacitorApp.addListener('backButton', () => {
+        handleNativeBackAction();
+      }).then((listener: any) => {
+        capacitorListener = listener;
+      }).catch(() => {});
+    }
+
+    return () => {
+      document.removeEventListener('backbutton', onDocumentBackButton as any);
+      if (capacitorListener?.remove) {
+        capacitorListener.remove();
+      }
+    };
+  }, [handleNativeBackAction]);
+
+  // Reset scroll position to top on navigation/modal transitions
+  useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+    if (mainContentRef.current) {
+      mainContentRef.current.scrollTop = 0;
+    }
+  }, [activeTab, readerStory, selectedPerson, selectedArtifact, selectedLetter]);
+
+  useEffect(() => {
+    if (chatEndRef.current && activeTab === 'ai') {
       chatEndRef.current.scrollIntoView({ behavior: 'smooth' });
     }
-  }, [aiChatMessages]);
+  }, [aiChatMessages, activeTab]);
 
   useEffect(() => {
     if (selectedPerson) {
@@ -571,63 +824,105 @@ export default function App() {
     }
   }, [data, selectedPerson]);
 
-  // Dynamically extract only years with actual memory records
+  const getYearFromDate = useCallback((dateStr?: string): string | null => {
+    if (!dateStr) return null;
+    const match = dateStr.match(/\b(19\d\d|20\d\d)\b/);
+    if (match) return match[1];
+    const trimmed = dateStr.trim();
+    if (trimmed.length >= 4 && /^\d{4}$/.test(trimmed.slice(0, 4))) {
+      return trimmed.slice(0, 4);
+    }
+    return null;
+  }, []);
+
+  // Dynamically extract only years with actual memory records across all categories
   const years = useMemo(() => {
     const ySet = new Set<string>();
     data.timeline.forEach(item => {
-      if (item.date && item.date.length >= 4) {
-        const yr = item.date.substring(0, 4);
-        if (/^\d{4}$/.test(yr)) ySet.add(yr);
-      }
+      const yr = getYearFromDate(item.date);
+      if (yr) ySet.add(yr);
     });
     data.artifacts.forEach(item => {
-      if (item.date && item.date.length >= 4) {
-        const yr = item.date.substring(0, 4);
-        if (/^\d{4}$/.test(yr)) ySet.add(yr);
-      }
+      const yr = getYearFromDate(item.date);
+      if (yr) ySet.add(yr);
     });
     data.stories.forEach(item => {
-      if (item.date && item.date.length >= 4) {
-        const yr = item.date.substring(0, 4);
-        if (/^\d{4}$/.test(yr)) ySet.add(yr);
-      }
+      const yr = getYearFromDate(item.date);
+      if (yr) ySet.add(yr);
     });
     data.people.forEach(p => {
+      const yr = getYearFromDate(p.knownDate);
+      if (yr) ySet.add(yr);
       p.impressions?.forEach(imp => {
         if (imp.year && /^\d{4}$/.test(imp.year)) {
           ySet.add(imp.year);
         }
       });
     });
+    data.letters.forEach(l => {
+      const yr1 = getYearFromDate(l.date);
+      if (yr1) ySet.add(yr1);
+      const yr2 = getYearFromDate(l.unlockDate);
+      if (yr2) ySet.add(yr2);
+    });
     return Array.from(ySet).sort((a, b) => b.localeCompare(a));
-  }, [data]);
+  }, [data, getYearFromDate]);
 
-  // Compute rich memory density statistics per year and across entire archive
+  // Compute rich memory density statistics per year and across entire archive in real time
   const yearStats = useMemo(() => {
-    const statsMap: Record<string, { total: number; timeline: number; stories: number; artifacts: number; impressions: number }> = {};
-    let totalAll = data.timeline.length + data.stories.length + data.artifacts.length;
+    const statsMap: Record<string, {
+      total: number;
+      timeline: number;
+      stories: number;
+      artifacts: number;
+      impressions: number;
+      people: number;
+      letters: number;
+    }> = {};
+
+    let totalImpressions = 0;
     data.people.forEach(p => {
-      totalAll += (p.impressions?.length || 0);
+      totalImpressions += (p.impressions?.length || 0);
     });
 
+    const totalAll = data.timeline.length + data.stories.length + data.artifacts.length + data.people.length + data.letters.length + totalImpressions;
+
     years.forEach(y => {
-      const tCount = data.timeline.filter(t => t.date?.startsWith(y)).length;
-      const sCount = data.stories.filter(s => s.date?.startsWith(y)).length;
-      const aCount = data.artifacts.filter(a => a.date?.startsWith(y)).length;
+      const tCount = data.timeline.filter(t => getYearFromDate(t.date) === y).length;
+      const sCount = data.stories.filter(s => getYearFromDate(s.date) === y).length;
+      const aCount = data.artifacts.filter(a => getYearFromDate(a.date) === y).length;
+      const pCount = data.people.filter(p => getYearFromDate(p.knownDate) === y).length;
+      const lCount = data.letters.filter(l => getYearFromDate(l.date) === y || getYearFromDate(l.unlockDate) === y).length;
       let iCount = 0;
       data.people.forEach(p => {
         iCount += (p.impressions?.filter(imp => imp.year === y).length || 0);
       });
+
+      const yrTotal = tCount + sCount + aCount + pCount + lCount + iCount;
       statsMap[y] = {
-        total: tCount + sCount + aCount + iCount,
+        total: yrTotal,
         timeline: tCount,
         stories: sCount,
         artifacts: aCount,
-        impressions: iCount
+        impressions: iCount,
+        people: pCount,
+        letters: lCount,
       };
     });
-    return { statsMap, totalAll };
-  }, [data, years]);
+
+    return {
+      statsMap,
+      totalAll,
+      totals: {
+        timeline: data.timeline.length,
+        stories: data.stories.length,
+        artifacts: data.artifacts.length,
+        people: data.people.length,
+        impressions: totalImpressions,
+        letters: data.letters.length,
+      }
+    };
+  }, [data, years, getYearFromDate]);
 
   // Adjust selectedYear if the active selectedYear no longer exists
   useEffect(() => {
@@ -656,6 +951,19 @@ export default function App() {
       ...prev,
       [type]: (prev[type] as any[]).filter((i: any) => i.id !== id)
     }));
+    if (type === 'people' && selectedPerson?.id === id) {
+      setSelectedPerson(null);
+    }
+    if (type === 'stories' && (readerStory?.id === id || editingStory?.id === id)) {
+      setReaderStory(null);
+      setEditingStory(null);
+    }
+    if (type === 'artifacts' && selectedArtifact?.id === id) {
+      setSelectedArtifact(null);
+    }
+    if (type === 'letters' && selectedLetter?.id === id) {
+      setSelectedLetter(null);
+    }
     showToast('记录已在记忆档案中抹去');
   };
 
@@ -689,6 +997,47 @@ export default function App() {
     setNewGroupName('');
     setIsAddingGroup(false);
     showToast(`已创建新分组「${trimmed}」`);
+  };
+
+  const handleDeleteGroup = (groupNameToDelete: string) => {
+    if (groupNameToDelete === '未分组') {
+      showToast('「未分组」为默认基础分组，不可删除');
+      return;
+    }
+    setCustomGroups(prev => prev.filter(g => g !== groupNameToDelete));
+    setData(prev => ({
+      ...prev,
+      people: prev.people.map(p => p.group === groupNameToDelete ? { ...p, group: '未分组' } : p)
+    }));
+    if (selectedPersonGroup === groupNameToDelete) {
+      setSelectedPersonGroup('all');
+    }
+    showToast(`已删除「${groupNameToDelete}」分组，相关好友已归入「未分组」`);
+  };
+
+  const handleUpdateStory = (updatedStory: Story) => {
+    setData(prev => ({
+      ...prev,
+      stories: prev.stories.map(s => s.id === updatedStory.id ? updatedStory : s)
+    }));
+    if (readerStory && readerStory.id === updatedStory.id) {
+      setReaderStory(updatedStory);
+    }
+    setEditingStory(null);
+    showToast(`已保存修改《${updatedStory.title}》`);
+  };
+
+  const handleUnsealLetter = (letterToUnseal: Letter) => {
+    setIsUnsealingLetter(true);
+    setTimeout(() => {
+      setData(prev => ({
+        ...prev,
+        letters: prev.letters.map(l => l.id === letterToUnseal.id ? { ...l, isUnlocked: true } : l)
+      }));
+      setSelectedLetter(prev => prev && prev.id === letterToUnseal.id ? { ...prev, isUnlocked: true } : prev);
+      setIsUnsealingLetter(false);
+      showToast(`✨ 时光信笺《${letterToUnseal.title}》已顺利拆封展读！`);
+    }, 700);
   };
 
   const handleAssignPersonGroup = (personId: string, groupName: string) => {
@@ -861,16 +1210,17 @@ export default function App() {
 
       if (aiEngine === 'deepseek' && !deepSeekKey) {
         fallbackText = "提示：当前选择 DeepSeek 引擎，尚未配置 API Key。可在右上角「设置」中填入你的专属密钥，或直接切换为内置推荐的标准模型。";
-      } else if (q.includes('朋友') || q.includes('周梓童') || q.includes('林夏') || q.includes('陈导师')) {
-        const names = data.people.map(p => p.name).join('、');
-        fallbackText = `在你的拾人册中，记录着重要的挚友伙伴：${names || '周梓童、林夏'}。其中周梓童曾与你并肩奋战无数个建模方案的日夜，林夏是从高中一路相伴至今的知心闺蜜。这些长情陪伴是你成长中最坚韧温暖的底色。`;
-      } else if (q.includes('成长') || q.includes('轨迹') || q.includes('几年') || q.includes('总结')) {
-        fallbackText = `回顾你的《拾年》档案，从踏入校门、获得设计大奖，到夏日威海旅行、搬入属于自己的温馨小公寓，你在 ${data.timeline.length} 处时光节点中一步步蜕变成长，逐渐走得越来越坚定笃实。`;
-      } else if (q.includes('旧物') || q.includes('物') || q.includes('相机') || q.includes('票根')) {
-        const artNames = data.artifacts.map(a => a.name).join('、');
-        fallbackText = `在你的拾物阁里，静静珍藏着 ${artNames || '理光GR相机、毕业旅行海边日落票根'}。这些旧物虽不言语，却承载着特定时光的温存记忆与指尖温度。`;
+      } else if (q.includes('朋友') || q.includes('同窗') || q.includes('谁') || q.includes('人') || q.includes('陆青寻') || q.includes('林夏') || q.includes('陈导师')) {
+        const peopleDetails = data.people.map(p => `${p.name}（${p.relationship || '朋友'}，${p.bio || '重要同行者'}）`).join('；');
+        fallbackText = `在你的拾人册中，记录着这些重要同行者：${peopleDetails || '陆青寻、林夏'}。其中陆青寻是大学同窗与默契设计搭档，林夏是一路相伴的知心密友。无论是深夜改图的陪伴还是海边晚风的约定，这些温暖的羁绊都是你成长中最坚韧的底色。`;
+      } else if (q.includes('成长') || q.includes('轨迹') || q.includes('几年') || q.includes('总结') || q.includes('回忆')) {
+        const topEvents = data.timeline.slice(0, 3).map(t => `《${t.title}》`).join('、');
+        fallbackText = `回顾你的《拾年》档案，从操场看台上的晚霞与吉他弹唱，到毕业旅行与拥有自己的温馨空间，你在 ${data.timeline.length} 处时光节点（如 ${topEvents}）中一步步蜕变成长。每一段足迹都闪烁着独属于你的青春光芒。`;
+      } else if (q.includes('旧物') || q.includes('物') || q.includes('相机') || q.includes('票根') || q.includes('宝藏')) {
+        const artNames = data.artifacts.map(a => `《${a.name}》`).join('、');
+        fallbackText = `在你的拾物阁里，静静珍藏着 ${artNames || '理光GR相机、毕业旅行海边日落票根'} 等 ${data.artifacts.length} 件旧物。这些信物虽不言语，却承载着特定时光的温存记忆与指尖温度。`;
       } else {
-        fallbackText = `岁月如一条静淌的小河。在你的档案里，记录着 ${data.timeline.length} 个时光瞬间、${data.people.length} 位同路人与 ${data.stories.length} 篇故事。无论走得多远，只要翻开回忆，那些美好的温暖与感动都依旧如初。`;
+        fallbackText = `岁月如一条静淌的小河。在你的档案里，记录着 ${data.timeline.length} 个时光瞬间、${data.people.length} 位同路人、${data.stories.length} 篇故事随笔与 ${data.artifacts.length} 件旧物。无论走得多远，只要翻开回忆，那些美好的温暖与感动都依旧如初。你想了解其中的哪一段？`;
       }
 
       setAiChatMessages([...newMessages, { role: 'model', text: fallbackText }]);
@@ -986,11 +1336,21 @@ export default function App() {
     }
   };
 
-  const handlePlayTts = async (textToRead: string, voiceOverride?: string) => {
+  const handleStopTts = () => {
     if (audioPlayingUrl) {
       setAudioPlayingUrl(null);
       setAudioPlayingVoiceName('');
     }
+    if ('speechSynthesis' in window) {
+      try {
+        window.speechSynthesis.cancel();
+      } catch (e) {}
+    }
+  };
+
+  const handlePlayTts = async (textToRead: string, voiceOverride?: string) => {
+    handleStopTts();
+
     let voiceToUse = voiceOverride || ttsSelectedVoice;
     if (voiceToUse === 'Kore') voiceToUse = 'zh-CN-XiaoxiaoNeural';
     if (voiceToUse === 'Zephyr') voiceToUse = 'zh-CN-XiaoyiNeural';
@@ -1012,17 +1372,31 @@ export default function App() {
     setIsTtsGenerating(true);
     showToast(`正在生成【${voiceObj.name}】微软神经语音朗诵...`);
     try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 6000);
+
       const res = await fetch('/api/ai/tts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           text: textToRead,
           voice: voiceToUse
-        })
+        }),
+        signal: controller.signal
       });
+      clearTimeout(timeoutId);
+
+      const contentType = res.headers.get('content-type') || '';
+      if (!res.ok) {
+        throw new Error(`语音服务请求状态: ${res.status}`);
+      }
+
+      if (!contentType.includes('application/json')) {
+        throw new Error('语音服务暂未就绪');
+      }
 
       const data = await res.json();
-      if (!res.ok || !data.audioBase64) {
+      if (!data.audioBase64) {
         throw new Error(data?.error || '语音朗诵生成失败');
       }
 
@@ -1047,8 +1421,38 @@ export default function App() {
       setAudioPlayingVoiceName(`${voiceObj.name} (${voiceObj.gender}) · ${voiceObj.character}`);
       showToast(`正在播放【${voiceObj.name}】微软神经语音朗诵`);
     } catch (err: any) {
-      console.error('[Microsoft Edge TTS Error]', err);
-      showToast(err?.message || '语音合成遇到波动，请重试');
+      console.warn('[Microsoft Edge TTS Fallback to Web Speech Synthesis]:', err);
+      // Fallback seamlessly to native Android / Browser SpeechSynthesis
+      if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+        try {
+          window.speechSynthesis.cancel();
+          const utterance = new SpeechSynthesisUtterance(textToRead);
+          utterance.lang = 'zh-CN';
+          utterance.rate = 0.92;
+          utterance.pitch = 1.0;
+
+          const voices = window.speechSynthesis.getVoices();
+          const zhVoice = voices.find(v => v.lang.includes('zh') || v.lang.includes('cmn'));
+          if (zhVoice) utterance.voice = zhVoice;
+
+          utterance.onstart = () => {
+            setAudioPlayingVoiceName(`系统内置语音 · ${voiceObj.name}`);
+            showToast(`正在播放【${voiceObj.name}】朗读`);
+          };
+          utterance.onend = () => {
+            setAudioPlayingVoiceName('');
+          };
+          utterance.onerror = () => {
+            setAudioPlayingVoiceName('');
+          };
+
+          window.speechSynthesis.speak(utterance);
+        } catch (speechErr) {
+          showToast('语音朗读遇到波动，请重试');
+        }
+      } else {
+        showToast('当前设备环境暂不支持直接语音播放');
+      }
     } finally {
       setIsTtsGenerating(false);
     }
@@ -1179,11 +1583,11 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-0 sm:p-4 text-[#2B332E]">
-      <div id="root-card" className="w-full max-w-md h-[100vh] sm:h-[880px] bg-[#FAF8F5] sm:rounded-3xl shadow-2xl overflow-hidden flex flex-col relative border border-[#E88765]/20 paper-texture">
+    <div className="min-h-screen w-full flex items-center justify-center p-0 sm:p-4 text-[#2B332E] bg-[#FAF8F5]">
+      <div id="root-card" className="w-full max-w-md h-[100dvh] sm:h-[880px] bg-[#FAF8F5] sm:rounded-3xl shadow-2xl overflow-hidden flex flex-col relative sm:border sm:border-[#E88765]/20 paper-texture select-none">
 
-        {/* Top HeaderBar with Safe Area Inset Support */}
-        <header className="px-4 pt-[max(0.625rem,env(safe-area-inset-top))] pb-2.5 bg-white/85 backdrop-blur-md text-[#2B332E] flex items-center justify-between border-b border-[#5B7B6D]/15 shadow-sm z-20 relative">
+        {/* Top HeaderBar with Seamless Safe Area Inset Support */}
+        <header className="px-4 pt-[max(0.75rem,env(safe-area-inset-top))] pb-2.5 bg-[#FAF8F5]/98 sm:bg-white/90 backdrop-blur-md text-[#2B332E] flex items-center justify-between border-b border-[#5B7B6D]/15 shadow-2xs z-20 relative transition-colors shrink-0 select-none">
           <div className="flex flex-col">
             <div className="flex items-center gap-1.5">
               <h1 className="text-lg font-bold tracking-widest font-serif text-[#5B7B6D]">
@@ -1427,7 +1831,7 @@ export default function App() {
         )}
 
         {/* Main Content Area */}
-        <main className="flex-1 overflow-y-auto custom-scrollbar p-4 space-y-4">
+        <main ref={mainContentRef} id="main-content-scroll" className="flex-1 overflow-y-auto custom-scrollbar p-4 pb-6 sm:pb-8 space-y-4 overscroll-contain">
 
           {/* Home Tab */}
           {activeTab === 'home' && (
@@ -1490,25 +1894,28 @@ export default function App() {
                     )}
 
                     {/* Card Footer Actions & Location */}
-                    <div className="flex items-center justify-between text-[11px] text-[#6E7C75] border-t border-[#F2EFE9] pt-3">
-                      <span className="flex items-center gap-1 font-sans text-[#526058]">
-                        <MapPin className="w-3.5 h-3.5 text-[#E88765]" /> {todayHighlight.location || '离线记忆'}
-                      </span>
-                      <div className="flex items-center gap-2">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 text-[11px] text-[#6E7C75] border-t border-[#F2EFE9] pt-3">
+                      <div className="flex items-center gap-1.5 font-sans text-[#526058] min-w-0">
+                        <MapPin className="w-3.5 h-3.5 text-[#E88765] shrink-0" />
+                        <span className="truncate">{todayHighlight.location || '离线记忆'}</span>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0 self-end sm:self-auto flex-wrap">
                         <button
+                          type="button"
                           onClick={() => handlePlayTts(todayHighlight.content)}
                           disabled={isTtsGenerating}
-                          className="px-3 py-1.5 rounded-full bg-[#FAF8F5] hover:bg-[#F2EFE9] border border-[#5B7B6D]/20 text-[#2B332E] font-medium flex items-center gap-1.5 transition-all text-xs active:scale-95 shadow-2xs"
+                          className="px-3 py-1.5 rounded-full bg-[#FAF8F5] hover:bg-[#F2EFE9] border border-[#5B7B6D]/20 text-[#2B332E] font-medium flex items-center gap-1.5 transition-all text-xs active:scale-95 shadow-2xs whitespace-nowrap"
                         >
-                          <Volume2 className={`w-3.5 h-3.5 text-[#E88765] ${isTtsGenerating ? 'animate-bounce' : ''}`} />
+                          <Volume2 className={`w-3.5 h-3.5 text-[#E88765] shrink-0 ${isTtsGenerating ? 'animate-bounce' : ''}`} />
                           <span>{isTtsGenerating ? '准备语音...' : '听回忆'}</span>
                         </button>
                         <button
+                          type="button"
                           onClick={() => setActiveTab('timeline')}
-                          className="px-3 py-1.5 rounded-full bg-[#5B7B6D] text-white font-bold text-xs shadow-sm hover:bg-[#3E564B] transition-all active:scale-95 flex items-center gap-1"
+                          className="px-3 py-1.5 rounded-full bg-[#5B7B6D] text-white font-bold text-xs shadow-sm hover:bg-[#3E564B] transition-all active:scale-95 flex items-center gap-1 whitespace-nowrap"
                         >
                           <span>展开拾光轴</span>
-                          <ChevronRight className="w-3 h-3" />
+                          <ChevronRight className="w-3 h-3 shrink-0" />
                         </button>
                       </div>
                     </div>
@@ -1516,10 +1923,10 @@ export default function App() {
                 </div>
               ) : (
                 <div className="p-6 bg-white rounded-2xl border border-dashed border-[#5B7B6D]/20 text-center space-y-2">
-                  <p className="text-xs text-[#6E7C75] font-serif">暂无拾光节点，点击下方「拾光轴」开启你的十年记录</p>
+                  <p className="text-xs text-[#6E7C75] font-serif leading-relaxed">暂无拾光节点，点击下方「拾光轴」开启你的十年记录</p>
                   <button
                     onClick={() => setActiveModal('addTimeline')}
-                    className="text-xs px-3.5 py-1.5 bg-[#5B7B6D] text-white rounded-xl hover:bg-[#3E564B] font-medium"
+                    className="text-xs px-3.5 py-1.5 bg-[#5B7B6D] text-white rounded-xl hover:bg-[#3E564B] font-medium shadow-2xs"
                   >
                     新建第一条记忆
                   </button>
@@ -1568,23 +1975,39 @@ export default function App() {
                 />
               </div>
 
-              {/* Time Capsule Entry Banner */}
-              <div className="p-4 bg-white rounded-2xl border border-[#5B7B6D]/15 shadow-sm flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="p-2.5 rounded-xl bg-[#FDF0EB] text-[#E88765] border border-[#E88765]/20">
-                    <Mail className="w-5 h-5" />
+              {/* Time Capsule Entry Banner - Japanese Indie Capsule Design */}
+              <div 
+                onClick={() => setActiveTab('letters')}
+                className="group relative p-4 sm:p-5 rounded-2xl sm:rounded-3xl border border-[#5B7B6D]/15 bg-white shadow-sm hover:shadow-md hover:border-[#E88765]/40 transition-all cursor-pointer overflow-hidden flex items-center justify-between"
+              >
+                {/* Decorative retro stamp & background texture accent */}
+                <div className="absolute top-0 right-0 w-32 h-32 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-[#E88765]/10 via-transparent to-transparent pointer-events-none" />
+                <div className="absolute top-3 right-4 opacity-15 group-hover:opacity-30 transition-opacity font-mono text-[10px] text-[#5B7B6D] tracking-widest uppercase select-none">
+                  TIME CAPSULE · 封
+                </div>
+
+                <div className="flex items-center gap-3.5 min-w-0 flex-1 relative z-10">
+                  <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-2xl bg-[#F2EFE9] group-hover:bg-[#FDF0EB] text-[#5B7B6D] group-hover:text-[#E88765] border border-[#5B7B6D]/15 flex items-center justify-center shrink-0 shadow-2xs transition-colors">
+                    <Mail className="w-5 h-5 sm:w-6 sm:h-6" />
                   </div>
-                  <div>
-                    <h4 className="text-sm font-bold text-[#2B332E] font-serif">寄年 · 时光胶囊</h4>
-                    <p className="text-[11px] text-[#6E7C75] font-sans">封存寄给未来的心语 · 已封存 {data.letters.length} 封</p>
+                  <div className="min-w-0 flex-1 space-y-0.5">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h4 className="text-sm sm:text-base font-bold text-[#2B332E] font-serif group-hover:text-[#5B7B6D] transition-colors">
+                        寄年 · 时光胶囊
+                      </h4>
+                      <span className="text-[10px] sm:text-[11px] font-bold text-[#E88765] font-sans">
+                        {data.letters.length} 封信件
+                      </span>
+                    </div>
+                    <p className="text-[11px] sm:text-xs text-[#6E7C75] font-sans leading-relaxed line-clamp-1">
+                      寄给未来的信，写给岁月深处的微光与期许
+                    </p>
                   </div>
                 </div>
-                <button
-                  onClick={() => setActiveTab('letters')}
-                  className="text-xs px-3.5 py-1.5 bg-[#5B7B6D] text-white rounded-xl hover:bg-[#3E564B] font-medium transition-all shadow-sm"
-                >
-                  开启 / 投递
-                </button>
+
+                <div className="flex items-center text-[#6E7C75] group-hover:text-[#5B7B6D] group-hover:translate-x-0.5 transition-all shrink-0 ml-2 relative z-10">
+                  <ChevronRight className="w-4 h-4" />
+                </div>
               </div>
 
               {/* AI Companion Section on Home Page */}
@@ -1636,7 +2059,7 @@ export default function App() {
                     ✨ 总结成长轨迹
                   </button>
                   <button
-                    onClick={() => handleSendAiMessage("回顾一下我和重要朋友（比如陆青寻、林夏）的故事与印象变化。")}
+                    onClick={() => handleSendAiMessage("回顾一下我和重要朋友（比如江川、许知夏、沈砚）的故事与印象变化。")}
                     className="whitespace-nowrap px-2.5 py-1 rounded-full bg-white border border-[#5B7B6D]/20 text-[#5B7B6D] hover:bg-[#5B7B6D] hover:text-white transition-all shadow-2xs"
                   >
                     🤝 回顾重要朋友
@@ -1700,7 +2123,7 @@ export default function App() {
             <div className="space-y-4 animate-fadeIn">
               <div className="flex justify-between items-center mb-1">
                 <h2 className="text-lg font-bold text-[#2B332E] tracking-wider font-serif">
-                  拾光轴 ({data.timeline.filter(item => selectedYear === 'all' || item.date.startsWith(selectedYear)).length})
+                  拾光轴 ({data.timeline.filter(item => selectedYear === 'all' || getYearFromDate(item.date) === selectedYear).length})
                 </h2>
                 <button
                   onClick={() => setActiveModal('addTimeline')}
@@ -1717,7 +2140,7 @@ export default function App() {
                     <Filter className="w-3.5 h-3.5 text-[#E88765] shrink-0" />
                     <span>
                       正在筛选【<strong className="font-bold text-[#E88765]">{selectedYear} 年</strong>】时光轴
-                      <span className="opacity-75 font-normal ml-1">（共 {data.timeline.filter(item => item.date.startsWith(selectedYear)).length} 条）</span>
+                      <span className="opacity-75 font-normal ml-1">（共 {data.timeline.filter(item => getYearFromDate(item.date) === selectedYear).length} 条）</span>
                     </span>
                   </div>
                   <div className="flex items-center gap-2 shrink-0 self-end sm:self-auto">
@@ -1740,7 +2163,7 @@ export default function App() {
                 </div>
               )}
 
-              {data.timeline.filter(item => selectedYear === 'all' || item.date.startsWith(selectedYear)).length === 0 ? (
+              {data.timeline.filter(item => selectedYear === 'all' || getYearFromDate(item.date) === selectedYear).length === 0 ? (
                 <div className="bg-white p-8 rounded-2xl border border-dashed border-[#5B7B6D]/20 text-center space-y-3">
                   <div className="w-10 h-10 mx-auto rounded-full bg-[#FAF8F5] flex items-center justify-center text-[#5B7B6D]">
                     <Clock className="w-5 h-5 opacity-60" />
@@ -1768,7 +2191,7 @@ export default function App() {
               ) : (
                 <div className="relative pl-4 space-y-6 before:absolute before:left-[11px] before:top-2 before:bottom-2 before:w-[2px] before:bg-[#5B7B6D]/25">
                   {data.timeline
-                    .filter(item => selectedYear === 'all' || item.date.startsWith(selectedYear))
+                    .filter(item => selectedYear === 'all' || getYearFromDate(item.date) === selectedYear)
                     .map((item) => (
                       <div key={item.id} className="relative pl-6 group">
                         <div className="absolute -left-[19px] top-1.5 w-3 h-3 rounded-full bg-[#E88765] border-2 border-[#FAF8F5] shadow-sm" />
@@ -1817,16 +2240,17 @@ export default function App() {
             </div>
           )}
 
-          {/* People List Tab: Restored Original Elegant Card Layout */}
+          {/* People List Tab: High-Aesthetic Japanese Literary Portrait Memoir Album */}
           {activeTab === 'people' && !selectedPerson && (
             <div className="space-y-4 animate-fadeIn">
               <div className="flex justify-between items-center mb-1">
                 <h2 className="text-lg font-bold text-[#2B332E] tracking-wider font-serif">
-                  拾人册 ({filteredPeople.length})
+                  拾人册 ({selectedPersonGroup === 'all' ? data.people.length : filteredPeople.length})
                 </h2>
                 <button
+                  type="button"
                   onClick={() => setActiveModal('addPerson')}
-                  className="flex items-center gap-1 text-xs px-3 py-1.5 bg-[#5B7B6D] text-white rounded-xl shadow-sm hover:bg-[#3E564B] font-medium"
+                  className="flex items-center gap-1 text-xs px-3 py-1.5 bg-[#5B7B6D] text-white rounded-xl shadow-sm hover:bg-[#3E564B] font-medium transition-all active:scale-95 whitespace-nowrap"
                 >
                   <Plus className="w-3.5 h-3.5" /> 添加人物
                 </button>
@@ -1834,12 +2258,12 @@ export default function App() {
 
               {/* Group Filter Status Banner */}
               {selectedPersonGroup !== 'all' && (
-                <div className="p-3 bg-[#5B7B6D]/10 rounded-2xl border border-[#5B7B6D]/20 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 text-xs text-[#5B7B6D] font-sans shadow-2xs">
+                <div className="p-3 bg-[#E88765]/10 rounded-2xl border border-[#E88765]/25 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 text-xs text-[#E88765] font-sans shadow-2xs">
                   <div className="flex items-center gap-2 font-medium leading-normal">
-                    <Filter className="w-3.5 h-3.5 text-[#E88765] shrink-0" />
+                    <FolderOpen className="w-3.5 h-3.5 text-[#E88765] shrink-0" />
                     <span>
-                      正在筛选【<strong className="font-bold text-[#E88765]">{selectedPersonGroup}</strong>】好友
-                      <span className="opacity-75 font-normal ml-1">（共 {filteredPeople.length} 人）</span>
+                      正在浏览【<strong className="font-bold text-[#2B332E]">{selectedPersonGroup}</strong>】分组
+                      <span className="opacity-75 font-normal ml-1">（共 {filteredPeople.length} 位好友）</span>
                     </span>
                   </div>
                   <div className="flex items-center gap-2 shrink-0 self-end sm:self-auto">
@@ -1847,12 +2271,12 @@ export default function App() {
                       onClick={() => setIsGroupPickerOpen(true)}
                       className="text-[11px] font-semibold text-[#5B7B6D] bg-white/95 hover:bg-white px-2.5 py-1 rounded-xl border border-[#5B7B6D]/20 flex items-center gap-1 shadow-2xs transition-all active:scale-95"
                     >
-                      <FolderOpen className="w-3 h-3 text-[#E88765]" /> 换分组
+                      <Users className="w-3 h-3 text-[#E88765]" /> 换分组
                     </button>
                     <button
                       onClick={() => {
                         setSelectedPersonGroup('all');
-                        showToast('已展示全部好友');
+                        showToast('已切换至全部好友全览');
                       }}
                       className="text-[11px] font-bold text-[#E88765] hover:underline flex items-center gap-1 px-1.5 py-1"
                     >
@@ -1862,77 +2286,130 @@ export default function App() {
                 </div>
               )}
 
-              {/* People Cards Grid */}
+              {/* People Cards Grid - Japanese Literary Portrait Memoir Cards */}
               {filteredPeople.length === 0 ? (
-                <div className="bg-white p-8 rounded-3xl border border-[#5B7B6D]/15 text-center space-y-3 shadow-sm">
+                <div className="bg-white p-8 rounded-3xl border border-dashed border-[#5B7B6D]/20 text-center space-y-3 shadow-2xs">
                   <div className="w-12 h-12 rounded-full bg-[#FAF8F5] border border-[#5B7B6D]/20 text-[#5B7B6D] flex items-center justify-center mx-auto text-xl">
                     👥
                   </div>
-                  <h3 className="font-bold text-[#2B332E] text-sm font-serif">该分组下暂无好友记录</h3>
-                  <p className="text-xs text-[#6E7C75]">您可以在编辑人物或添加新人物时指定此分组</p>
-                  <button
-                    onClick={() => setSelectedPersonGroup('all')}
-                    className="px-4 py-1.5 bg-[#5B7B6D] text-white text-xs rounded-xl font-medium"
-                  >
-                    返回查看全部好友
-                  </button>
+                  <h3 className="font-bold text-[#2B332E] text-sm font-serif">
+                    {selectedPersonGroup !== 'all' ? `「${selectedPersonGroup}」分组暂无好友` : '暂无好友记录'}
+                  </h3>
+                  <p className="text-xs text-[#6E7C75]">
+                    {selectedPersonGroup !== 'all'
+                      ? '可点击好友卡片编辑资料将其归入此分组，或切换回全部好友'
+                      : '轻触右上角「添加人物」即可开启拾人纪实'}
+                  </p>
+                  <div className="flex justify-center gap-2 pt-1 font-sans">
+                    {selectedPersonGroup !== 'all' && (
+                      <button
+                        type="button"
+                        onClick={() => setSelectedPersonGroup('all')}
+                        className="px-4 py-1.5 bg-[#F2EFE9] text-[#5B7B6D] text-xs rounded-xl font-medium shadow-2xs hover:bg-[#E8E4DC]"
+                      >
+                        查看全部好友
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => setActiveModal('addPerson')}
+                      className="px-4 py-1.5 bg-[#5B7B6D] text-white text-xs rounded-xl font-medium shadow-2xs hover:bg-[#3E564B]"
+                    >
+                      添加人物
+                    </button>
+                  </div>
                 </div>
               ) : (
-                <div className="grid grid-cols-1 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                   {filteredPeople.map(person => (
                     <div
                       key={person.id}
                       onClick={() => setSelectedPerson(person)}
-                      className="bg-white p-4 rounded-2xl border border-[#5B7B6D]/15 shadow-sm flex items-center justify-between gap-3 hover:border-[#E88765]/50 transition-all cursor-pointer group"
+                      className="bg-[#FFFDF9] hover:bg-white rounded-3xl p-4.5 border border-[#E3DACD] hover:border-[#5B7B6D]/45 shadow-2xs hover:shadow-md transition-all duration-300 cursor-pointer group relative overflow-hidden flex flex-col justify-between"
                     >
-                      <div className="flex items-center gap-3.5 flex-1 min-w-0">
-                        <img
-                          src={person.avatar}
-                          alt={person.name}
-                          className="w-14 h-14 rounded-full object-cover border-2 border-[#E88765]/40 shadow-sm flex-shrink-0 group-hover:scale-105 transition-transform"
-                        />
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <h3 className="font-bold text-[#2B332E] text-base group-hover:text-[#E88765] transition-colors font-serif truncate">
-                              {person.name}
-                            </h3>
-                            {person.relationship && (
-                              <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#FDF0EB] text-[#E88765] font-medium font-sans border border-[#E88765]/20 shrink-0">
-                                {person.relationship}
-                              </span>
-                            )}
-                            {person.group && person.group !== '未分组' && (
-                              <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#5B7B6D]/10 text-[#5B7B6D] font-medium font-sans border border-[#5B7B6D]/20 shrink-0">
-                                {person.group}
-                              </span>
-                            )}
-                          </div>
-                          <p className="text-xs text-[#6E7C75] line-clamp-1 mt-1 font-serif">
-                            {person.bio || '珍贵回忆的同路人'}
-                          </p>
+                      {/* Decorative corner accent stamp */}
+                      <div className="absolute top-0 right-0 w-16 h-16 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-[#E88765]/10 via-transparent to-transparent pointer-events-none" />
 
-                          <div className="flex flex-wrap items-center gap-3 text-[10px] text-[#6E7C75]/80 mt-1.5 font-sans">
-                            {person.birthday && <span>🎂 {person.birthday}</span>}
-                            {person.zodiac && <span>✨ {person.zodiac}</span>}
-                            {person.customFields?.['认识地点'] && (
-                              <span className="truncate max-w-[140px]">📍 {person.customFields['认识地点']}</span>
-                            )}
-                            <span>📖 {person.impressions?.length || 0}条故事</span>
+                      <div>
+                        {/* Top: Avatar + Identity + Actions */}
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="flex items-center gap-3 min-w-0 flex-1">
+                            <div className="relative shrink-0">
+                              <img
+                                src={person.avatar}
+                                alt={person.name}
+                                className="w-13 h-13 rounded-2xl object-cover border border-[#D9CFC1] shadow-2xs group-hover:scale-105 transition-transform duration-300"
+                              />
+                            </div>
+
+                            <div className="min-w-0 flex-1 space-y-0.5">
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <h3 className="font-bold text-[#2B332E] text-base group-hover:text-[#5B7B6D] transition-colors font-serif truncate">
+                                  {person.name}
+                                </h3>
+                                {person.relationship && (
+                                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#FAF6F0] text-[#E88765] font-medium font-sans border border-[#E88765]/20 shrink-0">
+                                    {person.relationship}
+                                  </span>
+                                )}
+                              </div>
+
+                              {person.knownDate && calculateDaysKnown(person.knownDate) !== null ? (
+                                <div className="text-[10px] text-[#5B7B6D] font-mono flex items-center gap-1 opacity-90">
+                                  <Calendar className="w-2.5 h-2.5 text-[#5B7B6D]" />
+                                  <span>相识第 {calculateDaysKnown(person.knownDate)?.toLocaleString()} 天</span>
+                                </div>
+                              ) : (
+                                <div className="text-[10px] text-[#6E7C75]/70 font-sans">
+                                  {person.group || '拾光挚友'}
+                                </div>
+                              )}
+                            </div>
                           </div>
+
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              requestDelete('people', person.id, person.name);
+                            }}
+                            title="删除人物"
+                            className="p-1.5 text-[#6E7C75]/30 hover:text-red-500 rounded-xl hover:bg-red-50 transition-all opacity-70 group-hover:opacity-100 shrink-0 active:scale-90"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+
+                        {/* Middle: Poetic Memoir Snippet */}
+                        <div className="my-2.5 bg-[#FAF8F5]/85 p-2.5 rounded-xl border border-[#5B7B6D]/10 group-hover:border-[#5B7B6D]/20 transition-colors">
+                          <p className="text-xs text-[#526058] font-serif leading-relaxed italic line-clamp-2">
+                            {person.bio ? `「${person.bio}」` : '「同行的回忆，是岁月写下的诗行」'}
+                          </p>
                         </div>
                       </div>
-                      <div className="flex items-center gap-1 shrink-0">
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            requestDelete('people', person.id, person.name);
-                          }}
-                          title="删除人物"
-                          className="p-2 text-[#6E7C75]/40 hover:text-red-500 rounded-lg hover:bg-red-50 transition-all"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                        <ChevronRight className="w-4 h-4 text-[#6E7C75]/40 group-hover:text-[#5B7B6D] transition-colors" />
+
+                      {/* Bottom Footer: Minimal Meta & Page Turn Hint */}
+                      <div className="flex items-center justify-between text-[11px] text-[#6E7C75]/75 font-sans pt-1 border-t border-[#F2EFE9]">
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          {person.birthday && (
+                            <span className="flex items-center gap-1 truncate">
+                              🎂 {person.birthday}
+                            </span>
+                          )}
+                          {person.zodiac && (
+                            <span className="flex items-center gap-1 shrink-0">
+                              ✨ {person.zodiac}
+                            </span>
+                          )}
+                          <span className="shrink-0 font-mono">
+                            📖 {person.impressions?.length || 0} 则印记
+                          </span>
+                        </div>
+
+                        <div className="text-[11px] text-[#5B7B6D] font-medium flex items-center gap-0.5 opacity-60 group-hover:opacity-100 group-hover:translate-x-0.5 transition-all shrink-0">
+                          <span>翻看手账</span>
+                          <ChevronRight className="w-3.5 h-3.5" />
+                        </div>
                       </div>
                     </div>
                   ))}
@@ -1941,141 +2418,215 @@ export default function App() {
             </div>
           )}
 
-          {/* Selected Person Detailed Archive View */}
+          {/* Selected Person Detailed Archive View - Curated Japanese Indie Profile Journal */}
           {activeTab === 'people' && selectedPerson && (
             <div className="space-y-4 animate-fadeIn">
-              <div className="flex justify-between items-center mb-2">
+              {/* Header Navigation */}
+              <div className="flex justify-between items-center">
                 <button
+                  type="button"
                   onClick={() => setSelectedPerson(null)}
-                  className="text-xs text-[#6E7C75] flex items-center gap-1 hover:text-[#5B7B6D] font-medium"
+                  className="text-xs text-[#526058] flex items-center gap-1.5 hover:text-[#5B7B6D] font-medium bg-white px-3 py-1.5 rounded-xl border border-[#5B7B6D]/15 shadow-2xs active:scale-95 transition-all"
                 >
-                  ← 返回人物列表
+                  ← 返回人物册
                 </button>
                 <div className="flex items-center gap-2">
                   <button
+                    type="button"
                     onClick={() => setIsEditingPerson(true)}
-                    className="text-xs text-[#5B7B6D] hover:text-[#3E564B] flex items-center gap-1 font-medium bg-[#5B7B6D]/10 px-2.5 py-1 rounded-lg border border-[#5B7B6D]/20 transition-all"
+                    className="text-xs text-[#5B7B6D] hover:text-[#3E564B] flex items-center gap-1 font-medium bg-white px-3 py-1.5 rounded-xl border border-[#5B7B6D]/20 shadow-2xs hover:bg-[#FAF8F5] transition-all"
                   >
-                    <Edit3 className="w-3.5 h-3.5" /> 编辑资料
+                    <Edit3 className="w-3.5 h-3.5" /> 编辑
                   </button>
                   <button
+                    type="button"
                     onClick={() => {
                       requestDelete('people', selectedPerson.id, selectedPerson.name);
-                      setSelectedPerson(null);
                     }}
-                    className="text-xs text-red-500 hover:text-red-700 flex items-center gap-1 font-medium bg-red-50 px-2.5 py-1 rounded-lg border border-red-200 hover:bg-red-100 transition-all"
+                    className="text-xs text-red-500 hover:text-red-700 flex items-center gap-1 font-medium bg-red-50/80 px-2.5 py-1.5 rounded-xl border border-red-200/70 hover:bg-red-100 transition-all"
                   >
-                    <Trash2 className="w-3.5 h-3.5" /> 删除
+                    <Trash2 className="w-3.5 h-3.5" />
                   </button>
                 </div>
               </div>
 
-              {/* Profile Header Card */}
-              <div className="bg-white p-5 rounded-2xl border border-[#5B7B6D]/15 text-center relative shadow-sm space-y-4">
-                <div className="relative w-20 h-20 mx-auto">
-                  <img src={selectedPerson.avatar} alt="avatar" className="w-20 h-20 rounded-full object-cover border-2 border-[#E88765] shadow-md" />
-                  {selectedPerson.zodiac && (
-                    <span className="absolute -bottom-1 -right-1 bg-[#E88765] text-white text-[10px] px-1.5 py-0.5 rounded-full font-bold shadow-sm font-sans">
-                      {selectedPerson.zodiac}
-                    </span>
+              {/* Profile Card - Minimalist Japanese Journal Layout */}
+              <div className="bg-white p-6 sm:p-7 rounded-3xl border border-[#D9CFC1] shadow-2xs space-y-6 relative overflow-hidden">
+                {/* Subtle corner watermark */}
+                <div className="absolute top-4 right-4 text-[10px] font-mono text-[#5B7B6D]/40 uppercase tracking-widest pointer-events-none select-none">
+                  MEMOIR · 拾人
+                </div>
+
+                {/* Hero Avatar & Identity Section */}
+                <div className="flex flex-col sm:flex-row items-center sm:items-start gap-4 sm:gap-5 text-center sm:text-left">
+                  <div className="relative shrink-0">
+                    <img 
+                      src={selectedPerson.avatar} 
+                      alt={selectedPerson.name} 
+                      className="w-20 h-20 sm:w-22 sm:h-22 rounded-3xl object-cover border-2 border-[#E88765]/30 shadow-xs" 
+                    />
+                  </div>
+
+                  <div className="space-y-2 flex-1 min-w-0">
+                    <div className="flex items-center justify-center sm:justify-start gap-2 flex-wrap">
+                      <h2 className="text-xl font-bold text-[#2B332E] font-serif tracking-wide">{selectedPerson.name}</h2>
+                      {selectedPerson.relationship && (
+                        <span className="text-xs px-2.5 py-0.5 rounded-full bg-[#FAF6F0] text-[#E88765] font-medium border border-[#E88765]/25 font-sans">
+                          {selectedPerson.relationship}
+                        </span>
+                      )}
+                      {selectedPerson.group && selectedPerson.group !== '未分组' && (
+                        <span className="text-xs px-2.5 py-0.5 rounded-full bg-[#5B7B6D]/10 text-[#5B7B6D] font-medium border border-[#5B7B6D]/20 font-sans">
+                          {selectedPerson.group}
+                        </span>
+                      )}
+                    </div>
+
+                    <p className="text-xs text-[#526058] leading-relaxed font-serif max-w-md">
+                      {selectedPerson.bio || '记录在时光册里的同路人'}
+                    </p>
+
+                    {selectedPerson.knownDate && calculateDaysKnown(selectedPerson.knownDate) !== null && (
+                      <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-[#FDF0EB]/80 text-[#E88765] rounded-full text-[11px] font-semibold border border-[#E88765]/25 font-sans">
+                        <Calendar className="w-3.5 h-3.5 text-[#E88765]" />
+                        <span>相识于 {selectedPerson.knownDate} · 第 <strong>{calculateDaysKnown(selectedPerson.knownDate)?.toLocaleString()}</strong> 天</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Subtle Divider */}
+                <div className="h-px bg-[#F2EFE9] w-full" />
+
+                {/* Clean 2-Column Info Grid */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs font-sans">
+                  {/* 生日星座 */}
+                  {(selectedPerson.birthday || selectedPerson.zodiac) && (
+                    <div className="p-3.5 rounded-2xl bg-[#FAF8F5] border border-[#5B7B6D]/10 flex items-center gap-3">
+                      <span className="text-base p-2 rounded-xl bg-white border border-[#5B7B6D]/10 shrink-0">🎂</span>
+                      <div className="min-w-0 flex-1">
+                        <span className="text-[10px] text-[#6E7C75] block">生日 · 星座</span>
+                        <span className="font-semibold text-[#2B332E] block truncate">
+                          {selectedPerson.birthday || '未填生日'} {selectedPerson.zodiac ? `(${selectedPerson.zodiac})` : ''}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* 初识地点 */}
+                  <div className="p-3.5 rounded-2xl bg-[#FAF8F5] border border-[#5B7B6D]/10 flex items-center gap-3">
+                    <span className="text-base p-2 rounded-xl bg-white border border-[#5B7B6D]/10 shrink-0">📍</span>
+                    <div className="min-w-0 flex-1">
+                      <span className="text-[10px] text-[#6E7C75] block">初识地点</span>
+                      <span className="font-semibold text-[#2B332E] block truncate">
+                        {selectedPerson.customFields?.['认识地点'] || '时光长廊'}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* 喜欢的颜色 */}
+                  {selectedPerson.color && (
+                    <div className="p-3.5 rounded-2xl bg-[#FAF8F5] border border-[#5B7B6D]/10 flex items-center gap-3">
+                      <span className="text-base p-2 rounded-xl bg-white border border-[#5B7B6D]/10 shrink-0">🎨</span>
+                      <div className="min-w-0 flex-1">
+                        <span className="text-[10px] text-[#6E7C75] block">喜欢的颜色</span>
+                        <span className="font-semibold text-[#2B332E] block truncate">{selectedPerson.color}</span>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* 爱好 */}
+                  {selectedPerson.hobbies && (
+                    <div className="p-3.5 rounded-2xl bg-[#FAF8F5] border border-[#5B7B6D]/10 flex items-center gap-3">
+                      <span className="text-base p-2 rounded-xl bg-white border border-[#5B7B6D]/10 shrink-0">⚽</span>
+                      <div className="min-w-0 flex-1">
+                        <span className="text-[10px] text-[#6E7C75] block">兴趣爱好</span>
+                        <span className="font-semibold text-[#2B332E] block truncate">{selectedPerson.hobbies}</span>
+                      </div>
+                    </div>
                   )}
                 </div>
 
-                <div>
-                  <div className="flex items-center justify-center gap-2">
-                    <h2 className="text-xl font-bold text-[#2B332E] font-serif">{selectedPerson.name}</h2>
-                    {selectedPerson.relationship && (
-                      <span className="text-xs px-2.5 py-0.5 rounded-full bg-[#FDF0EB] text-[#E88765] font-medium border border-[#E88765]/30 font-sans">
-                        {selectedPerson.relationship}
+                {/* Contact Drawer / Bar */}
+                {(selectedPerson.wechat || selectedPerson.qq || selectedPerson.phone) && (
+                  <div className="pt-2">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-[11px] font-bold text-[#5B7B6D] font-serif flex items-center gap-1.5">
+                        <MessageCircle className="w-3.5 h-3.5 text-[#5B7B6D]" /> 联络信息
                       </span>
-                    )}
-                    {selectedPerson.group && (
-                      <span className="text-xs px-2.5 py-0.5 rounded-full bg-[#5B7B6D]/10 text-[#5B7B6D] font-medium border border-[#5B7B6D]/20 font-sans">
-                        {selectedPerson.group}
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-xs text-[#6E7C75] mt-1.5 max-w-xs mx-auto leading-relaxed font-serif">{selectedPerson.bio}</p>
-                </div>
-
-                {/* Interactive Detailed Info Grid */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-3 border-t border-[#F2EFE9] text-xs text-left font-sans">
-                  <div className="p-3 rounded-xl bg-[#F2EFE9]/60 border border-[#5B7B6D]/10 flex items-center gap-2.5">
-                    <span className="text-lg shrink-0">🎂</span>
-                    <div className="min-w-0 flex-1">
-                      <span className="text-[10px] text-[#6E7C75] block">生日 & 星座</span>
-                      <span className="font-semibold text-[#2B332E] block truncate">
-                        {selectedPerson.birthday || '未设置'} {selectedPerson.zodiac ? `(${selectedPerson.zodiac})` : ''}
-                      </span>
+                      <span className="text-[10px] text-[#6E7C75]">轻触快速复制</span>
                     </div>
-                  </div>
-
-                  <div className="p-3 rounded-xl bg-[#F2EFE9]/60 border border-[#5B7B6D]/10 flex items-center gap-2.5">
-                    <span className="text-lg shrink-0">📍</span>
-                    <div className="min-w-0 flex-1">
-                      <span className="text-[10px] text-[#6E7C75] block">初识地点</span>
-                      <span className="font-semibold text-[#2B332E] block truncate">{selectedPerson.customFields?.['认识地点'] || '时光长廊'}</span>
+                    <div className="flex flex-wrap gap-2 text-xs font-sans">
+                      {selectedPerson.wechat && (
+                        <button
+                          type="button"
+                          onClick={() => handleCopyText(selectedPerson.wechat!, '微信号')}
+                          className="px-3 py-1.5 rounded-xl bg-[#FAF8F5] hover:bg-[#5B7B6D] hover:text-white text-[#2B332E] border border-[#5B7B6D]/15 flex items-center gap-1.5 transition-all active:scale-95 shadow-2xs group/btn"
+                        >
+                          <span className="text-[#5B7B6D] group-hover/btn:text-white font-medium text-[11px]">微:</span>
+                          <span className="font-mono text-xs">{selectedPerson.wechat}</span>
+                          <Copy className="w-3 h-3 text-[#6E7C75] group-hover/btn:text-white ml-1 opacity-70" />
+                        </button>
+                      )}
+                      {selectedPerson.qq && (
+                        <button
+                          type="button"
+                          onClick={() => handleCopyText(selectedPerson.qq!, 'QQ号')}
+                          className="px-3 py-1.5 rounded-xl bg-[#FAF8F5] hover:bg-[#E88765] hover:text-white text-[#2B332E] border border-[#E88765]/20 flex items-center gap-1.5 transition-all active:scale-95 shadow-2xs group/btn"
+                        >
+                          <span className="text-[#E88765] group-hover/btn:text-white font-medium text-[11px]">QQ:</span>
+                          <span className="font-mono text-xs">{selectedPerson.qq}</span>
+                          <Copy className="w-3 h-3 text-[#6E7C75] group-hover/btn:text-white ml-1 opacity-70" />
+                        </button>
+                      )}
+                      {selectedPerson.phone && (
+                        <button
+                          type="button"
+                          onClick={() => handleCopyText(selectedPerson.phone!, '手机号')}
+                          className="px-3 py-1.5 rounded-xl bg-[#FAF8F5] hover:bg-[#5B7B6D] hover:text-white text-[#2B332E] border border-[#5B7B6D]/15 flex items-center gap-1.5 transition-all active:scale-95 shadow-2xs group/btn"
+                        >
+                          <span className="text-[#5B7B6D] group-hover/btn:text-white font-medium text-[11px]">电话:</span>
+                          <span className="font-mono text-xs">{selectedPerson.phone}</span>
+                          <Copy className="w-3 h-3 text-[#6E7C75] group-hover/btn:text-white ml-1 opacity-70" />
+                        </button>
+                      )}
                     </div>
-                  </div>
-
-                  <div className="p-3 rounded-xl bg-[#F2EFE9]/60 border border-[#5B7B6D]/10 flex items-center gap-2.5">
-                    <span className="text-lg shrink-0">🎨</span>
-                    <div className="min-w-0 flex-1">
-                      <span className="text-[10px] text-[#6E7C75] block">喜欢的颜色</span>
-                      <span className="font-semibold text-[#2B332E] block truncate">{selectedPerson.color || '未设置'}</span>
-                    </div>
-                  </div>
-
-                  <div className="p-3 rounded-xl bg-[#F2EFE9]/60 border border-[#5B7B6D]/10 flex items-center gap-2.5">
-                    <span className="text-lg shrink-0">⚽</span>
-                    <div className="min-w-0 flex-1">
-                      <span className="text-[10px] text-[#6E7C75] block">个人兴趣爱好</span>
-                      <span className="font-semibold text-[#2B332E] block truncate">{selectedPerson.hobbies || '未设置'}</span>
-                    </div>
-                  </div>
-                </div>
-
-                {selectedPerson.customFields && Object.keys(selectedPerson.customFields).length > 0 && (
-                  <div className="pt-2.5 border-t border-[#F2EFE9] flex flex-wrap justify-center gap-2 text-xs text-[#6E7C75] font-sans">
-                    {Object.entries(selectedPerson.customFields).map(([k, v]) => (
-                      <div key={k} className="px-3 py-1 rounded-xl bg-[#FAF8F5] border border-[#5B7B6D]/10 text-xs">
-                        <span className="font-semibold text-[#5B7B6D]">{k}:</span> <span className="text-[#2B332E] ml-1">{v}</span>
-                      </div>
-                    ))}
                   </div>
                 )}
               </div>
 
-              {/* Yearly Memories & Impressions Section */}
-              <div className="bg-white p-4 rounded-2xl border border-[#5B7B6D]/15 shadow-sm space-y-3">
+              {/* Yearly Memories & Impressions Section - Clean Journal Stream */}
+              <div className="bg-white p-5 sm:p-6 rounded-3xl border border-[#D9CFC1] shadow-2xs space-y-4">
                 <div className="flex justify-between items-center">
-                  <h3 className="font-bold text-[#2B332E] text-sm flex items-center gap-1.5 font-serif">
-                    <Sparkles className="w-3.5 h-3.5 text-[#E88765]" /> 岁月印象与故事轨迹
+                  <h3 className="font-bold text-[#2B332E] text-sm flex items-center gap-2 font-serif">
+                    <Sparkles className="w-4 h-4 text-[#E88765]" />
+                    <span>岁月印记与故事轨迹</span>
                   </h3>
+                  <span className="text-[11px] text-[#6E7C75] font-sans">共 {selectedPerson.impressions?.length || 0} 则记录</span>
                 </div>
 
                 {/* Form to append new memory impression */}
-                <form onSubmit={handleAddImpression} className="p-3 bg-[#F2EFE9] rounded-xl border border-[#5B7B6D]/15 space-y-2 text-xs font-sans">
-                  <span className="font-bold text-[#5B7B6D] block">添加新年份印象片段：</span>
+                <form onSubmit={handleAddImpression} className="p-3.5 bg-[#FAF8F5] rounded-2xl border border-[#5B7B6D]/15 space-y-2.5 text-xs font-sans">
+                  <span className="font-bold text-[#5B7B6D] text-xs block">记录一段新回忆 / 印象切片：</span>
                   <div className="flex flex-col sm:flex-row gap-2">
                     <input
                       type="text"
                       value={newImpressionYear}
                       onChange={(e) => setNewImpressionYear(e.target.value)}
-                      placeholder="年份 (例: 2026)"
-                      className="w-full sm:w-24 p-2 rounded-lg border border-[#5B7B6D]/20 bg-white focus:outline-none focus:border-[#E88765] shrink-0"
+                      placeholder="年份 (如 2026)"
+                      className="w-full sm:w-28 p-2.5 rounded-xl border border-[#5B7B6D]/20 bg-white focus:outline-none focus:border-[#5B7B6D] shrink-0 font-mono text-xs"
                     />
                     <div className="flex gap-2 flex-1 min-w-0">
                       <input
                         type="text"
                         value={newImpressionText}
                         onChange={(e) => setNewImpressionText(e.target.value)}
-                        placeholder="记录今年对这个人的新印象或感动瞬间..."
-                        className="flex-1 min-w-0 p-2 rounded-lg border border-[#5B7B6D]/20 bg-white focus:outline-none focus:border-[#E88765]"
+                        placeholder="记录这个阶段的心情、感动细节或共同经历..."
+                        className="flex-1 min-w-0 p-2.5 rounded-xl border border-[#5B7B6D]/20 bg-white focus:outline-none focus:border-[#5B7B6D] text-xs font-serif"
                       />
                       <button
                         type="submit"
-                        className="px-3.5 py-2 bg-[#E88765] text-white font-bold rounded-lg hover:bg-[#E88765]/90 transition-all shadow-sm shrink-0 whitespace-nowrap"
+                        className="px-4 py-2.5 bg-[#5B7B6D] hover:bg-[#3E564B] text-white font-bold rounded-xl transition-all shadow-xs shrink-0 whitespace-nowrap active:scale-95"
                       >
                         记录
                       </button>
@@ -2083,16 +2634,25 @@ export default function App() {
                   </div>
                 </form>
 
-                <div className="space-y-2">
+                {/* Impressions Stream */}
+                <div className="space-y-3 pt-1">
                   {selectedPerson.impressions?.map((imp, idx) => (
-                    <div key={imp.id || idx} className="p-3.5 bg-[#FAF8F5] rounded-xl border border-[#5B7B6D]/10 text-xs text-[#2B332E] space-y-1.5 shadow-sm">
-                      <div className="flex justify-between items-center text-[10px] text-[#E88765] font-bold font-sans">
-                        <span>{imp.year} 年印象</span>
-                        <button onClick={() => handlePlayTts(imp.text)} className="text-[#5B7B6D] hover:text-[#E88765] flex items-center gap-0.5">
+                    <div key={imp.id || idx} className="p-4 bg-[#FAF7F2] rounded-2xl border border-[#5B7B6D]/10 text-xs text-[#2B332E] space-y-2 shadow-2xs hover:border-[#5B7B6D]/30 transition-all">
+                      <div className="flex justify-between items-center text-[11px] font-sans">
+                        <span className="font-bold text-[#E88765] bg-white px-2.5 py-0.5 rounded-lg border border-[#E88765]/20">
+                          {imp.year} 年切片
+                        </span>
+                        <button 
+                          type="button"
+                          onClick={() => handlePlayTts(imp.text)} 
+                          className="text-[#5B7B6D] hover:text-[#E88765] flex items-center gap-1 font-medium bg-white px-2.5 py-1 rounded-lg border border-[#5B7B6D]/15 transition-all shadow-2xs"
+                        >
                           <Volume2 className="w-3 h-3" /> 朗诵
                         </button>
                       </div>
-                      <p className="leading-relaxed font-serif">{imp.text}</p>
+                      <p className="leading-relaxed font-serif text-[#3E4A42] text-xs whitespace-pre-line break-words">
+                        {imp.text}
+                      </p>
                     </div>
                   ))}
                 </div>
@@ -2105,7 +2665,7 @@ export default function App() {
             <div className="space-y-4 animate-fadeIn">
               <div className="flex justify-between items-center mb-1">
                 <h2 className="text-lg font-bold text-[#2B332E] tracking-wider font-serif">
-                  拾忆篇 ({data.stories.filter(story => selectedYear === 'all' || (story.date && story.date.startsWith(selectedYear))).length})
+                  拾忆篇 ({data.stories.filter(story => selectedYear === 'all' || getYearFromDate(story.date) === selectedYear).length})
                 </h2>
                 <button
                   onClick={() => setActiveModal('addStory')}
@@ -2122,7 +2682,7 @@ export default function App() {
                     <Filter className="w-3.5 h-3.5 text-[#E88765] shrink-0" />
                     <span>
                       正在筛选【<strong className="font-bold text-[#E88765]">{selectedYear} 年</strong>】长篇篇章
-                      <span className="opacity-75 font-normal ml-1">（共 {data.stories.filter(story => story.date && story.date.startsWith(selectedYear)).length} 篇）</span>
+                      <span className="opacity-75 font-normal ml-1">（共 {data.stories.filter(story => getYearFromDate(story.date) === selectedYear).length} 篇）</span>
                     </span>
                   </div>
                   <div className="flex items-center gap-2 shrink-0 self-end sm:self-auto">
@@ -2145,7 +2705,7 @@ export default function App() {
                 </div>
               )}
 
-              {data.stories.filter(story => selectedYear === 'all' || (story.date && story.date.startsWith(selectedYear))).length === 0 ? (
+              {data.stories.filter(story => selectedYear === 'all' || getYearFromDate(story.date) === selectedYear).length === 0 ? (
                 <div className="bg-white p-8 rounded-2xl border border-dashed border-[#5B7B6D]/20 text-center space-y-3">
                   <div className="w-10 h-10 mx-auto rounded-full bg-[#FAF8F5] flex items-center justify-center text-[#5B7B6D]">
                     <BookOpen className="w-5 h-5 opacity-60" />
@@ -2173,7 +2733,7 @@ export default function App() {
               ) : (
                 <div className="space-y-3">
                   {data.stories
-                    .filter(story => selectedYear === 'all' || (story.date && story.date.startsWith(selectedYear)))
+                    .filter(story => selectedYear === 'all' || getYearFromDate(story.date) === selectedYear)
                     .map(story => (
                       <div
                         key={story.id}
@@ -2188,17 +2748,30 @@ export default function App() {
                           <h3 className="font-bold text-[#2B332E] text-base group-hover:text-[#E88765] transition-colors font-serif">{story.title}</h3>
                           <p className="text-xs text-[#6E7C75] line-clamp-2 mt-1 leading-relaxed font-serif">{story.content}</p>
                         </div>
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-1">
                           <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setEditingStory(story);
+                            }}
+                            className="p-1.5 text-[#6E7C75]/40 hover:text-[#5B7B6D] rounded-lg hover:bg-[#5B7B6D]/10 transition-all opacity-80 group-hover:opacity-100"
+                            title="编辑篇章"
+                          >
+                            <Edit3 className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            type="button"
                             onClick={(e) => {
                               e.stopPropagation();
                               requestDelete('stories', story.id, story.title);
                             }}
-                            className="p-1.5 text-[#6E7C75]/30 hover:text-red-500 rounded-lg hover:bg-red-50 transition-all"
+                            className="p-1.5 text-[#6E7C75]/30 hover:text-red-500 rounded-lg hover:bg-red-50 transition-all opacity-80 group-hover:opacity-100"
+                            title="删除篇章"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
-                          <BookOpen className="w-4 h-4 text-[#5B7B6D]" />
+                          <BookOpen className="w-4 h-4 text-[#5B7B6D] ml-1" />
                         </div>
                       </div>
                     ))}
@@ -2211,7 +2784,7 @@ export default function App() {
           {activeTab === 'stories' && readerStory && (
             <div className="bg-white p-6 rounded-2xl border border-[#5B7B6D]/20 shadow-md space-y-4 animate-fadeIn min-h-[500px] flex flex-col justify-between">
               <div>
-                <div className="flex justify-between items-center mb-4">
+                <div className="flex justify-between items-center mb-4 flex-wrap gap-2">
                   <button
                     onClick={() => setReaderStory(null)}
                     className="text-xs text-[#6E7C75] hover:text-[#5B7B6D] font-medium"
@@ -2219,6 +2792,14 @@ export default function App() {
                     ← 退出阅读
                   </button>
                   <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setEditingStory(readerStory)}
+                      className="text-[11px] px-2.5 py-1 text-[#5B7B6D] bg-[#5B7B6D]/10 hover:bg-[#5B7B6D]/20 rounded-full font-sans transition-all flex items-center gap-1 active:scale-95"
+                      title="编辑当前文章"
+                    >
+                      <Edit3 className="w-3 h-3 text-[#5B7B6D]" />
+                      <span>编辑篇章</span>
+                    </button>
                     <button
                       onClick={() => setIsVoicePickerModalOpen(true)}
                       className="text-[11px] px-2.5 py-1 text-[#6E7C75] bg-stone-100 hover:bg-stone-200 rounded-full font-sans transition-all flex items-center gap-1"
@@ -2233,7 +2814,7 @@ export default function App() {
                       className="flex items-center gap-1 text-xs px-3 py-1 bg-[#FDF0EB] text-[#E88765] rounded-full border border-[#E88765]/30 font-medium hover:bg-[#E88765] hover:text-white transition-all font-sans active:scale-95"
                     >
                       <Volume2 className={`w-3.5 h-3.5 ${isTtsGenerating ? 'animate-bounce' : ''}`} />
-                      <span>{isTtsGenerating ? 'AI 语音合成中...' : '朗诵此章节'}</span>
+                      <span>{isTtsGenerating ? 'AI 语音合成中...' : '朗读'}</span>
                     </button>
                   </div>
                 </div>
@@ -2254,7 +2835,7 @@ export default function App() {
             <div className="space-y-4 animate-fadeIn">
               <div className="flex justify-between items-center mb-1">
                 <h2 className="text-lg font-bold text-[#2B332E] tracking-wider font-serif">
-                  拾物阁 ({data.artifacts.filter(item => selectedYear === 'all' || (item.date && item.date.startsWith(selectedYear))).length})
+                  拾物阁 ({data.artifacts.filter(item => selectedYear === 'all' || getYearFromDate(item.date) === selectedYear).length})
                 </h2>
                 <button
                   onClick={() => setActiveModal('addArtifact')}
@@ -2271,7 +2852,7 @@ export default function App() {
                     <Filter className="w-3.5 h-3.5 text-[#E88765] shrink-0" />
                     <span>
                       正在筛选【<strong className="font-bold text-[#E88765]">{selectedYear} 年</strong>】旧物藏品
-                      <span className="opacity-75 font-normal ml-1">（共 {data.artifacts.filter(item => item.date && item.date.startsWith(selectedYear)).length} 件）</span>
+                      <span className="opacity-75 font-normal ml-1">（共 {data.artifacts.filter(item => getYearFromDate(item.date) === selectedYear).length} 件）</span>
                     </span>
                   </div>
                   <div className="flex items-center gap-2 shrink-0 self-end sm:self-auto">
@@ -2294,7 +2875,7 @@ export default function App() {
                 </div>
               )}
 
-              {data.artifacts.filter(item => selectedYear === 'all' || (item.date && item.date.startsWith(selectedYear))).length === 0 ? (
+              {data.artifacts.filter(item => selectedYear === 'all' || getYearFromDate(item.date) === selectedYear).length === 0 ? (
                 <div className="bg-white p-8 rounded-2xl border border-dashed border-[#5B7B6D]/20 text-center space-y-3">
                   <div className="w-10 h-10 mx-auto rounded-full bg-[#FAF8F5] flex items-center justify-center text-[#5B7B6D]">
                     <Package className="w-5 h-5 opacity-60" />
@@ -2322,7 +2903,7 @@ export default function App() {
               ) : (
                 <div className="grid grid-cols-2 gap-3">
                   {data.artifacts
-                    .filter(item => selectedYear === 'all' || (item.date && item.date.startsWith(selectedYear)))
+                    .filter(item => selectedYear === 'all' || getYearFromDate(item.date) === selectedYear)
                     .map(item => (
                       <div
                         key={item.id}
@@ -2364,82 +2945,154 @@ export default function App() {
             </div>
           )}
 
-          {/* Future Letters Tab */}
+          {/* Future Letters Tab - Curated Japanese Indie Time Capsule Aesthetic */}
           {activeTab === 'letters' && (
-            <div className="space-y-4 animate-fadeIn">
-              <div className="flex justify-between items-center mb-2">
-                <div className="flex items-center gap-2">
+            <div className="space-y-5 animate-fadeIn">
+              {/* Header */}
+              <div className="flex justify-between items-center">
+                <div className="flex items-center gap-2.5">
                   <button
+                    type="button"
                     onClick={() => setActiveTab('home')}
-                    className="text-xs text-[#6E7C75] hover:text-[#5B7B6D] font-medium"
+                    className="text-xs text-[#526058] hover:text-[#5B7B6D] font-medium flex items-center gap-1 bg-white px-3 py-1.5 rounded-xl border border-[#5B7B6D]/20 shadow-2xs hover:shadow-xs transition-all active:scale-95"
                   >
-                    ← 首页
+                    ← 返回
                   </button>
-                  <h2 className="text-lg font-bold text-[#2B332E] tracking-wider font-serif">寄年 · 时光胶囊 ({data.letters.length})</h2>
+                  <div>
+                    <h2 className="text-lg font-bold text-[#2B332E] tracking-wide font-serif">寄年 · 时光胶囊</h2>
+                    <span className="text-[10px] text-[#6E7C75] font-sans">封存时光 · 见字如晤</span>
+                  </div>
                 </div>
                 <button
+                  type="button"
                   onClick={() => setActiveModal('addLetter')}
-                  className="flex items-center gap-1 text-xs px-3 py-1.5 bg-[#5B7B6D] text-white rounded-xl shadow-sm hover:bg-[#3E564B] font-medium"
+                  className="flex items-center gap-1.5 text-xs px-4 py-2 bg-[#5B7B6D] hover:bg-[#3E564B] text-white rounded-xl shadow-xs font-bold transition-all active:scale-95"
                 >
-                  <Plus className="w-3.5 h-3.5" /> 写给未来
+                  <Plus className="w-3.5 h-3.5" /> 封存信件
                 </button>
               </div>
 
-              <div className="space-y-3">
-                {data.letters.map(letter => {
-                  const isUnlocked = letter.isUnlocked || new Date().toISOString().slice(0, 10) >= letter.unlockDate;
-                  return (
-                    <div
-                      key={letter.id}
-                      className={`p-4 rounded-2xl border shadow-sm transition-all ${
-                        isUnlocked
-                          ? 'bg-white border-[#5B7B6D]/20'
-                          : 'bg-[#F2EFE9] border-[#5B7B6D]/10'
-                      }`}
-                    >
-                      <div className="flex justify-between items-start mb-2">
-                        <div className="flex items-center gap-2">
-                          {isUnlocked ? (
-                            <LockOpen className="w-4 h-4 text-[#E88765]" />
-                          ) : (
-                            <Lock className="w-4 h-4 text-[#6E7C75]" />
-                          )}
-                          <h3 className="font-bold text-base text-[#2B332E] font-serif">{letter.title}</h3>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <span className={`text-[10px] px-2.5 py-0.5 rounded-full font-sans ${
-                            isUnlocked ? 'bg-[#FDF0EB] text-[#E88765] font-medium' : 'bg-white text-[#6E7C75]'
-                          }`}>
-                            {isUnlocked ? '已解锁' : `开启日: ${letter.unlockDate}`}
-                          </span>
-                          <button
-                            onClick={() => requestDelete('letters', letter.id, letter.title)}
-                            className="text-[#6E7C75]/30 hover:text-red-500 p-1"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                      </div>
-
-                      {isUnlocked ? (
-                        <div>
-                          <p className="text-xs text-[#6E7C75] leading-relaxed mt-2 pt-2 border-t border-[#F2EFE9] font-serif">{letter.content}</p>
-                          <div className="mt-3 flex justify-end">
-                            <button
-                              onClick={() => handlePlayTts(letter.content)}
-                              className="text-xs px-3 py-1 bg-[#FDF0EB] text-[#E88765] rounded-lg border border-[#E88765]/20 flex items-center gap-1 font-medium hover:bg-[#E88765] hover:text-white transition-all font-sans"
+              {/* Letters Capsule Grid / List */}
+              {data.letters.length === 0 ? (
+                <div className="bg-white p-8 rounded-3xl border border-dashed border-[#5B7B6D]/20 text-center space-y-3 shadow-2xs">
+                  <div className="w-12 h-12 rounded-full bg-[#FAF8F5] border border-[#5B7B6D]/20 text-[#5B7B6D] flex items-center justify-center mx-auto text-xl">
+                    ✉️
+                  </div>
+                  <h3 className="font-bold text-[#2B332E] text-sm font-serif">暂无时光信笺</h3>
+                  <p className="text-xs text-[#6E7C75]">封存一封给未来的信，写下此刻的心情与期许</p>
+                  <button
+                    type="button"
+                    onClick={() => setActiveModal('addLetter')}
+                    className="px-4 py-1.5 bg-[#5B7B6D] text-white text-xs rounded-xl font-medium shadow-2xs"
+                  >
+                    封存信件
+                  </button>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 gap-3.5">
+                  {data.letters.map(letter => {
+                    const isUnlocked = letter.isUnlocked || new Date().toISOString().slice(0, 10) >= letter.unlockDate;
+                    return (
+                      <div
+                        key={letter.id}
+                        onClick={() => setSelectedLetter(letter)}
+                        className={`p-4 sm:p-5 rounded-3xl border transition-all cursor-pointer group select-none flex flex-col justify-between ${
+                          isUnlocked
+                            ? 'bg-white border-[#5B7B6D]/25 shadow-xs hover:shadow-md hover:border-[#5B7B6D]/50 active:scale-[0.99]'
+                            : 'bg-gradient-to-b from-[#FAF8F5] to-[#F2EFE9] border-[#D9CFC1] shadow-2xs hover:border-[#E88765]/40 hover:shadow-xs active:scale-[0.99]'
+                        }`}
+                      >
+                        {/* Top Meta Bar: Category & Status Badge - Clear Flow Layout without Absolute Collision */}
+                        <div className="flex items-center justify-between gap-2 mb-2.5">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <div
+                              className={`w-7 h-7 rounded-xl flex items-center justify-center shrink-0 border shadow-2xs transition-transform group-hover:scale-105 ${
+                                isUnlocked
+                                  ? 'bg-[#FDF0EB] text-[#E88765] border-[#E88765]/30'
+                                  : 'bg-white text-[#6E7C75] border-[#5B7B6D]/15'
+                              }`}
                             >
-                              <Volume2 className="w-3 h-3" /> AI 情感朗读
+                              {isUnlocked ? (
+                                <Mail className="w-3.5 h-3.5 text-[#E88765]" />
+                              ) : (
+                                <Lock className="w-3.5 h-3.5 text-[#6E7C75]" />
+                              )}
+                            </div>
+                            <span className="text-xs font-sans font-semibold text-[#5B7B6D] tracking-wide shrink-0">
+                              时光信笺
+                            </span>
+                            <span className="text-[10px] text-[#6E7C75]/70 font-sans truncate">
+                              {letter.date ? `· 封存于 ${letter.date}` : ''}
+                            </span>
+                          </div>
+
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            <span
+                              className={`text-[11px] px-2.5 py-0.5 rounded-full font-sans font-medium border flex items-center gap-1 shadow-2xs whitespace-nowrap ${
+                                isUnlocked
+                                  ? 'bg-[#FDF0EB] text-[#E88765] border-[#E88765]/30'
+                                  : 'bg-white text-[#526058] border-[#5B7B6D]/20'
+                              }`}
+                            >
+                              {isUnlocked ? (
+                                <>
+                                  <span className="w-1.5 h-1.5 rounded-full bg-[#E88765]" />
+                                  <span>已拆封 · 展读</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Calendar className="w-3 h-3 text-[#5B7B6D]" />
+                                  <span>约定开启: {letter.unlockDate}</span>
+                                </>
+                              )}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                requestDelete('letters', letter.id, letter.title);
+                              }}
+                              className="text-[#6E7C75]/40 hover:text-red-500 p-1.5 rounded-xl hover:bg-red-50 transition-all opacity-70 group-hover:opacity-100"
+                              title="删除胶囊"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
                             </button>
                           </div>
                         </div>
-                      ) : (
-                        <p className="text-xs text-[#6E7C75]/50 italic mt-2 font-serif">信件尚在时光胶囊中封存，请在指定日期后重访解锁。</p>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
+
+                        {/* Full-width Title - Dedicated Row with No Overlap */}
+                        <div className="my-1">
+                          <h3 className="font-bold text-base text-[#2B332E] font-serif leading-snug break-words">
+                            {letter.title}
+                          </h3>
+                        </div>
+
+                        {/* Bottom Row Preview / Action */}
+                        {isUnlocked ? (
+                          <div className="pt-2.5 mt-2 border-t border-[#F2EFE9] flex items-center justify-between gap-2">
+                            <p className="text-xs text-[#6E7C75] font-serif line-clamp-1 italic pr-2 flex-1">
+                              「{letter.content.slice(0, 45)}...」
+                            </p>
+                            <div className="text-[11px] text-[#E88765] font-sans font-medium flex items-center gap-0.5 shrink-0 group-hover:translate-x-0.5 transition-transform whitespace-nowrap">
+                              <span>弹窗拆阅</span>
+                              <ChevronRight className="w-3.5 h-3.5" />
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="pt-2.5 mt-2 border-t border-[#5B7B6D]/10 flex items-center justify-between text-xs text-[#6E7C75] font-serif">
+                            <p className="italic text-[11px] opacity-80 truncate pr-2">
+                              「火漆封存完好，轻触弹窗查看胶囊密闭详情」
+                            </p>
+                            <div className="text-[10px] font-sans text-[#5B7B6D] bg-white/80 px-2 py-0.5 rounded-lg border border-[#5B7B6D]/15 flex items-center gap-1 shrink-0 whitespace-nowrap">
+                              <Lock className="w-2.5 h-2.5" /> 密闭中
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           )}
 
@@ -2585,7 +3238,15 @@ export default function App() {
                   const groupVal = formPersonGroup || (fd.get('group') as string)?.trim() || '未分组';
                   const knowWhereVal = (fd.get('knowWhere') as string)?.trim() || '时光长廊';
                   const zodiacVal = birthdayVal ? getZodiacFromBirthday(birthdayVal) : '未知';
+                  const knownDateVal = (fd.get('knownDate') as string)?.trim() || '2021-09-01';
+                  const wechatVal = (fd.get('wechat') as string)?.trim() || '';
+                  const qqVal = (fd.get('qq') as string)?.trim() || '';
+                  const phoneVal = (fd.get('phone') as string)?.trim() || '';
 
+                  if (!formPersonAvatar) {
+                    showToast('请上传人物头像相片（必填项）');
+                    return;
+                  }
                   if (!nameVal) {
                     showToast('请填写人物姓名或称谓（必填项）');
                     return;
@@ -2597,11 +3258,15 @@ export default function App() {
                   addItem('people', {
                     id: 'p-' + Date.now(),
                     name: nameVal,
-                    avatar: formPersonAvatar || PRESET_AVATARS[0],
+                    avatar: formPersonAvatar,
                     relationship: relVal,
                     group: groupVal,
                     birthday: birthdayVal || '未填写',
                     zodiac: zodiacVal,
+                    knownDate: knownDateVal,
+                    wechat: wechatVal,
+                    qq: qqVal,
+                    phone: phoneVal,
                     hobbies: (fd.get('hobbies') as string)?.trim() || '未填写',
                     color: (fd.get('color') as string)?.trim() || '暖杏粉',
                     bio: (fd.get('bio') as string)?.trim() || `${relVal} · 珍贵回忆的同路人`,
@@ -2610,7 +3275,7 @@ export default function App() {
                       ? [{ id: 'imp-0', year: new Date().getFullYear().toString(), text: (fd.get('impression') as string)?.trim() }]
                       : []
                   });
-                  setFormPersonAvatar(PRESET_AVATARS[0]);
+                  setFormPersonAvatar('');
                   setFormPersonRel('挚友');
                   setFormPersonGroup('未分组');
                 }} className="space-y-4 text-xs font-sans">
@@ -2627,14 +3292,13 @@ export default function App() {
                       </span>
                     </div>
 
-                    {/* Local Avatar Uploader with Presets */}
+                    {/* Local Avatar Uploader */}
                     <LocalImageUploader
                       value={formPersonAvatar}
                       onChange={setFormPersonAvatar}
                       mode="avatar"
-                      label="人物头像 (本地相册/自拍上传)"
-                      helperText="本地上传照片或在下方快捷选用插画头像"
-                      presetAvatars={PRESET_AVATARS}
+                      label="人物头像"
+                      required={true}
                     />
 
                     <div>
@@ -2683,12 +3347,12 @@ export default function App() {
                     </div>
                   </div>
 
-                  {/* Section 2: 分组与特征喜好 (选填) */}
+                  {/* Section 2: 分组归类与基本信息 */}
                   <div className="bg-white p-3.5 rounded-2xl border border-[#5B7B6D]/15 shadow-2xs space-y-3">
                     <div className="flex items-center justify-between pb-2 border-b border-[#5B7B6D]/10">
                       <h4 className="font-bold text-[#2B332E] text-xs font-serif flex items-center gap-1.5">
                         <span className="w-1.5 h-3.5 bg-[#5B7B6D] rounded-full inline-block"></span>
-                        分组归类与喜好 (选填)
+                        分组归类与基本信息
                       </h4>
                       <span className="text-[10px] text-[#6E7C75] bg-stone-100 px-2 py-0.5 rounded-full font-medium">
                         选填
@@ -2696,7 +3360,7 @@ export default function App() {
                     </div>
 
                     <div>
-                      <label className="text-[10px] text-[#6E7C75] block mb-1">好友分组 (选填)</label>
+                      <label className="text-[10px] text-[#6E7C75] block mb-1">好友分组</label>
                       <div className="flex flex-wrap gap-1.5 mb-1.5">
                         {Array.from(new Set([...customGroups, '未分组'])).map(grp => (
                           <button
@@ -2725,7 +3389,18 @@ export default function App() {
                     <div className="grid grid-cols-2 gap-2.5">
                       <div>
                         <label className="text-[10px] text-[#6E7C75] block mb-1">
-                          生日 (选填，自动匹配星座)
+                          相识起始日期
+                        </label>
+                        <input
+                          name="knownDate"
+                          type="date"
+                          defaultValue="2021-09-01"
+                          className="w-full p-2.5 rounded-xl border border-[#5B7B6D]/20 bg-[#FAF8F5] focus:bg-white focus:outline-none focus:border-[#5B7B6D]"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[10px] text-[#6E7C75] block mb-1">
+                          生日
                         </label>
                         <input
                           name="birthday"
@@ -2733,34 +3408,76 @@ export default function App() {
                           className="w-full p-2.5 rounded-xl border border-[#5B7B6D]/20 bg-[#FAF8F5] focus:bg-white focus:outline-none focus:border-[#5B7B6D]"
                         />
                       </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2.5">
                       <div>
-                        <label className="text-[10px] text-[#6E7C75] block mb-1">认识地点 (选填)</label>
+                        <label className="text-[10px] text-[#6E7C75] block mb-1">认识地点</label>
                         <input
                           name="knowWhere"
                           placeholder="如：老校区林荫路、大一画室"
                           className="w-full p-2.5 rounded-xl border border-[#5B7B6D]/20 bg-[#FAF8F5] focus:bg-white focus:outline-none focus:border-[#5B7B6D]"
                         />
                       </div>
+                      <div>
+                        <label className="text-[10px] text-[#6E7C75] block mb-1">喜欢的颜色</label>
+                        <input name="color" placeholder="如：鼠尾草绿、暖杏粉" className="w-full p-2.5 rounded-xl border border-[#5B7B6D]/20 bg-[#FAF8F5] focus:bg-white focus:outline-none focus:border-[#5B7B6D]" />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="text-[10px] text-[#6E7C75] block mb-1">兴趣爱好</label>
+                      <input name="hobbies" placeholder="如：胶片摄影、烘焙甜品、骑行" className="w-full p-2.5 rounded-xl border border-[#5B7B6D]/20 bg-[#FAF8F5] focus:bg-white focus:outline-none focus:border-[#5B7B6D]" />
+                    </div>
+                  </div>
+
+                  {/* Section 3: 社交与联系方式 (选填) */}
+                  <div className="bg-white p-3.5 rounded-2xl border border-[#5B7B6D]/15 shadow-2xs space-y-3">
+                    <div className="flex items-center justify-between pb-2 border-b border-[#5B7B6D]/10">
+                      <h4 className="font-bold text-[#2B332E] text-xs font-serif flex items-center gap-1.5">
+                        <span className="w-1.5 h-3.5 bg-[#5B7B6D] rounded-full inline-block"></span>
+                        社交与联系方式
+                      </h4>
+                      <span className="text-[10px] text-[#6E7C75] bg-stone-100 px-2 py-0.5 rounded-full font-medium">
+                        选填
+                      </span>
                     </div>
 
                     <div className="grid grid-cols-2 gap-2.5">
                       <div>
-                        <label className="text-[10px] text-[#6E7C75] block mb-1">兴趣爱好 (选填)</label>
-                        <input name="hobbies" placeholder="如：摄影、黑胶、吉他" className="w-full p-2.5 rounded-xl border border-[#5B7B6D]/20 bg-[#FAF8F5] focus:bg-white focus:outline-none focus:border-[#5B7B6D]" />
+                        <label className="text-[10px] text-[#6E7C75] block mb-1">微信号</label>
+                        <input
+                          name="wechat"
+                          placeholder="如：wx_summer07"
+                          className="w-full p-2.5 rounded-xl border border-[#5B7B6D]/20 bg-[#FAF8F5] focus:bg-white focus:outline-none focus:border-[#5B7B6D]"
+                        />
                       </div>
                       <div>
-                        <label className="text-[10px] text-[#6E7C75] block mb-1">喜欢的颜色 (选填)</label>
-                        <input name="color" placeholder="如：鼠尾草绿、群青" className="w-full p-2.5 rounded-xl border border-[#5B7B6D]/20 bg-[#FAF8F5] focus:bg-white focus:outline-none focus:border-[#5B7B6D]" />
+                        <label className="text-[10px] text-[#6E7C75] block mb-1">QQ 号</label>
+                        <input
+                          name="qq"
+                          placeholder="如：83920194"
+                          className="w-full p-2.5 rounded-xl border border-[#5B7B6D]/20 bg-[#FAF8F5] focus:bg-white focus:outline-none focus:border-[#5B7B6D]"
+                        />
                       </div>
+                    </div>
+
+                    <div>
+                      <label className="text-[10px] text-[#6E7C75] block mb-1">手机 / 电话</label>
+                      <input
+                        name="phone"
+                        placeholder="如：13812349201"
+                        className="w-full p-2.5 rounded-xl border border-[#5B7B6D]/20 bg-[#FAF8F5] focus:bg-white focus:outline-none focus:border-[#5B7B6D]"
+                      />
                     </div>
                   </div>
 
-                  {/* Section 3: 时光印记与简介 (选填) */}
+                  {/* Section 4: 时光印记与生平寄语 */}
                   <div className="bg-white p-3.5 rounded-2xl border border-[#5B7B6D]/15 shadow-2xs space-y-3">
                     <div className="flex items-center justify-between pb-2 border-b border-[#5B7B6D]/10">
                       <h4 className="font-bold text-[#2B332E] text-xs font-serif flex items-center gap-1.5">
                         <span className="w-1.5 h-3.5 bg-[#8C6D52] rounded-full inline-block"></span>
-                        生平寄语与初识印象 (选填)
+                        生平寄语与初识印象
                       </h4>
                       <span className="text-[10px] text-[#6E7C75] bg-stone-100 px-2 py-0.5 rounded-full font-medium">
                         选填
@@ -2768,12 +3485,12 @@ export default function App() {
                     </div>
 
                     <div>
-                      <label className="text-[10px] text-[#6E7C75] block mb-1">一句话人物总结 (选填)</label>
+                      <label className="text-[10px] text-[#6E7C75] block mb-1">一句话人物总结</label>
                       <input name="bio" placeholder="如：一起在晚自习后看过无数次晚霞的知心挚友" className="w-full p-2.5 rounded-xl border border-[#5B7B6D]/20 bg-[#FAF8F5] focus:bg-white focus:outline-none focus:border-[#5B7B6D]" />
                     </div>
 
                     <div>
-                      <label className="text-[10px] text-[#6E7C75] block mb-1">初识或目前记忆印象 (选填)</label>
+                      <label className="text-[10px] text-[#6E7C75] block mb-1">初识或目前记忆印象</label>
                       <textarea name="impression" rows={2} placeholder="如：还记得大一军训休息时递来的那瓶冰橘子汽水，眼睛笑起来像弯月..." className="w-full p-2.5 rounded-xl border border-[#5B7B6D]/20 bg-[#FAF8F5] focus:bg-white focus:outline-none focus:border-[#5B7B6D]" />
                     </div>
                   </div>
@@ -3271,7 +3988,16 @@ export default function App() {
                 const groupVal = editPersonGroup || (fd.get('group') as string)?.trim() || selectedPerson.group || '未分组';
                 const knowWhereVal = (fd.get('knowWhere') as string)?.trim() || selectedPerson.customFields?.['认识地点'] || '时光长廊';
                 const zodiacVal = birthdayVal && birthdayVal !== '未填写' ? getZodiacFromBirthday(birthdayVal) : (selectedPerson.zodiac || '未知');
+                const knownDateVal = (fd.get('knownDate') as string)?.trim() || selectedPerson.knownDate || '2021-09-01';
+                const wechatVal = (fd.get('wechat') as string)?.trim() || '';
+                const qqVal = (fd.get('qq') as string)?.trim() || '';
+                const phoneVal = (fd.get('phone') as string)?.trim() || '';
+                const finalAvatar = editPersonAvatar || selectedPerson.avatar;
 
+                if (!finalAvatar) {
+                  showToast('请上传人物头像相片（必填项）');
+                  return;
+                }
                 if (!nameVal) {
                   showToast('请填写人物姓名（必填项）');
                   return;
@@ -3286,10 +4012,14 @@ export default function App() {
                   group: groupVal,
                   birthday: birthdayVal || '未填写',
                   zodiac: zodiacVal,
+                  knownDate: knownDateVal,
+                  wechat: wechatVal,
+                  qq: qqVal,
+                  phone: phoneVal,
                   hobbies: (fd.get('hobbies') as string)?.trim() || '未填写',
                   color: (fd.get('color') as string)?.trim() || '暖杏粉',
                   bio: (fd.get('bio') as string)?.trim() || `${relVal} · 珍贵回忆的同路人`,
-                  avatar: editPersonAvatar || selectedPerson.avatar || PRESET_AVATARS[0],
+                  avatar: finalAvatar,
                   customFields: {
                     ...(selectedPerson.customFields || {}),
                     '认识地点': knowWhereVal
@@ -3309,14 +4039,13 @@ export default function App() {
                     </span>
                   </div>
 
-                  {/* Local Avatar Uploader with Presets */}
+                  {/* Local Avatar Uploader */}
                   <LocalImageUploader
                     value={editPersonAvatar || selectedPerson.avatar}
                     onChange={setEditPersonAvatar}
                     mode="avatar"
-                    label="人物头像 (本地相册/自拍上传)"
-                    helperText="本地上传照片或在下方快捷选用插画头像"
-                    presetAvatars={PRESET_AVATARS}
+                    label="人物头像"
+                    required={true}
                   />
 
                   <div>
@@ -3366,12 +4095,12 @@ export default function App() {
                   </div>
                 </div>
 
-                {/* Section 2: 分组与特征喜好 (选填) */}
+                {/* Section 2: 分组归类与基本信息 */}
                 <div className="bg-white p-3.5 rounded-2xl border border-[#5B7B6D]/15 shadow-2xs space-y-3">
                   <div className="flex items-center justify-between pb-2 border-b border-[#5B7B6D]/10">
                     <h4 className="font-bold text-[#2B332E] text-xs font-serif flex items-center gap-1.5">
                       <span className="w-1.5 h-3.5 bg-[#5B7B6D] rounded-full inline-block"></span>
-                      分组归类与喜好 (选填)
+                      分组归类与基本信息
                     </h4>
                     <span className="text-[10px] text-[#6E7C75] bg-stone-100 px-2 py-0.5 rounded-full font-medium">
                       选填
@@ -3379,7 +4108,7 @@ export default function App() {
                   </div>
 
                   <div>
-                    <label className="text-[10px] text-[#6E7C75] block mb-1">好友分组 (选填)</label>
+                    <label className="text-[10px] text-[#6E7C75] block mb-1">好友分组</label>
                     <div className="flex flex-wrap gap-1.5 mb-1.5">
                       {Array.from(new Set([...customGroups, '未分组'])).map(grp => (
                         <button
@@ -3408,21 +4137,23 @@ export default function App() {
                   <div className="grid grid-cols-2 gap-2.5">
                     <div>
                       <label className="text-[10px] text-[#6E7C75] block mb-1">
-                        生日 (选填，自动匹配星座)
+                        相识起始日期
                       </label>
                       <input
-                        name="birthday"
-                        defaultValue={selectedPerson.birthday}
-                        placeholder="如：10月24日、1998-05-12"
+                        name="knownDate"
+                        type="date"
+                        defaultValue={selectedPerson.knownDate || '2021-09-01'}
                         className="w-full p-2.5 rounded-xl border border-[#5B7B6D]/20 bg-[#FAF8F5] focus:bg-white focus:outline-none focus:border-[#5B7B6D]"
                       />
                     </div>
                     <div>
-                      <label className="text-[10px] text-[#6E7C75] block mb-1">认识地点 (选填)</label>
+                      <label className="text-[10px] text-[#6E7C75] block mb-1">
+                        生日
+                      </label>
                       <input
-                        name="knowWhere"
-                        defaultValue={selectedPerson.customFields?.['认识地点'] || ''}
-                        placeholder="如：老校区林荫路、大一画室"
+                        name="birthday"
+                        defaultValue={selectedPerson.birthday !== '未填写' ? selectedPerson.birthday : ''}
+                        placeholder="如：10月24日、1998-05-12"
                         className="w-full p-2.5 rounded-xl border border-[#5B7B6D]/20 bg-[#FAF8F5] focus:bg-white focus:outline-none focus:border-[#5B7B6D]"
                       />
                     </div>
@@ -3430,22 +4161,76 @@ export default function App() {
 
                   <div className="grid grid-cols-2 gap-2.5">
                     <div>
-                      <label className="text-[10px] text-[#6E7C75] block mb-1">兴趣爱好 (选填)</label>
-                      <input name="hobbies" defaultValue={selectedPerson.hobbies} placeholder="如：摄影、黑胶、吉他" className="w-full p-2.5 rounded-xl border border-[#5B7B6D]/20 bg-[#FAF8F5] focus:bg-white focus:outline-none focus:border-[#5B7B6D]" />
+                      <label className="text-[10px] text-[#6E7C75] block mb-1">认识地点</label>
+                      <input
+                        name="knowWhere"
+                        defaultValue={selectedPerson.customFields?.['认识地点'] || ''}
+                        placeholder="如：老校区林荫路、大一画室"
+                        className="w-full p-2.5 rounded-xl border border-[#5B7B6D]/20 bg-[#FAF8F5] focus:bg-white focus:outline-none focus:border-[#5B7B6D]"
+                      />
                     </div>
                     <div>
-                      <label className="text-[10px] text-[#6E7C75] block mb-1">喜欢的颜色 (选填)</label>
-                      <input name="color" defaultValue={selectedPerson.color} placeholder="如：鼠尾草绿、群青" className="w-full p-2.5 rounded-xl border border-[#5B7B6D]/20 bg-[#FAF8F5] focus:bg-white focus:outline-none focus:border-[#5B7B6D]" />
+                      <label className="text-[10px] text-[#6E7C75] block mb-1">喜欢的颜色</label>
+                      <input name="color" defaultValue={selectedPerson.color} placeholder="如：鼠尾草绿、暖杏粉" className="w-full p-2.5 rounded-xl border border-[#5B7B6D]/20 bg-[#FAF8F5] focus:bg-white focus:outline-none focus:border-[#5B7B6D]" />
                     </div>
+                  </div>
+
+                  <div>
+                    <label className="text-[10px] text-[#6E7C75] block mb-1">兴趣爱好</label>
+                    <input name="hobbies" defaultValue={selectedPerson.hobbies !== '未填写' ? selectedPerson.hobbies : ''} placeholder="如：胶片摄影、烘焙甜品、骑行" className="w-full p-2.5 rounded-xl border border-[#5B7B6D]/20 bg-[#FAF8F5] focus:bg-white focus:outline-none focus:border-[#5B7B6D]" />
                   </div>
                 </div>
 
-                {/* Section 3: 生平寄语 (选填) */}
+                {/* Section 3: 社交与联系方式 (选填) */}
+                <div className="bg-white p-3.5 rounded-2xl border border-[#5B7B6D]/15 shadow-2xs space-y-3">
+                  <div className="flex items-center justify-between pb-2 border-b border-[#5B7B6D]/10">
+                    <h4 className="font-bold text-[#2B332E] text-xs font-serif flex items-center gap-1.5">
+                      <span className="w-1.5 h-3.5 bg-[#5B7B6D] rounded-full inline-block"></span>
+                      社交与联系方式
+                    </h4>
+                    <span className="text-[10px] text-[#6E7C75] bg-stone-100 px-2 py-0.5 rounded-full font-medium">
+                      选填
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2.5">
+                    <div>
+                      <label className="text-[10px] text-[#6E7C75] block mb-1">微信号</label>
+                      <input
+                        name="wechat"
+                        defaultValue={selectedPerson.wechat || ''}
+                        placeholder="如：wx_summer07"
+                        className="w-full p-2.5 rounded-xl border border-[#5B7B6D]/20 bg-[#FAF8F5] focus:bg-white focus:outline-none focus:border-[#5B7B6D]"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] text-[#6E7C75] block mb-1">QQ 号</label>
+                      <input
+                        name="qq"
+                        defaultValue={selectedPerson.qq || ''}
+                        placeholder="如：83920194"
+                        className="w-full p-2.5 rounded-xl border border-[#5B7B6D]/20 bg-[#FAF8F5] focus:bg-white focus:outline-none focus:border-[#5B7B6D]"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="text-[10px] text-[#6E7C75] block mb-1">手机 / 电话</label>
+                    <input
+                      name="phone"
+                      defaultValue={selectedPerson.phone || ''}
+                      placeholder="如：13812349201"
+                      className="w-full p-2.5 rounded-xl border border-[#5B7B6D]/20 bg-[#FAF8F5] focus:bg-white focus:outline-none focus:border-[#5B7B6D]"
+                    />
+                  </div>
+                </div>
+
+                {/* Section 4: 生平寄语与概述 */}
                 <div className="bg-white p-3.5 rounded-2xl border border-[#5B7B6D]/15 shadow-2xs space-y-3">
                   <div className="flex items-center justify-between pb-2 border-b border-[#5B7B6D]/10">
                     <h4 className="font-bold text-[#2B332E] text-xs font-serif flex items-center gap-1.5">
                       <span className="w-1.5 h-3.5 bg-[#8C6D52] rounded-full inline-block"></span>
-                      生平寄语与概述 (选填)
+                      生平寄语与概述
                     </h4>
                     <span className="text-[10px] text-[#6E7C75] bg-stone-100 px-2 py-0.5 rounded-full font-medium">
                       选填
@@ -3453,7 +4238,7 @@ export default function App() {
                   </div>
 
                   <div>
-                    <label className="text-[10px] text-[#6E7C75] block mb-1">一句话人物总结 (选填)</label>
+                    <label className="text-[10px] text-[#6E7C75] block mb-1">一句话人物总结</label>
                     <textarea name="bio" defaultValue={selectedPerson.bio} rows={2} placeholder="如：一起在晚自习后看过无数次晚霞的知心挚友" className="w-full p-2.5 rounded-xl border border-[#5B7B6D]/20 bg-[#FAF8F5] focus:bg-white focus:outline-none focus:border-[#5B7B6D]" />
                   </div>
                 </div>
@@ -3485,7 +4270,6 @@ export default function App() {
                   <button
                     onClick={() => {
                       requestDelete('artifacts', selectedArtifact.id, selectedArtifact.name);
-                      setSelectedArtifact(null);
                     }}
                     className="p-1.5 text-[#6E7C75]/50 hover:text-red-500 rounded-lg hover:bg-red-50 transition-all"
                     title="删除旧物"
@@ -3727,30 +4511,319 @@ export default function App() {
           </div>
         )}
 
-        {/* Custom Delete Confirmation Modal */}
+        {/* Letter Popup Modal: Aesthetic Japanese Stationery Capsule Letter Reader */}
+        {selectedLetter && (
+          <div
+            className="absolute inset-0 bg-[#2B332E]/60 backdrop-blur-sm z-50 flex items-center justify-center p-3.5 sm:p-5 animate-fadeIn"
+            onClick={() => setSelectedLetter(null)}
+          >
+            <div
+              className="bg-[#FAF8F5] w-full max-w-lg max-h-[88%] flex flex-col rounded-3xl border border-[#5B7B6D]/30 shadow-2xl overflow-hidden animate-scaleUp paper-texture relative"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Header Letter Bar */}
+              <div className="px-5 py-4 bg-white/80 border-b border-[#5B7B6D]/15 flex items-center justify-between gap-3 shrink-0">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div
+                    className={`w-9 h-9 rounded-2xl flex items-center justify-center shrink-0 border ${
+                      selectedLetter.isUnlocked || new Date().toISOString().slice(0, 10) >= selectedLetter.unlockDate
+                        ? 'bg-[#FDF0EB] text-[#E88765] border-[#E88765]/30'
+                        : 'bg-white text-[#6E7C75] border-[#5B7B6D]/20'
+                    }`}
+                  >
+                    {selectedLetter.isUnlocked || new Date().toISOString().slice(0, 10) >= selectedLetter.unlockDate ? (
+                      <MailOpen className="w-4.5 h-4.5 text-[#E88765]" />
+                    ) : (
+                      <Lock className="w-4.5 h-4.5 text-[#6E7C75]" />
+                    )}
+                  </div>
+                  <div className="min-w-0">
+                    <span className="text-[10px] text-[#5B7B6D] font-mono tracking-widest block font-medium">
+                      CHRONO LETTER
+                    </span>
+                    <span className="text-xs text-[#6E7C75] font-sans">
+                      封存信笺 · 见字如面
+                    </span>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      requestDelete('letters', selectedLetter.id, selectedLetter.title);
+                    }}
+                    className="p-1.5 text-[#6E7C75]/40 hover:text-red-500 rounded-xl hover:bg-red-50 transition-all"
+                    title="删除此信"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedLetter(null)}
+                    className="p-1.5 text-[#6E7C75] hover:text-[#2B332E] rounded-xl hover:bg-black/5 transition-all"
+                    title="关闭弹窗"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Scrollable Letter Content */}
+              <div className="p-5 sm:p-6 overflow-y-auto flex-1 space-y-4">
+                {/* Full Unbroken Title */}
+                <div>
+                  <h2 className="text-lg sm:text-xl font-bold text-[#2B332E] font-serif leading-snug break-words">
+                    {selectedLetter.title}
+                  </h2>
+                  <div className="flex flex-wrap items-center gap-3 text-xs text-[#6E7C75] font-sans mt-2 pt-2 border-t border-[#5B7B6D]/10">
+                    <span className="flex items-center gap-1">
+                      <Clock className="w-3.5 h-3.5 text-[#5B7B6D]" />
+                      封存日期: {selectedLetter.date || '时光原点'}
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <Calendar className="w-3.5 h-3.5 text-[#E88765]" />
+                      约定开启: {selectedLetter.unlockDate}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Status Indicator / Unlocked Letter Card */}
+                {selectedLetter.isUnlocked || new Date().toISOString().slice(0, 10) >= selectedLetter.unlockDate ? (
+                  <div className="space-y-4">
+                    {/* Letter Paper Body */}
+                    <div className="p-4 sm:p-5 bg-white/95 rounded-2xl border border-[#5B7B6D]/20 shadow-xs space-y-3 relative overflow-hidden animate-fadeIn">
+                      <div className="flex items-center justify-between border-b border-[#5B7B6D]/10 pb-2">
+                        <span className="text-[10px] text-[#5B7B6D] font-mono tracking-wider flex items-center gap-1">
+                          <Sparkles className="w-3 h-3 text-[#E88765]" /> 封存信笺 · 展读模式
+                        </span>
+                        <span className="text-[10px] text-[#E88765] bg-[#FDF0EB] px-2 py-0.5 rounded-full font-medium">
+                          ✦ 已化火漆 ✦
+                        </span>
+                      </div>
+                      <div className="text-sm text-[#2B332E] font-serif leading-relaxed whitespace-pre-line break-words pt-1 select-text">
+                        {selectedLetter.content}
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="p-6 bg-white/80 rounded-2xl border border-dashed border-[#5B7B6D]/25 text-center space-y-4 shadow-2xs">
+                    <div className="relative inline-block mx-auto">
+                      <div className="w-14 h-14 rounded-full bg-gradient-to-br from-[#FAF8F5] to-[#F2EFE9] border-2 border-[#D9CFC1] text-[#E88765] flex items-center justify-center text-2xl shadow-inner">
+                        📮
+                      </div>
+                      <span className="absolute -bottom-1 -right-1 w-5 h-5 bg-[#5B7B6D] text-white rounded-full flex items-center justify-center text-[10px] shadow-2xs">
+                        <Lock className="w-2.5 h-2.5" />
+                      </span>
+                    </div>
+
+                    <div className="space-y-1.5 max-w-sm mx-auto">
+                      <h4 className="font-bold text-sm sm:text-base text-[#2B332E] font-serif">
+                        信笺尚在时光封蜡中
+                      </h4>
+                      <p className="text-xs text-[#6E7C75] leading-relaxed font-serif">
+                        这封信原约定于 <strong className="text-[#E88765] font-bold">{selectedLetter.unlockDate}</strong> 开启解封。
+                      </p>
+                      <p className="text-[11px] text-[#6E7C75]/80 font-sans">
+                        你可以静候约定之日自动开启，亦可现在由你亲手点触提前破蜡拆阅。
+                      </p>
+                    </div>
+
+                    <div className="pt-2 flex justify-center">
+                      <button
+                        type="button"
+                        disabled={isUnsealingLetter}
+                        onClick={() => handleUnsealLetter(selectedLetter)}
+                        className={`px-5 py-2.5 bg-gradient-to-r from-[#E88765] to-[#D97350] hover:from-[#D97350] hover:to-[#C66240] text-white text-xs font-bold rounded-2xl shadow-md flex items-center gap-2 transition-all active:scale-95 ${
+                          isUnsealingLetter ? 'opacity-75 cursor-wait' : 'hover:shadow-lg'
+                        }`}
+                      >
+                        <Sparkles className={`w-4 h-4 ${isUnsealingLetter ? 'animate-spin' : ''}`} />
+                        <span>{isUnsealingLetter ? '正在解化火漆封蜡...' : '亲手拆开火漆信封'}</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Modal Footer Controls */}
+              <div className="p-4 bg-white/90 border-t border-[#5B7B6D]/15 flex items-center justify-between gap-3 shrink-0">
+                <div className="text-xs text-[#6E7C75] font-sans">
+                  {selectedLetter.isUnlocked || new Date().toISOString().slice(0, 10) >= selectedLetter.unlockDate ? (
+                    <span className="text-[#E88765] font-medium flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-[#E88765]" />
+                      已到期拆封
+                    </span>
+                  ) : (
+                    <span className="text-[#5B7B6D] font-medium flex items-center gap-1">
+                      <Lock className="w-3 h-3" />
+                      封存密闭中
+                    </span>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-2">
+                  {(selectedLetter.isUnlocked || new Date().toISOString().slice(0, 10) >= selectedLetter.unlockDate) && (
+                    <button
+                      type="button"
+                      onClick={() => handlePlayTts(selectedLetter.content)}
+                      className="text-xs px-3.5 py-2 bg-[#FDF0EB] text-[#E88765] rounded-xl border border-[#E88765]/25 flex items-center gap-1.5 font-medium hover:bg-[#E88765] hover:text-white transition-all font-sans active:scale-95 shadow-2xs"
+                    >
+                      <Volume2 className="w-3.5 h-3.5" /> <span>朗读</span>
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setSelectedLetter(null)}
+                    className="text-xs px-4 py-2 bg-[#5B7B6D] text-white rounded-xl font-medium hover:bg-[#3E564B] transition-all active:scale-95 shadow-2xs"
+                  >
+                    关闭
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Story Edit Modal */}
+        {editingStory && (
+          <div className="absolute inset-0 bg-[#2B332E]/40 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 animate-fadeIn">
+            <div className="bg-[#FAF8F5] w-full max-h-[90%] overflow-y-auto p-5 rounded-t-3xl sm:rounded-3xl border border-[#5B7B6D]/20 shadow-2xl space-y-4">
+              <div className="flex justify-between items-center border-b border-[#5B7B6D]/10 pb-3">
+                <h3 className="font-bold text-[#2B332E] text-base flex items-center gap-2 font-serif">
+                  <Edit3 className="w-4 h-4 text-[#5B7B6D]" /> 编辑故事篇章
+                </h3>
+                <button onClick={() => setEditingStory(null)} className="text-[#6E7C75] hover:text-[#2B332E]">
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <form onSubmit={(e) => {
+                e.preventDefault();
+                const fd = new FormData(e.currentTarget);
+                handleUpdateStory({
+                  id: editingStory.id,
+                  chapter: (fd.get('chapter') as string)?.trim() || '篇章',
+                  title: (fd.get('title') as string)?.trim() || '未命名故事',
+                  date: (fd.get('date') as string) || new Date().toISOString().slice(0, 10),
+                  content: (fd.get('editStoryContent') as string)?.trim() || ''
+                });
+              }} className="space-y-3.5 text-xs font-sans">
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="text-[10px] text-[#6E7C75] block mb-1">篇章卷次 / 序号：</label>
+                    <input
+                      name="chapter"
+                      required
+                      defaultValue={editingStory.chapter}
+                      placeholder="例如: 第一章 · 初见"
+                      className="w-full p-3 rounded-xl border border-[#5B7B6D]/20 bg-white focus:outline-none focus:border-[#5B7B6D]"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-[#6E7C75] block mb-1">故事所属日期：</label>
+                    <input
+                      name="date"
+                      type="date"
+                      required
+                      defaultValue={editingStory.date}
+                      className="w-full p-3 rounded-xl border border-[#5B7B6D]/20 bg-white focus:outline-none focus:border-[#5B7B6D]"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-[10px] text-[#6E7C75] block mb-1">篇章标题：</label>
+                  <input
+                    name="title"
+                    required
+                    defaultValue={editingStory.title}
+                    placeholder="章节标题"
+                    className="w-full p-3 rounded-xl border border-[#5B7B6D]/20 bg-white focus:outline-none focus:border-[#5B7B6D]"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <div className="flex justify-between items-center px-1">
+                    <label className="text-[10px] text-[#6E7C75]">篇章正文内容：</label>
+                    <button
+                      type="button"
+                      onClick={() => handleAiPolishText('textarea[name="editStoryContent"]', (val) => {
+                        const area = document.querySelector('textarea[name="editStoryContent"]') as HTMLTextAreaElement;
+                        if (area) area.value = val;
+                      })}
+                      disabled={isAiPolishLoading}
+                      className="text-[10px] text-[#E88765] hover:underline flex items-center gap-0.5"
+                    >
+                      <Wand2 className="w-3 h-3" /> {isAiPolishLoading ? '润色中...' : '✨ AI 润色正文'}
+                    </button>
+                  </div>
+                  <textarea
+                    name="editStoryContent"
+                    required
+                    rows={8}
+                    defaultValue={editingStory.content}
+                    placeholder="在此编辑正文故事..."
+                    className="w-full p-3 rounded-xl border border-[#5B7B6D]/20 bg-white font-serif leading-relaxed focus:outline-none focus:border-[#5B7B6D]"
+                  />
+                </div>
+
+                <div className="flex gap-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => setEditingStory(null)}
+                    className="flex-1 py-3 bg-[#F2EFE9] text-[#6E7C75] font-semibold rounded-xl hover:bg-[#E8E4DC] transition-all"
+                  >
+                    取消
+                  </button>
+                  <button
+                    type="submit"
+                    className="flex-1 py-3 bg-[#5B7B6D] text-white font-bold rounded-xl shadow-sm hover:bg-[#3E564B] transition-all active:scale-[0.99]"
+                  >
+                    保存篇章修改
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* Custom Delete Confirmation Modal with Bulletproof Cross-Device Styles */}
         {confirmDialog && (
-          <div className="absolute inset-0 bg-[#2B332E]/50 backdrop-blur-sm z-50 flex items-center justify-center p-6 animate-fadeIn font-sans">
-            <div className="bg-[#FAF8F5] w-full max-w-xs p-5 rounded-2xl border border-[#5B7B6D]/20 shadow-2xl text-center space-y-4">
-              <div className="w-12 h-12 rounded-full bg-red-100 text-red-500 flex items-center justify-center mx-auto">
-                <Trash2 className="w-5 h-5" />
+          <div className="absolute inset-0 bg-[#2B332E]/60 backdrop-blur-xs z-50 flex items-center justify-center p-4 sm:p-6 animate-fadeIn font-sans">
+            <div className="bg-[#FAF8F5] w-full max-w-xs p-5 sm:p-6 rounded-3xl border border-[#5B7B6D]/20 shadow-2xl text-center space-y-4 paper-texture">
+              <div
+                className="w-13 h-13 rounded-full flex items-center justify-center mx-auto shadow-2xs"
+                style={{ backgroundColor: '#FEE2E2', color: '#DC2626', border: '1px solid #FECACA' }}
+              >
+                <Trash2 className="w-6 h-6" style={{ color: '#DC2626' }} />
               </div>
-              <div>
-                <h3 className="font-bold text-[#2B332E] text-sm font-serif">确认要抹去此项记忆记录吗？</h3>
-                <p className="text-xs text-[#6E7C75] mt-1 font-serif">{confirmDialog.name}</p>
+              <div className="space-y-1">
+                <h3 className="font-bold text-[#2B332E] text-sm sm:text-base font-serif">确认要抹去此项记忆记录吗？</h3>
+                <p className="text-xs text-[#6E7C75] font-serif bg-white/80 py-1 px-2.5 rounded-xl border border-[#5B7B6D]/15 inline-block max-w-full truncate">
+                  {confirmDialog.name}
+                </p>
+                <p className="text-[11px] text-[#6E7C75]/80 leading-relaxed font-sans pt-0.5">
+                  抹去后该项记录将从当前私人时光空间中彻底移除
+                </p>
               </div>
-              <div className="flex gap-2 pt-1">
+              <div className="flex gap-2.5 pt-1.5">
                 <button
+                  type="button"
                   onClick={() => setConfirmDialog(null)}
-                  className="flex-1 py-2 rounded-xl border border-[#5B7B6D]/20 bg-white text-[#6E7C75] text-xs font-medium hover:bg-[#F2EFE9] transition-all"
+                  className="flex-1 py-2.5 rounded-xl border border-[#5B7B6D]/25 bg-white text-[#6E7C75] text-xs font-semibold hover:bg-[#F2EFE9] transition-all active:scale-95 shadow-2xs"
+                  style={{ backgroundColor: '#FFFFFF', color: '#6E7C75', borderColor: 'rgba(91, 123, 109, 0.25)' }}
                 >
                   取消
                 </button>
                 <button
+                  type="button"
                   onClick={() => {
                     deleteItem(confirmDialog.type, confirmDialog.id);
                     setConfirmDialog(null);
                   }}
-                  className="flex-1 py-2 rounded-xl bg-red-500 text-white text-xs font-medium hover:bg-red-600 shadow-sm transition-all"
+                  className="flex-1 py-2.5 rounded-xl text-white text-xs font-bold shadow-md transition-all active:scale-95 hover:brightness-110"
+                  style={{ backgroundColor: '#DC2626', color: '#FFFFFF', border: '1px solid #B91C1C' }}
                 >
                   确认抹去
                 </button>
@@ -3759,14 +4832,19 @@ export default function App() {
           </div>
         )}
 
-        {/* Bottom Navigation Bar: Exactly 5 Core Tabs with Safe Area Inset */}
-        <nav className="bg-white/90 backdrop-blur-md text-[#2B332E] border-t border-[#5B7B6D]/15 px-2 pt-1.5 pb-[max(0.375rem,env(safe-area-inset-bottom))] flex justify-around items-center z-20">
-          <NavItem id="home" label="首页" icon={Landmark} active={activeTab} onClick={() => setActiveTab('home')} />
-          <NavItem id="timeline" label="拾光轴" icon={Clock} active={activeTab} onClick={() => setActiveTab('timeline')} />
-          <NavItem id="people" label="拾人册" icon={Users} active={activeTab} onClick={() => { setSelectedPerson(null); setActiveTab('people'); }} />
-          <NavItem id="stories" label="拾忆篇" icon={BookOpen} active={activeTab} onClick={() => { setReaderStory(null); setActiveTab('stories'); }} />
-          <NavItem id="artifacts" label="拾物阁" icon={Package} active={activeTab} onClick={() => setActiveTab('artifacts')} />
-        </nav>
+        {/* Dynamic Frosted Glass Bottom Navigation Bar: Floating Capsule with Safe Area Inset */}
+        <div className="shrink-0 z-30 px-3 sm:px-4 pt-1 pb-[max(0.625rem,env(safe-area-inset-bottom))] select-none">
+          <nav 
+            id="dynamic-bottom-nav" 
+            className="dynamic-glass-navbar relative rounded-[26px] sm:rounded-3xl px-1.5 py-1.5 flex justify-around items-center"
+          >
+            <NavItem id="home" label="首页" icon={Landmark} active={activeTab} onClick={() => setActiveTab('home')} />
+            <NavItem id="timeline" label="拾光轴" icon={Clock} active={activeTab} onClick={() => setActiveTab('timeline')} />
+            <NavItem id="people" label="拾人册" icon={Users} active={activeTab} onClick={() => { setSelectedPerson(null); setActiveTab('people'); }} />
+            <NavItem id="stories" label="拾忆篇" icon={BookOpen} active={activeTab} onClick={() => { setReaderStory(null); setActiveTab('stories'); }} />
+            <NavItem id="artifacts" label="拾物阁" icon={Package} active={activeTab} onClick={() => setActiveTab('artifacts')} />
+          </nav>
+        </div>
 
         {/* Friend Group Picker Bottom Sheet Modal */}
         <AnimatePresence>
@@ -3783,6 +4861,7 @@ export default function App() {
               people={data.people}
               customGroups={customGroups}
               onAddGroup={handleAddGroup}
+              onDeleteGroup={handleDeleteGroup}
               theme={currentTheme}
             />
           )}
@@ -3999,15 +5078,29 @@ function NavItem({
   const isActive = active === id;
   return (
     <button
+      type="button"
+      id={`nav-item-${id}`}
       onClick={onClick}
-      className={`flex flex-col items-center gap-0.5 px-3 py-1 rounded-xl transition-all ${
+      className={`min-h-[46px] min-w-[52px] flex-1 max-w-[76px] flex flex-col items-center justify-center gap-0.5 px-1 py-1 rounded-2xl transition-all duration-200 select-none touch-manipulation active:scale-95 ${
         isActive
-          ? 'text-[#E88765] scale-105 font-bold'
-          : 'text-[#6E7C75]/70 hover:text-[#2B332E]'
+          ? 'text-[#E88765] font-bold'
+          : 'text-[#6E7C75] hover:text-[#2B332E] active:text-[#2B332E]'
       }`}
     >
-      <IconComp className="w-4 h-4" />
-      <span className="text-[10px] tracking-wider font-serif">{label}</span>
+      <div 
+        className={`p-1.5 rounded-xl transition-all duration-200 ${
+          isActive 
+            ? 'bg-[#E88765]/15 text-[#E88765] shadow-2xs scale-105' 
+            : 'text-current bg-transparent'
+        }`}
+      >
+        <IconComp className="w-4 h-4" />
+      </div>
+      <span className={`text-[10px] tracking-wider font-serif whitespace-nowrap leading-none transition-colors duration-200 ${
+        isActive ? 'text-[#E88765] font-bold' : 'text-[#6E7C75]'
+      }`}>
+        {label}
+      </span>
     </button>
   );
 }
@@ -4030,7 +5123,7 @@ function EntranceCard({
   return (
     <div
       onClick={onClick}
-      className="bg-white p-3.5 rounded-2xl border border-[#5B7B6D]/15 shadow-sm cursor-pointer hover:border-[#E88765]/40 hover:shadow transition-all flex flex-col justify-between h-28 group"
+      className="bg-white p-3.5 rounded-2xl border border-[#5B7B6D]/15 shadow-sm cursor-pointer hover:border-[#E88765]/40 active:border-[#E88765] active:scale-[0.98] transition-all flex flex-col justify-between h-28 group select-none touch-manipulation"
     >
       <div className="flex justify-between items-start">
         <div className="p-2 rounded-xl bg-[#F2EFE9] text-[#5B7B6D] group-hover:bg-[#FDF0EB] group-hover:text-[#E88765] transition-colors">
@@ -4053,8 +5146,24 @@ interface ChronoYearPickerModalProps {
   onSelectYear: (year: string) => void;
   years: string[];
   yearStats: {
-    statsMap: Record<string, { total: number; timeline: number; stories: number; artifacts: number; impressions: number }>;
+    statsMap: Record<string, {
+      total: number;
+      timeline: number;
+      stories: number;
+      artifacts: number;
+      impressions: number;
+      people: number;
+      letters: number;
+    }>;
     totalAll: number;
+    totals: {
+      timeline: number;
+      stories: number;
+      artifacts: number;
+      people: number;
+      impressions: number;
+      letters: number;
+    };
   };
   theme: HealingTheme;
 }
@@ -4168,7 +5277,7 @@ function ChronoYearPickerModal({
           {/* Hero Selection Card: 「全景时光」 (Panorama Timeline) */}
           <div
             onClick={() => onSelectYear('all')}
-            className={`p-3.5 rounded-2xl border transition-all cursor-pointer relative overflow-hidden group ${
+            className={`p-4 rounded-2xl border transition-all cursor-pointer relative overflow-hidden group ${
               selectedYear === 'all'
                 ? 'bg-gradient-to-br from-white via-[#FAF8F5] to-[#F2EFE9] border-[#5B7B6D] shadow-md ring-2 ring-[#5B7B6D]/20'
                 : 'bg-white/80 border-[#5B7B6D]/15 hover:border-[#5B7B6D]/40 hover:bg-white'
@@ -4207,6 +5316,30 @@ function ChronoYearPickerModal({
               ) : (
                 <span className="text-[11px] font-medium text-[#5B7B6D] opacity-0 group-hover:opacity-100 transition-opacity">
                   切换全览 →
+                </span>
+              )}
+            </div>
+
+            {/* Real-time Category Breakdown in Panorama Card */}
+            <div className="flex flex-wrap gap-1.5 mt-3 pt-2.5 border-t border-[#5B7B6D]/10 text-[10px] text-[#5B7B6D] font-sans">
+              <span className="px-2 py-0.5 rounded-md bg-white border border-[#5B7B6D]/15 font-medium shadow-2xs">
+                {yearStats.totals.timeline} 节点
+              </span>
+              <span className="px-2 py-0.5 rounded-md bg-white border border-[#5B7B6D]/15 font-medium shadow-2xs">
+                {yearStats.totals.stories} 篇章
+              </span>
+              <span className="px-2 py-0.5 rounded-md bg-white border border-[#5B7B6D]/15 font-medium shadow-2xs">
+                {yearStats.totals.artifacts} 旧物
+              </span>
+              <span className="px-2 py-0.5 rounded-md bg-white border border-[#5B7B6D]/15 font-medium shadow-2xs">
+                {yearStats.totals.people} 人物
+              </span>
+              <span className="px-2 py-0.5 rounded-md bg-white border border-[#5B7B6D]/15 font-medium shadow-2xs">
+                {yearStats.totals.impressions} 印象
+              </span>
+              {yearStats.totals.letters > 0 && (
+                <span className="px-2 py-0.5 rounded-md bg-white border border-[#5B7B6D]/15 font-medium shadow-2xs">
+                  {yearStats.totals.letters} 胶囊
                 </span>
               )}
             </div>
@@ -4310,7 +5443,7 @@ function ChronoYearPickerModal({
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
               {displayedYears.map((yr) => {
                 const isCurrentSelected = selectedYear === yr;
-                const stats = yearStats.statsMap[yr] || { total: 0, timeline: 0, stories: 0, artifacts: 0, impressions: 0 };
+                const stats = yearStats.statsMap[yr] || { total: 0, timeline: 0, stories: 0, artifacts: 0, impressions: 0, people: 0, letters: 0 };
                 const yrNum = parseInt(yr, 10);
                 let relativeLabel = '';
                 if (!isNaN(yrNum)) {
@@ -4354,8 +5487,8 @@ function ChronoYearPickerModal({
                           <Check className="w-3 h-3" />
                         </div>
                       ) : (
-                        <span className="text-[10px] font-bold font-mono text-[#5B7B6D] bg-[#F2EFE9] px-1.5 py-0.5 rounded-full">
-                          {stats.total} 篇
+                        <span className="text-[10px] font-bold font-mono text-[#5B7B6D] bg-[#F2EFE9] px-2 py-0.5 rounded-full">
+                          {stats.total} 项
                         </span>
                       )}
                     </div>
@@ -4377,9 +5510,19 @@ function ChronoYearPickerModal({
                           {stats.artifacts} 旧物
                         </span>
                       )}
+                      {stats.people > 0 && (
+                        <span className="px-1.5 py-0.5 rounded bg-[#FAF8F5] border border-[#5B7B6D]/10">
+                          {stats.people} 结识
+                        </span>
+                      )}
                       {stats.impressions > 0 && (
                         <span className="px-1.5 py-0.5 rounded bg-[#FAF8F5] border border-[#5B7B6D]/10">
                           {stats.impressions} 印象
+                        </span>
+                      )}
+                      {stats.letters > 0 && (
+                        <span className="px-1.5 py-0.5 rounded bg-[#FAF8F5] border border-[#5B7B6D]/10">
+                          {stats.letters} 胶囊
                         </span>
                       )}
                     </div>
@@ -4440,6 +5583,7 @@ interface FriendGroupPickerModalProps {
   people: Person[];
   customGroups: string[];
   onAddGroup: (groupName: string) => void;
+  onDeleteGroup: (groupName: string) => void;
   theme: HealingTheme;
 }
 
@@ -4451,11 +5595,13 @@ function FriendGroupPickerModal({
   people,
   customGroups,
   onAddGroup,
+  onDeleteGroup,
   theme
 }: FriendGroupPickerModalProps) {
   const [filterMode, setFilterMode] = useState<'all_groups' | 'create_group'>('all_groups');
   const [newGroupNameInput, setNewGroupNameInput] = useState<string>('');
   const [searchQuery, setSearchQuery] = useState<string>('');
+  const [groupToDelete, setGroupToDelete] = useState<string | null>(null);
 
   // Collect all unique group names
   const allGroups = useMemo(() => {
@@ -4553,7 +5699,7 @@ function FriendGroupPickerModal({
                 好友分组 · 拾人图谱
               </h3>
               <p className="text-[10px] text-[#6E7C75] font-serif">
-                QQ好友分组式管理 · 沉淀相遇缘起
+                沉淀相遇缘起
               </p>
             </div>
           </div>
@@ -4678,12 +5824,11 @@ function FriendGroupPickerModal({
                   onChange={(e) => setNewGroupNameInput(e.target.value)}
                   placeholder="例如: 高中密友、摄影伙伴、工作搭子"
                   className="flex-1 p-2.5 bg-[#FAF8F5] border border-[#5B7B6D]/20 rounded-xl text-xs focus:outline-none focus:border-[#E88765]"
-                  autoFocus
                 />
                 <button
                   type="submit"
                   disabled={!newGroupNameInput.trim()}
-                  className="px-4 py-2.5 bg-[#5B7B6D] text-white rounded-xl text-xs font-bold hover:bg-[#3E564B] transition-all disabled:opacity-40"
+                  className="px-4 py-2.5 bg-[#5B7B6D] text-white rounded-xl text-xs font-bold active:bg-[#3E564B] active:scale-95 transition-all disabled:opacity-40 select-none touch-manipulation min-h-[44px]"
                 >
                   创建并筛选
                 </button>
@@ -4746,15 +5891,30 @@ function FriendGroupPickerModal({
                         </span>
                       </div>
 
-                      {isCurrentSelected ? (
-                        <div className="w-5 h-5 rounded-full bg-[#E88765] text-white flex items-center justify-center shadow-2xs">
-                          <Check className="w-3 h-3" />
-                        </div>
-                      ) : (
-                        <span className="text-[10px] font-bold font-mono text-[#5B7B6D] bg-[#F2EFE9] px-2 py-0.5 rounded-full">
-                          {count} 人
-                        </span>
-                      )}
+                      <div className="flex items-center gap-1.5">
+                        {grpName !== '未分组' && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setGroupToDelete(grpName);
+                            }}
+                            className="p-1 text-[#6E7C75]/40 hover:text-red-500 rounded-lg hover:bg-red-50 transition-all opacity-60 hover:opacity-100"
+                            title={`删除「${grpName}」分组`}
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                        {isCurrentSelected ? (
+                          <div className="w-5 h-5 rounded-full bg-[#E88765] text-white flex items-center justify-center shadow-2xs">
+                            <Check className="w-3 h-3" />
+                          </div>
+                        ) : (
+                          <span className="text-[10px] font-bold font-mono text-[#5B7B6D] bg-[#F2EFE9] px-2 py-0.5 rounded-full">
+                            {count} 人
+                          </span>
+                        )}
+                      </div>
                     </div>
 
                     {/* Member Avatars Overlapping Stack & Names Preview */}
@@ -4821,6 +5981,58 @@ function FriendGroupPickerModal({
             </button>
           )}
         </div>
+
+        {/* Delete Group Confirmation Modal */}
+        {groupToDelete && (
+          <div
+            className="absolute inset-0 bg-[#2B332E]/60 backdrop-blur-xs z-50 flex items-center justify-center p-4 animate-fadeIn font-sans"
+            onClick={(e) => {
+              e.stopPropagation();
+              setGroupToDelete(null);
+            }}
+          >
+            <div
+              className="bg-[#FAF8F5] w-full max-w-xs p-5 rounded-3xl border border-[#5B7B6D]/20 shadow-2xl text-center space-y-4 paper-texture"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div
+                className="w-12 h-12 rounded-full flex items-center justify-center mx-auto shadow-2xs"
+                style={{ backgroundColor: '#FEE2E2', color: '#DC2626', border: '1px solid #FECACA' }}
+              >
+                <Trash2 className="w-5 h-5" style={{ color: '#DC2626' }} />
+              </div>
+              <div className="space-y-1">
+                <h3 className="font-bold text-[#2B332E] text-sm font-serif">确认删除该好友分组吗？</h3>
+                <p className="text-xs text-[#6E7C75] font-serif bg-white/80 py-1 px-2.5 rounded-xl border border-[#5B7B6D]/15 inline-block max-w-full truncate">
+                  分组：{groupToDelete}
+                </p>
+                <p className="text-[11px] text-[#6E7C75]/80 leading-relaxed font-sans pt-0.5">
+                  删除后该分组下的好友将自动归入「未分组」，好友档案数据不会丢失
+                </p>
+              </div>
+              <div className="flex gap-2.5 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setGroupToDelete(null)}
+                  className="flex-1 py-2.5 rounded-xl border border-[#5B7B6D]/25 bg-white text-[#6E7C75] text-xs font-semibold hover:bg-[#F2EFE9] transition-all active:scale-95 shadow-2xs"
+                >
+                  取消
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    onDeleteGroup(groupToDelete);
+                    setGroupToDelete(null);
+                  }}
+                  className="flex-1 py-2.5 rounded-xl text-white text-xs font-bold shadow-md transition-all active:scale-95 hover:brightness-110"
+                  style={{ backgroundColor: '#DC2626', color: '#FFFFFF', border: '1px solid #B91C1C' }}
+                >
+                  确认删除
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </motion.div>
     </div>
   );

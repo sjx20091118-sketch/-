@@ -95,27 +95,64 @@ app.post('/api/ai/chat', async (req, res) => {
       return res.status(400).json({ error: '缺少有效的对话内容' });
     }
 
-    // Build memory context summaries compactly
+    // Build memory context summaries with rich details (timelines, people, stories, artifacts, letters)
     let memorySummary = '暂无加载的档案数据';
     if (memoryData) {
       try {
-        const timelineCount = memoryData.timeline?.length || 0;
-        const peopleList = (memoryData.people || []).map((p: any) => `${p.name}(${p.relationship || '朋友'}, ${p.bio || ''})`).join('; ');
-        const storyTitles = (memoryData.stories || []).map((s: any) => s.title).join('、');
-        const artifactNames = (memoryData.artifacts || []).map((a: any) => a.name).join('、');
+        const timelineList = (memoryData.timeline || [])
+          .slice(0, 15)
+          .map((t: any) => `• [${t.date || '某日'}] 《${t.title}》(${t.location || '未知地点'}, 标签:${t.tag || '记录'}): ${t.content || ''}`)
+          .join('\n');
 
-        memorySummary = `【记忆概览】包含 ${timelineCount} 个时光节点。
-【重要人物】${peopleList || '无'}
-【故事篇章】${storyTitles || '无'}
-【旧物宝藏】${artifactNames || '无'}`;
-      } catch {
+        const peopleList = (memoryData.people || [])
+          .map((p: any) => {
+            const impressions = (p.impressions || []).map((imp: any) => `[${imp.year}年] ${imp.text}`).join('；');
+            return `• ${p.name} (关系: ${p.relationship || '朋友'}, 分组: ${p.group || '未分组'}, 生日: ${p.birthday || '未知'}, 地点: ${p.customFields?.['认识地点'] || '未填'}, 爱好: ${p.hobbies || '未填'}): ${p.bio || ''} ${impressions ? `【成长印象: ${impressions}】` : ''}`;
+          })
+          .join('\n');
+
+        const storyList = (memoryData.stories || [])
+          .slice(0, 10)
+          .map((s: any) => `• [${s.date || ''}] 《${s.title}》(${s.category || '记忆'}, 标签:${s.tags?.join('/') || '无'}): ${s.excerpt || (s.content ? s.content.slice(0, 120) + '...' : '')}`)
+          .join('\n');
+
+        const artifactList = (memoryData.artifacts || [])
+          .slice(0, 10)
+          .map((a: any) => `• 《${a.name}》(${a.category || '旧物'}, 获得日期:${a.date || '旧日'}): ${a.story || ''}`)
+          .join('\n');
+
+        const letterList = (memoryData.letters || [])
+          .slice(0, 5)
+          .map((l: any) => `• 《${l.title}》(写于 ${l.date || '过去'}, 预计 ${l.openDate || '未来'} 解封): ${l.content ? l.content.slice(0, 80) + '...' : ''}`)
+          .join('\n');
+
+        memorySummary = `【用户的真实《拾年》记忆档案库】
+=== 拾光轴 (重要人生事件与青春瞬间) ===
+${timelineList || '（暂无时间轴事件）'}
+
+=== 拾人册 (重要同行者与挚友档案) ===
+${peopleList || '（暂无人物记录）'}
+
+=== 拾忆篇 (深度珍藏故事随笔) ===
+${storyList || '（暂无故事随笔）'}
+
+=== 拾物阁 (承载记忆的旧物信物) ===
+${artifactList || '（暂无旧物记录）'}
+
+=== 寄往未来 (胶囊信件) ===
+${letterList || '（暂无信件）'}`;
+      } catch (e) {
+        console.error('Error formatting memory summary:', e);
         memorySummary = '档案已加载';
       }
     }
 
     const systemPrompt = `你是一个名叫“拾年”的私人记忆陪伴助手。
 你的性格特点：温和、细腻、沉静，充满人文关怀与治愈感。
-请基于用户在《拾年》档案中的真实回忆内容回答提问，帮助用户梳理过去时光的成长脉络、珍贵瞬间与故人故事。语言风格温润优雅，不生硬。
+【核心要求】：
+1. 你拥有用户在《拾年》档案中所有珍贵回忆的全部数据（包含拾光轴、拾人册、拾忆篇、拾物阁等板块）。
+2. 当用户向你倾诉、提问或回忆过去时，请**精准结合上述记忆档案中的具体人名、具体时间、地点、旧物和故事情节**进行个性化回答与温情共鸣。
+3. 语言风格要温润自然、如沐春风，充满陪伴感与治愈力，不要使用生硬机械的格式化语言。
 
 ${memorySummary}`;
 
