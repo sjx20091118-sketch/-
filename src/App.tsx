@@ -447,13 +447,25 @@ export default function App() {
     root.style.setProperty('--primary-dark-rgb', currentTheme.primaryDarkRgb);
     root.style.setProperty('--accent-rgb', currentTheme.accentRgb);
 
-    // Sync Android Status Bar Theme Color
+    // Sync Android Status Bar Theme Color & Edge-to-Edge System Bar Overlays
     const metaTheme = document.getElementById('meta-theme-color') || document.querySelector('meta[name="theme-color"]');
     if (metaTheme) {
       metaTheme.setAttribute('content', currentTheme.canvas);
     }
     try {
-      (window as any).Capacitor?.Plugins?.StatusBar?.setBackgroundColor?.({ color: currentTheme.canvas });
+      const capacitorPlugins = (window as any).Capacitor?.Plugins;
+      if (capacitorPlugins?.StatusBar) {
+        // Overlay webview so background colors seamlessly extend through status bar
+        capacitorPlugins.StatusBar.setOverlaysWebView?.({ overlay: true });
+        // Set transparent background to let the web canvas bleed through
+        capacitorPlugins.StatusBar.setBackgroundColor?.({ color: '#00000000' });
+        // Light system bar style means dark text/icons (for light theme background)
+        capacitorPlugins.StatusBar.setStyle?.({ style: 'LIGHT' });
+      }
+      if (capacitorPlugins?.NavigationBar) {
+        capacitorPlugins.NavigationBar.setColor?.({ color: '#00000000', darkButtons: true });
+        capacitorPlugins.NavigationBar.setTransparency?.({ isTransparent: true });
+      }
     } catch (e) {}
   }, [currentTheme]);
 
@@ -1473,7 +1485,7 @@ export default function App() {
   // Lock Screen View
   if (isLocked) {
     return (
-      <div className="w-full h-screen bg-[#FAF8F5] flex flex-col items-center justify-center p-8 pt-[max(2rem,env(safe-area-inset-top))] pb-[max(2rem,env(safe-area-inset-bottom))] text-[#2B332E]">
+      <div className="fixed inset-0 w-screen h-screen bg-[#FAF8F5] flex flex-col items-center justify-center p-8 pt-[max(2rem,env(safe-area-inset-top))] pb-[max(2rem,env(safe-area-inset-bottom))] text-[#2B332E] z-50">
         <div className="w-16 h-16 rounded-2xl bg-[#FDF0EB] border border-[#E88765]/30 flex items-center justify-center mb-6 shadow-sm">
           <Lock className="text-[#E88765] w-7 h-7" />
         </div>
@@ -1583,8 +1595,8 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen w-full flex items-center justify-center p-0 sm:p-4 text-[#2B332E] bg-[#FAF8F5]">
-      <div id="root-card" className="w-full max-w-md h-[100dvh] sm:h-[880px] bg-[#FAF8F5] sm:rounded-3xl shadow-2xl overflow-hidden flex flex-col relative sm:border sm:border-[#E88765]/20 paper-texture select-none">
+    <div className="h-full w-full flex items-center justify-center p-0 sm:p-4 text-[#2B332E] bg-[#FAF8F5] overflow-hidden">
+      <div id="root-card" className="w-full max-w-md h-full sm:h-[880px] bg-[#FAF8F5] sm:rounded-3xl shadow-2xl overflow-hidden flex flex-col relative sm:border sm:border-[#E88765]/20 paper-texture select-none">
 
         {/* Top HeaderBar with Seamless Safe Area Inset Support */}
         <header className="px-4 pt-[max(0.75rem,env(safe-area-inset-top))] pb-2.5 bg-[#FAF8F5]/98 sm:bg-white/90 backdrop-blur-md text-[#2B332E] flex items-center justify-between border-b border-[#5B7B6D]/15 shadow-2xs z-20 relative transition-colors shrink-0 select-none">
@@ -4914,10 +4926,11 @@ function SplashScreen({ theme, onDismiss }: SplashScreenProps) {
       animate={{ opacity: 1 }}
       exit={{
         opacity: 0,
-        scale: 1.02,
-        transition: { duration: 0.45, ease: [0.32, 0.72, 0, 1] }
+        scale: 1.015,
+        transition: { duration: 0.7, ease: [0.22, 1, 0.36, 1] }
       }}
-      className="absolute inset-0 z-50 flex flex-col items-center justify-between p-6 sm:p-8 bg-[#FAF8F5] overflow-hidden select-none cursor-pointer transform-gpu"
+      style={{ willChange: 'opacity, transform' }}
+      className="fixed inset-0 z-[9999] w-screen h-screen flex flex-col items-center justify-between p-6 sm:p-8 pt-[max(1.5rem,env(safe-area-inset-top))] pb-[max(1.5rem,env(safe-area-inset-bottom))] bg-[#FAF8F5] overflow-hidden select-none cursor-pointer transform-gpu"
       onClick={onDismiss}
     >
       {/* Background Ambient Fluid Glows (Hardware Accelerated) */}
@@ -4941,7 +4954,7 @@ function SplashScreen({ theme, onDismiss }: SplashScreenProps) {
       </div>
 
       {/* Top Header: Pure Minimalist Glass Badge */}
-      <div className="w-full flex items-center justify-center relative z-10 pt-2">
+      <div className="w-full flex items-center justify-center relative z-10 pt-1 shrink-0">
         <motion.div
           initial={{ opacity: 0, y: -6 }}
           animate={{ opacity: 1, y: 0 }}
@@ -4958,17 +4971,17 @@ function SplashScreen({ theme, onDismiss }: SplashScreenProps) {
         </motion.div>
       </div>
 
-      {/* Center Hero: Floating Dynamic Frosted Glass Card */}
-      <div className="flex flex-col items-center justify-center relative z-10 my-auto w-full max-w-sm px-3">
+      {/* Center Hero: Floating Dynamic Frosted Glass Card (Zero-Reflow Flexbox with my-auto) */}
+      <div className="flex flex-col items-center justify-center relative z-10 my-auto w-full max-w-sm px-3 shrink-0">
         <motion.div
-          initial={{ opacity: 0, scale: 0.94, y: 12 }}
-          animate={{ opacity: 1, scale: 1, y: 0 }}
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
           transition={{
             duration: 0.6,
-            delay: 0.1,
-            ease: [0.32, 0.72, 0, 1]
+            delay: 0.08,
+            ease: [0.22, 1, 0.36, 1]
           }}
-          className="w-full bg-white/75 border border-white/90 shadow-xl rounded-[32px] p-7 sm:p-9 relative overflow-hidden flex flex-col items-center text-center transition-all transform-gpu"
+          className="w-full bg-white/80 border border-white/90 shadow-xl rounded-[32px] p-7 sm:p-9 relative overflow-hidden flex flex-col items-center text-center transition-all transform-gpu"
         >
           {/* Top Lens Inner Glow */}
           <div className="absolute inset-x-0 top-0 h-1/2 bg-gradient-to-b from-white/50 to-transparent pointer-events-none rounded-t-[32px]" />
@@ -4984,9 +4997,9 @@ function SplashScreen({ theme, onDismiss }: SplashScreenProps) {
 
           {/* Main Title: 拾 年 */}
           <motion.div
-            initial={{ opacity: 0, y: 6 }}
+            initial={{ opacity: 0, y: 4 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5, delay: 0.2, ease: [0.32, 0.72, 0, 1] }}
+            transition={{ duration: 0.5, delay: 0.15, ease: [0.22, 1, 0.36, 1] }}
             className="relative mb-4 z-10"
           >
             <div
@@ -5008,7 +5021,7 @@ function SplashScreen({ theme, onDismiss }: SplashScreenProps) {
           <motion.div
             initial={{ scaleX: 0, opacity: 0 }}
             animate={{ scaleX: 1, opacity: 1 }}
-            transition={{ duration: 0.45, delay: 0.3, ease: 'easeOut' }}
+            transition={{ duration: 0.45, delay: 0.25, ease: 'easeOut' }}
             className="flex items-center justify-center gap-2 mb-5 w-full relative z-10"
           >
             <div className="h-[0.5px] w-10 bg-gradient-to-r from-transparent to-[#5B7B6D]/35" />
@@ -5021,9 +5034,9 @@ function SplashScreen({ theme, onDismiss }: SplashScreenProps) {
 
           {/* Poetic Subtitles */}
           <motion.div
-            initial={{ opacity: 0, y: 8 }}
+            initial={{ opacity: 0, y: 4 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5, delay: 0.35, ease: [0.32, 0.72, 0, 1] }}
+            transition={{ duration: 0.5, delay: 0.3, ease: [0.22, 1, 0.36, 1] }}
             className="space-y-2 relative z-10"
           >
             <p
@@ -5041,7 +5054,7 @@ function SplashScreen({ theme, onDismiss }: SplashScreenProps) {
       </div>
 
       {/* Bottom Footer: Hardware-Accelerated Progress Track */}
-      <div className="w-full flex flex-col items-center gap-3 relative z-10 pb-2">
+      <div className="w-full flex flex-col items-center gap-3 relative z-10 pb-1 shrink-0">
         <div className="w-36 h-1.5 bg-white/70 border border-[#5B7B6D]/20 rounded-full p-[1px] shadow-2xs overflow-hidden">
           <div
             className="h-full rounded-full splash-progress-bar shadow-xs"
