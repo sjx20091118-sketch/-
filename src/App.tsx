@@ -48,11 +48,23 @@ import {
   FolderOpen,
   Copy,
   MessageCircle,
-  Phone
+  Phone,
+  Feather,
+  Flame,
+  Hourglass,
+  Camera
 } from 'lucide-react';
 import { AppData, Person, Story, Artifact, Letter, ChatMessage } from './types';
 import { INITIAL_SEED } from './data/initialData';
 import { LocalImageUploader, PRESET_AVATARS, compressImageFile } from './components/LocalImageUploader';
+import { ThemedDatePickerModal } from './components/ThemedDatePickerModal';
+import { PersonAlbum } from './components/PersonAlbum';
+import { TimeAiCompanion } from './components/TimeAiCompanion';
+import { SlideToUnlock } from './components/SlideToUnlock';
+import { ThemedToast } from './components/ThemedToast';
+import { useAndroidBackHandler } from './hooks/useAndroidBackHandler';
+import { useKeyboardStatus } from './hooks/useKeyboardStatus';
+import TTSAudioEngine from './utils/audioUnlocker';
 
 export interface TtsVoiceOption {
   id: string;
@@ -235,6 +247,21 @@ export function getZodiacFromBirthday(birthdayStr: string): string {
   return day < days[month - 1] ? signs[month - 1] : signs[month];
 }
 
+// 格式化时光记忆切片日期 (如: 2026.8.6)
+export function formatImpressionDate(val?: string): string {
+  if (!val || !val.trim()) return '时光印记';
+  const clean = val.replace(/年|月/g, '.').replace(/日|切片/g, '').trim();
+  const parts = clean.split(/[-./]/).filter(Boolean);
+  if (parts.length === 3) {
+    return `${parts[0]}.${parseInt(parts[1], 10)}.${parseInt(parts[2], 10)}`;
+  } else if (parts.length === 2) {
+    return `${parts[0]}.${parseInt(parts[1], 10)}`;
+  } else if (parts.length === 1 && parts[0].length === 4) {
+    return `${parts[0]}`;
+  }
+  return clean;
+}
+
 // 自动根据相识起始日期计算相识天数
 export function calculateDaysKnown(knownDate?: string): number | null {
   if (!knownDate || !knownDate.trim()) return null;
@@ -392,7 +419,7 @@ const ttsAudioCache = new Map<string, string>();
 
 export default function App() {
   const [data, setData] = useState<AppData>(() => {
-    const local = localStorage.getItem('shinian_app_data_v3');
+    const local = localStorage.getItem('shinian_app_data_v4');
     if (local) {
       try {
         const parsed = JSON.parse(local);
@@ -403,6 +430,12 @@ export default function App() {
         console.error('Failed to parse local storage', e);
       }
     }
+    // Clean up old cached versions
+    try {
+      localStorage.removeItem('shinian_app_data_v3');
+      localStorage.removeItem('shinian_app_data_v2');
+      localStorage.removeItem('shinian_app_data');
+    } catch (e) {}
     return INITIAL_SEED;
   });
 
@@ -467,6 +500,22 @@ export default function App() {
         capacitorPlugins.NavigationBar.setTransparency?.({ isTransparent: true });
       }
     } catch (e) {}
+
+    // Auto-detect and ensure fallback safe area variables if not injected by native shell
+    const updateSafeArea = () => {
+      const computedStyle = getComputedStyle(document.documentElement);
+      const topInset = computedStyle.getPropertyValue('--safe-area-top').trim();
+      const bottomInset = computedStyle.getPropertyValue('--safe-area-bottom').trim();
+      if (!topInset) {
+        document.documentElement.style.setProperty('--safe-area-top', '28px');
+      }
+      if (!bottomInset) {
+        document.documentElement.style.setProperty('--safe-area-bottom', '16px');
+      }
+    };
+    updateSafeArea();
+    window.addEventListener('resize', updateSafeArea);
+    return () => window.removeEventListener('resize', updateSafeArea);
   }, [currentTheme]);
 
   // Custom UI Notifications & Dialogs
@@ -506,9 +555,40 @@ export default function App() {
 
   // Person sub-modals / actions
   const [isEditingPerson, setIsEditingPerson] = useState<boolean>(false);
-  const [newImpressionYear, setNewImpressionYear] = useState<string>(new Date().getFullYear().toString());
+  const [newImpressionYear, setNewImpressionYear] = useState<string>('');
   const [newImpressionText, setNewImpressionText] = useState<string>('');
-  const [confirmDialog, setConfirmDialog] = useState<{ type: keyof AppData; id: string; name: string } | null>(null);
+  const [editingImpression, setEditingImpression] = useState<{ id: string; year: string; text: string } | null>(null);
+  const [editImpressionYear, setEditImpressionYear] = useState<string>('');
+  const [editImpressionText, setEditImpressionText] = useState<string>('');
+  const [confirmDialog, setConfirmDialog] = useState<{ type?: keyof AppData; id?: string; name: string; onConfirm?: () => void } | null>(null);
+
+  // Global Themed Date Picker Modal State
+  const [datePickerConfig, setDatePickerConfig] = useState<{
+    isOpen: boolean;
+    value: string;
+    title: string;
+    mode: 'full' | 'month-day';
+    onConfirm: (val: string) => void;
+  }>({
+    isOpen: false,
+    value: '',
+    title: '选择日期',
+    mode: 'full',
+    onConfirm: () => {}
+  });
+
+  // Controlled date states for visual pickers
+  const [formTimelineDate, setFormTimelineDate] = useState<string>(() => new Date().toISOString().slice(0, 10));
+  const [formArtifactDate, setFormArtifactDate] = useState<string>(() => new Date().toISOString().slice(0, 10));
+  const [formStoryDate, setFormStoryDate] = useState<string>(() => new Date().toISOString().slice(0, 10));
+  const [formLetterUnlockDate, setFormLetterUnlockDate] = useState<string>('2030-01-01');
+  const [editStoryDate, setEditStoryDate] = useState<string>('');
+
+  // Edit Person / Add Person controlled date states for visual pickers
+  const [editPersonBirthday, setEditPersonBirthday] = useState<string>('');
+  const [editPersonKnownDate, setEditPersonKnownDate] = useState<string>('');
+  const [addPersonBirthday, setAddPersonBirthday] = useState<string>('');
+  const [addPersonKnownDate, setAddPersonKnownDate] = useState<string>('2021-09-01');
 
   // AI States & Dual Engine Support
   const [aiEngine, setAiEngine] = useState<'gemini' | 'deepseek'>(() => {
@@ -603,217 +683,80 @@ export default function App() {
   const chatEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    localStorage.setItem('shinian_app_data_v3', JSON.stringify(data));
+    localStorage.setItem('shinian_app_data_v4', JSON.stringify(data));
   }, [data]);
 
   useEffect(() => {
     localStorage.setItem('shinian_custom_groups', JSON.stringify(customGroups));
   }, [customGroups]);
 
-  // Mobile Hardware / Gesture Back Button Interception (Full Android Native Stack)
-  // Priority: Confirm Dialogs -> Sub Modals/Drawers -> Detail Readers -> Secondary Tabs -> Double Tap to Exit App
-  const lastBackPressRef = useRef<number>(0);
-  const mainContentRef = useRef<HTMLElement | null>(null);
+  // Mobile Hardware & Gesture Back Button Interception (Centralized 17-Level Back Stack)
+  useAndroidBackHandler({
+    datePickerOpen: datePickerConfig.isOpen,
+    closeDatePicker: () => setDatePickerConfig(prev => ({ ...prev, isOpen: false })),
 
-  const currentOpenLayer = useMemo(() => {
-    if (confirmDialog) return `confirm-dialog-${confirmDialog.id}`;
-    if (movingPerson) return `moving-person-${movingPerson.id}`;
-    if (isAddingGroup) return 'adding-group';
-    if (isChangingPin) return 'changing-pin';
-    if (activeModal) return `modal-${activeModal}`;
-    if (editingStory) return `edit-story-${editingStory.id}`;
-    if (readerStory) return `story-${readerStory.id}`;
-    if (selectedPerson) return `person-${selectedPerson.id}`;
-    if (selectedArtifact) return `artifact-${selectedArtifact.id}`;
-    if (selectedLetter) return `letter-${selectedLetter.id}`;
-    if (isGroupPickerOpen) return 'group-picker';
-    if (isThemePickerOpen) return 'theme-picker';
-    if (isVoicePickerModalOpen) return 'voice-picker';
-    if (isYearPickerOpen) return 'year-picker';
-    if (activeTab !== 'home') return `tab-${activeTab}`;
-    return null;
-  }, [
     confirmDialog,
+    closeConfirmDialog: () => setConfirmDialog(null),
+
+    editingImpression,
+    closeEditingImpression: () => setEditingImpression(null),
+
     movingPerson,
+    closeMovingPerson: () => setMovingPerson(null),
+
     isAddingGroup,
+    closeAddingGroup: () => setIsAddingGroup(false),
+
     isChangingPin,
-    activeModal,
-    editingStory,
-    readerStory,
-    selectedPerson,
-    selectedArtifact,
-    selectedLetter,
-    isGroupPickerOpen,
-    isThemePickerOpen,
-    isVoicePickerModalOpen,
-    isYearPickerOpen,
-    activeTab,
-  ]);
+    closeChangingPin: () => setIsChangingPin(false),
 
-  const prevLayerRef = useRef<string | null>(null);
-  const isPoppingStateRef = useRef<boolean>(false);
+    importPreview,
+    closeImportPreview: () => setImportPreview(null),
 
-  useEffect(() => {
-    if (isPoppingStateRef.current) {
-      isPoppingStateRef.current = false;
-      prevLayerRef.current = currentOpenLayer;
-      return;
-    }
-
-    if (currentOpenLayer && currentOpenLayer !== prevLayerRef.current) {
-      window.history.pushState({ layer: currentOpenLayer }, '');
-    }
-    prevLayerRef.current = currentOpenLayer;
-  }, [currentOpenLayer]);
-
-  // Unified Android Back Button Consumer
-  const handleNativeBackAction = useCallback((): boolean => {
-    // 1. Confirm dialog
-    if (confirmDialog) {
-      setConfirmDialog(null);
-      return true;
-    }
-    // 2. Move person dialog
-    if (movingPerson) {
-      setMovingPerson(null);
-      return true;
-    }
-    // 3. Add group popup
-    if (isAddingGroup) {
-      setIsAddingGroup(false);
-      return true;
-    }
-    // 4. Change PIN popup
-    if (isChangingPin) {
-      setIsChangingPin(false);
-      return true;
-    }
-    // 5. Active modal (add/edit items, backups, search)
-    if (activeModal) {
-      setActiveModal(null);
-      return true;
-    }
-    // 6. Story edit modal
-    if (editingStory) {
-      setEditingStory(null);
-      return true;
-    }
-    // 7. Full-screen story reader
-    if (readerStory) {
-      setReaderStory(null);
-      return true;
-    }
-    // 8. Person detail modal / editor
-    if (selectedPerson) {
-      if (isEditingPerson) {
-        setIsEditingPerson(false);
-      } else {
-        setSelectedPerson(null);
-      }
-      return true;
-    }
-    // 9. Artifact detail modal
-    if (selectedArtifact) {
-      setSelectedArtifact(null);
-      return true;
-    }
-    // 10. Letter modal
-    if (selectedLetter) {
-      setSelectedLetter(null);
-      return true;
-    }
-    // 11. Bottom drawer pickers
-    if (isGroupPickerOpen) {
-      setIsGroupPickerOpen(false);
-      return true;
-    }
-    if (isThemePickerOpen) {
-      setIsThemePickerOpen(false);
-      return true;
-    }
-    if (isVoicePickerModalOpen) {
-      setIsVoicePickerModalOpen(false);
-      return true;
-    }
-    if (isYearPickerOpen) {
-      setIsYearPickerOpen(false);
-      return true;
-    }
-    // 12. Return from secondary tabs back to home
-    if (activeTab !== 'home') {
-      setActiveTab('home');
-      return true;
-    }
-
-    // 13. On Home tab with zero modals open: Double-tap back button to exit
-    const now = Date.now();
-    if (now - lastBackPressRef.current < 2000) {
-      try {
-        (window as any).Capacitor?.Plugins?.App?.exitApp?.();
-      } catch (e) {}
-      return false;
-    } else {
-      lastBackPressRef.current = now;
-      showToast('再按一次返回键退出「拾年」', 1800);
-      return true;
-    }
-  }, [
-    confirmDialog,
-    movingPerson,
-    isAddingGroup,
-    isChangingPin,
-    activeModal,
-    editingStory,
-    readerStory,
-    selectedPerson,
     isEditingPerson,
+    closeEditingPerson: () => setIsEditingPerson(false),
+
+    editingStory,
+    closeEditingStory: () => setEditingStory(null),
+
+    activeModal,
+    closeActiveModal: () => setActiveModal(null),
+
+    readerStory,
+    closeReaderStory: () => setReaderStory(null),
+
+    selectedPerson,
+    closeSelectedPerson: () => {
+      setIsEditingPerson(false);
+      setSelectedPerson(null);
+    },
+
     selectedArtifact,
+    closeSelectedArtifact: () => setSelectedArtifact(null),
+
     selectedLetter,
-    isGroupPickerOpen,
-    isThemePickerOpen,
+    closeSelectedLetter: () => setSelectedLetter(null),
+
     isVoicePickerModalOpen,
+    closeVoicePickerModal: () => setIsVoicePickerModalOpen(false),
+
+    isGroupPickerOpen,
+    closeGroupPicker: () => setIsGroupPickerOpen(false),
+
+    isThemePickerOpen,
+    closeThemePicker: () => setIsThemePickerOpen(false),
+
     isYearPickerOpen,
+    closeYearPicker: () => setIsYearPickerOpen(false),
+
     activeTab,
-  ]);
+    setActiveTab,
 
-  // Web PopState Listener
-  useEffect(() => {
-    const handlePopState = () => {
-      isPoppingStateRef.current = true;
-      handleNativeBackAction();
-    };
+    showToast,
+  });
 
-    window.addEventListener('popstate', handlePopState);
-    return () => window.removeEventListener('popstate', handlePopState);
-  }, [handleNativeBackAction]);
-
-  // Android Capacitor & Cordova Hardware Back Button Listener
-  useEffect(() => {
-    const onDocumentBackButton = (e: Event) => {
-      e.preventDefault();
-      handleNativeBackAction();
-    };
-
-    document.addEventListener('backbutton', onDocumentBackButton as any);
-
-    // If Capacitor App plugin is available
-    let capacitorListener: any = null;
-    const capacitorApp = (window as any).Capacitor?.Plugins?.App;
-    if (capacitorApp?.addListener) {
-      capacitorApp.addListener('backButton', () => {
-        handleNativeBackAction();
-      }).then((listener: any) => {
-        capacitorListener = listener;
-      }).catch(() => {});
-    }
-
-    return () => {
-      document.removeEventListener('backbutton', onDocumentBackButton as any);
-      if (capacitorListener?.remove) {
-        capacitorListener.remove();
-      }
-    };
-  }, [handleNativeBackAction]);
+  const { isKeyboardVisible } = useKeyboardStatus();
+  const mainContentRef = useRef<HTMLElement | null>(null);
 
   // Reset scroll position to top on navigation/modal transitions
   useEffect(() => {
@@ -887,38 +830,24 @@ export default function App() {
       timeline: number;
       stories: number;
       artifacts: number;
-      impressions: number;
       people: number;
-      letters: number;
     }> = {};
 
-    let totalImpressions = 0;
-    data.people.forEach(p => {
-      totalImpressions += (p.impressions?.length || 0);
-    });
-
-    const totalAll = data.timeline.length + data.stories.length + data.artifacts.length + data.people.length + data.letters.length + totalImpressions;
+    const totalAll = data.timeline.length + data.stories.length + data.artifacts.length + data.people.length;
 
     years.forEach(y => {
       const tCount = data.timeline.filter(t => getYearFromDate(t.date) === y).length;
       const sCount = data.stories.filter(s => getYearFromDate(s.date) === y).length;
       const aCount = data.artifacts.filter(a => getYearFromDate(a.date) === y).length;
       const pCount = data.people.filter(p => getYearFromDate(p.knownDate) === y).length;
-      const lCount = data.letters.filter(l => getYearFromDate(l.date) === y || getYearFromDate(l.unlockDate) === y).length;
-      let iCount = 0;
-      data.people.forEach(p => {
-        iCount += (p.impressions?.filter(imp => imp.year === y).length || 0);
-      });
 
-      const yrTotal = tCount + sCount + aCount + pCount + lCount + iCount;
+      const yrTotal = tCount + sCount + aCount + pCount;
       statsMap[y] = {
         total: yrTotal,
         timeline: tCount,
         stories: sCount,
         artifacts: aCount,
-        impressions: iCount,
         people: pCount,
-        letters: lCount,
       };
     });
 
@@ -930,8 +859,6 @@ export default function App() {
         stories: data.stories.length,
         artifacts: data.artifacts.length,
         people: data.people.length,
-        impressions: totalImpressions,
-        letters: data.letters.length,
       }
     };
   }, [data, years, getYearFromDate]);
@@ -1069,13 +996,40 @@ export default function App() {
     if (!newImpressionText.trim() || !selectedPerson) return;
     const newImp = {
       id: 'imp-' + Date.now(),
-      year: newImpressionYear || new Date().getFullYear().toString(),
+      year: newImpressionYear.trim() || new Date().getFullYear().toString(),
       text: newImpressionText.trim()
     };
     const updatedImpressions = [newImp, ...(selectedPerson.impressions || [])];
     handleUpdatePerson({ impressions: updatedImpressions });
     setNewImpressionText('');
+    setNewImpressionYear('');
     showToast('已添加新年份记忆印象');
+  };
+
+  const handleSaveEditedImpression = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingImpression || !selectedPerson) return;
+    const cleanYear = editImpressionYear.trim() || editingImpression.year;
+    const cleanText = editImpressionText.trim() || editingImpression.text;
+
+    const updatedImpressions = (selectedPerson.impressions || []).map(imp => {
+      if (imp.id === editingImpression.id) {
+        return { ...imp, year: cleanYear, text: cleanText };
+      }
+      return imp;
+    });
+
+    handleUpdatePerson({ impressions: updatedImpressions });
+    setEditingImpression(null);
+    showToast('已更新时光印象切片');
+  };
+
+  const handleDeleteImpression = (impId: string) => {
+    if (!selectedPerson) return;
+    const updatedImpressions = (selectedPerson.impressions || []).filter(imp => imp.id !== impId);
+    handleUpdatePerson({ impressions: updatedImpressions });
+    if (editingImpression?.id === impId) setEditingImpression(null);
+    showToast('已删除该条印象记录');
   };
 
   const handleExport = () => {
@@ -1349,6 +1303,7 @@ export default function App() {
   };
 
   const handleStopTts = () => {
+    TTSAudioEngine.stop();
     if (audioPlayingUrl) {
       setAudioPlayingUrl(null);
       setAudioPlayingVoiceName('');
@@ -1361,6 +1316,8 @@ export default function App() {
   };
 
   const handlePlayTts = async (textToRead: string, voiceOverride?: string) => {
+    // 1. CRITICAL: Prime the audio pipeline synchronously on user click gesture (0ms)
+    TTSAudioEngine.unlockAndPrime();
     handleStopTts();
 
     let voiceToUse = voiceOverride || ttsSelectedVoice;
@@ -1377,6 +1334,17 @@ export default function App() {
       const cachedUrl = ttsAudioCache.get(cacheKey)!;
       setAudioPlayingUrl(cachedUrl);
       setAudioPlayingVoiceName(`${voiceObj.name} (${voiceObj.gender}) · ${voiceObj.character}`);
+      TTSAudioEngine.playAudio(
+        cachedUrl,
+        () => {
+          setAudioPlayingUrl(null);
+          setAudioPlayingVoiceName('');
+        },
+        () => {
+          setAudioPlayingUrl(null);
+          setAudioPlayingVoiceName('');
+        }
+      ).catch(() => {});
       showToast(`正在播放【${voiceObj.name}】微软神经语音朗诵`);
       return;
     }
@@ -1385,7 +1353,7 @@ export default function App() {
     showToast(`正在生成【${voiceObj.name}】微软神经语音朗诵...`);
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 6000);
+      const timeoutId = setTimeout(() => controller.abort(), 8000);
 
       const res = await fetch('/api/ai/tts', {
         method: 'POST',
@@ -1431,6 +1399,19 @@ export default function App() {
 
       setAudioPlayingUrl(audioUrl);
       setAudioPlayingVoiceName(`${voiceObj.name} (${voiceObj.gender}) · ${voiceObj.character}`);
+      
+      // Play through pre-warmed single-instance audio engine with 100% gesture authority
+      await TTSAudioEngine.playAudio(
+        audioUrl,
+        () => {
+          setAudioPlayingUrl(null);
+          setAudioPlayingVoiceName('');
+        },
+        () => {
+          setAudioPlayingUrl(null);
+          setAudioPlayingVoiceName('');
+        }
+      );
       showToast(`正在播放【${voiceObj.name}】微软神经语音朗诵`);
     } catch (err: any) {
       console.warn('[Microsoft Edge TTS Fallback to Web Speech Synthesis]:', err);
@@ -1599,7 +1580,7 @@ export default function App() {
       <div id="root-card" className="w-full max-w-md h-full sm:h-[880px] bg-[#FAF8F5] sm:rounded-3xl shadow-2xl overflow-hidden flex flex-col relative sm:border sm:border-[#E88765]/20 paper-texture select-none">
 
         {/* Top HeaderBar with Seamless Safe Area Inset Support */}
-        <header className="px-4 pt-[max(0.75rem,env(safe-area-inset-top))] pb-2.5 bg-[#FAF8F5]/98 sm:bg-white/90 backdrop-blur-md text-[#2B332E] flex items-center justify-between border-b border-[#5B7B6D]/15 shadow-2xs z-20 relative transition-colors shrink-0 select-none">
+        <header className="px-4 pt-[max(var(--safe-area-top,28px),env(safe-area-inset-top,28px),1.75rem)] pb-2.5 bg-[#FAF8F5]/98 sm:bg-white/90 backdrop-blur-md text-[#2B332E] flex items-center justify-between border-b border-[#5B7B6D]/15 shadow-2xs z-20 relative transition-colors shrink-0 select-none">
           <div className="flex flex-col">
             <div className="flex items-center gap-1.5">
               <h1 className="text-lg font-bold tracking-widest font-serif text-[#5B7B6D]">
@@ -1788,13 +1769,8 @@ export default function App() {
           </div>
         </header>
 
-        {/* Toast Notification */}
-        {toast && (
-          <div className="absolute top-14 left-1/2 -translate-x-1/2 bg-[#2B332E]/90 text-white text-xs px-4 py-2 rounded-xl shadow-lg z-50 flex items-center gap-2 animate-fadeIn font-sans">
-            <Sparkles className="w-3.5 h-3.5 text-[#E88765]" />
-            <span>{toast}</span>
-          </div>
-        )}
+        {/* Refactored Literary Paper Themed Toast Notification */}
+        <ThemedToast toast={toast} theme={currentTheme} />
 
         {/* Audio Player Bar */}
         {audioPlayingUrl && (
@@ -1830,8 +1806,7 @@ export default function App() {
               />
               <button
                 onClick={() => {
-                  setAudioPlayingUrl(null);
-                  setAudioPlayingVoiceName('');
+                  handleStopTts();
                 }}
                 className="p-1 text-[#6E7C75]/60 hover:text-[#2B332E] hover:bg-stone-200/50 rounded-lg transition-colors"
                 title="关闭音频"
@@ -1843,7 +1818,7 @@ export default function App() {
         )}
 
         {/* Main Content Area */}
-        <main ref={mainContentRef} id="main-content-scroll" className="flex-1 overflow-y-auto custom-scrollbar p-4 pb-6 sm:pb-8 space-y-4 overscroll-contain">
+        <main ref={mainContentRef} id="main-content-scroll" className="flex-1 overflow-y-auto custom-scrollbar p-4 pb-2 space-y-4 overscroll-contain">
 
           {/* Home Tab */}
           {activeTab === 'home' && (
@@ -1858,7 +1833,7 @@ export default function App() {
                   <div className="flex items-center justify-between text-xs font-bold mb-3 font-serif relative z-10">
                     <div className="flex items-center gap-2">
                       <div className="w-6 h-6 rounded-full bg-[#FDF0EB] border border-[#E88765]/30 text-[#E88765] flex items-center justify-center shadow-2xs">
-                        <Sparkles className="w-3.5 h-3.5 animate-spin" style={{ animationDuration: '8s' }} />
+                        <Hourglass className="w-3.5 h-3.5 text-[#E88765]" />
                       </div>
                       <div>
                         <span className="text-[#2B332E] font-bold text-xs tracking-wide">今日回顾</span>
@@ -2022,111 +1997,27 @@ export default function App() {
                 </div>
               </div>
 
-              {/* AI Companion Section on Home Page */}
-              <div className="bg-white rounded-2xl border border-[#5B7B6D]/20 shadow-sm overflow-hidden flex flex-col">
-                <div className="bg-[#FAF8F5] px-4 py-3 border-b border-[#5B7B6D]/15 flex flex-wrap justify-between items-center gap-2">
-                  <div className="flex items-center gap-2.5">
-                    <div className="w-7 h-7 rounded-xl bg-[#5B7B6D] text-white flex items-center justify-center shadow-sm">
-                      <Bot className="w-4 h-4" />
-                    </div>
-                    <div>
-                      <h3 className="text-xs font-bold text-[#2B332E] font-serif flex items-center gap-1.5">
-                        拾年 · 时光 AI 陪伴
-                        <span className="text-[10px] px-2 py-0.5 rounded-full font-sans font-normal border bg-white text-[#5B7B6D] border-[#5B7B6D]/20">
-                          {aiEngine === 'deepseek' ? '🐉 DeepSeek-V3' : '⚡ 标准模型'}
-                        </span>
-                      </h3>
-                      <p className="text-[10px] text-[#6E7C75]">回忆检索与情感对谈</p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => {
-                        const nextEngine = aiEngine === 'gemini' ? 'deepseek' : 'gemini';
-                        setAiEngine(nextEngine);
-                        localStorage.setItem('shinian_ai_engine', nextEngine);
-                        showToast(nextEngine === 'deepseek' ? '已切换为 DeepSeek 引擎' : '已切换为标准 AI 模型');
-                      }}
-                      className="text-[10px] px-2 py-1 rounded-lg bg-white border border-[#5B7B6D]/20 text-[#5B7B6D] hover:bg-[#5B7B6D]/10 font-sans transition-all flex items-center gap-1"
-                      title="点击切换 AI 驱动引擎"
-                    >
-                      <RotateCcw className="w-3 h-3" />
-                      切换引擎
-                    </button>
-                    <button
-                      onClick={() => setAiChatMessages([{ role: 'model', text: '对话已重置。你想聊聊哪一段时光记录？' }])}
-                      className="text-[10px] text-[#6E7C75] hover:text-[#5B7B6D] underline font-sans"
-                    >
-                      清空记录
-                    </button>
-                  </div>
-                </div>
-
-                {/* Quick Prompts */}
-                <div className="px-3 py-2 bg-[#F2EFE9]/40 flex gap-1.5 overflow-x-auto custom-scrollbar border-b border-[#5B7B6D]/10 text-[11px] font-sans">
-                  <button
-                    onClick={() => handleSendAiMessage("请根据我的记忆档案，总结我过去几年的成长变化与主线痕迹。")}
-                    className="whitespace-nowrap px-2.5 py-1 rounded-full bg-white border border-[#5B7B6D]/20 text-[#5B7B6D] hover:bg-[#5B7B6D] hover:text-white transition-all shadow-2xs"
-                  >
-                    ✨ 总结成长轨迹
-                  </button>
-                  <button
-                    onClick={() => handleSendAiMessage("回顾一下我和重要朋友（比如江川、许知夏、沈砚）的故事与印象变化。")}
-                    className="whitespace-nowrap px-2.5 py-1 rounded-full bg-white border border-[#5B7B6D]/20 text-[#5B7B6D] hover:bg-[#5B7B6D] hover:text-white transition-all shadow-2xs"
-                  >
-                    🤝 回顾重要朋友
-                  </button>
-                  <button
-                    onClick={() => handleSendAiMessage("帮我推荐一段今天非常值得重温的时光记忆片段。")}
-                    className="whitespace-nowrap px-2.5 py-1 rounded-full bg-white border border-[#5B7B6D]/20 text-[#5B7B6D] hover:bg-[#5B7B6D] hover:text-white transition-all shadow-2xs"
-                  >
-                    📖 推荐重温片段
-                  </button>
-                </div>
-
-                {/* Chat Message Scroll List */}
-                <div className="h-64 overflow-y-auto custom-scrollbar p-3.5 space-y-3 bg-[#FAF8F5]/40">
-                  {aiChatMessages.map((msg, idx) => (
-                    <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                      <div className={`max-w-[88%] p-3 rounded-2xl text-xs leading-relaxed ${
-                        msg.role === 'user'
-                          ? 'bg-[#5B7B6D] text-white rounded-br-none shadow-sm font-sans'
-                          : 'bg-white text-[#2B332E] border border-[#5B7B6D]/15 rounded-bl-none font-serif shadow-sm'
-                      }`}>
-                        {msg.text}
-                      </div>
-                    </div>
-                  ))}
-                  {isAiLoading && (
-                    <div className="flex justify-start">
-                      <div className="bg-white border border-[#5B7B6D]/15 p-3 rounded-2xl rounded-bl-none text-xs text-[#6E7C75] flex items-center gap-2 font-sans shadow-sm">
-                        <Sparkles className="w-3.5 h-3.5 text-[#E88765] animate-spin" />
-                        AI 正在翻阅回忆档案...
-                      </div>
-                    </div>
-                  )}
-                  <div ref={chatEndRef} />
-                </div>
-
-                {/* Chat Input */}
-                <div className="p-2.5 bg-white border-t border-[#5B7B6D]/15 flex gap-2">
-                  <input
-                    type="text"
-                    value={aiChatInput}
-                    onChange={(e) => setAiChatInput(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && handleSendAiMessage()}
-                    placeholder="问问 AI，如：还记得2024年夏天发生了什么吗？"
-                    className="flex-1 p-2 text-xs bg-[#F2EFE9] border border-[#5B7B6D]/20 rounded-xl focus:outline-none focus:border-[#E88765] font-sans"
-                  />
-                  <button
-                    onClick={() => handleSendAiMessage()}
-                    disabled={isAiLoading}
-                    className="px-3.5 py-2 bg-[#E88765] text-white rounded-xl hover:bg-[#E88765]/90 transition-all text-xs font-bold flex items-center gap-1 shadow-sm"
-                  >
-                    <Send className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              </div>
+              {/* Refactored "拾年 · 慢言" Floating Literary Companion Card */}
+              <TimeAiCompanion
+                aiEngine={aiEngine}
+                onToggleEngine={() => {
+                  const nextEngine = aiEngine === 'gemini' ? 'deepseek' : 'gemini';
+                  setAiEngine(nextEngine);
+                  localStorage.setItem('shinian_ai_engine', nextEngine);
+                  showToast(nextEngine === 'deepseek' ? '已切换为 DeepSeek 引擎' : '已切换为标准 AI 模型');
+                }}
+                messages={aiChatMessages}
+                onClearMessages={() => {
+                  setAiChatMessages([{ role: 'model', text: '你好呀。我是这里的时光慢言守护者。你想聊聊哪一段封存的故事，或是哪位很久没见的朋友？' }]);
+                }}
+                input={aiChatInput}
+                setInput={setAiChatInput}
+                onSendMessage={(customPrompt) => handleSendAiMessage(customPrompt)}
+                isLoading={isAiLoading}
+                theme={currentTheme}
+                showToast={showToast}
+                onPlayTts={(text) => handlePlayTts(text)}
+              />
             </div>
           )}
 
@@ -2364,7 +2255,22 @@ export default function App() {
                                     {person.relationship}
                                   </span>
                                 )}
+                                {person.group && person.group !== '未分组' && (
+                                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#5B7B6D]/10 text-[#5B7B6D] font-medium font-sans border border-[#5B7B6D]/20 shrink-0">
+                                    {person.group}
+                                  </span>
+                                )}
                               </div>
+
+                              {person.tags && person.tags.length > 0 && (
+                                <div className="flex items-center gap-1 flex-wrap pt-0.5">
+                                  {person.tags.map((t, idx) => (
+                                    <span key={idx} className="text-[9px] px-1.5 py-0.5 rounded-md bg-[#FAF8F5] text-[#5B7B6D] font-sans border border-[#5B7B6D]/15">
+                                      #{t}
+                                    </span>
+                                  ))}
+                                </div>
+                              )}
 
                               {person.knownDate && calculateDaysKnown(person.knownDate) !== null ? (
                                 <div className="text-[10px] text-[#5B7B6D] font-mono flex items-center gap-1 opacity-90">
@@ -2445,7 +2351,14 @@ export default function App() {
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
-                    onClick={() => setIsEditingPerson(true)}
+                    onClick={() => {
+                      setEditPersonBirthday(selectedPerson.birthday !== '未填写' ? selectedPerson.birthday : '');
+                      setEditPersonKnownDate(selectedPerson.knownDate || '2021-09-01');
+                      setEditPersonRel(selectedPerson.relationship || '挚友');
+                      setEditPersonGroup(selectedPerson.group || '未分组');
+                      setEditPersonAvatar(selectedPerson.avatar || '');
+                      setIsEditingPerson(true);
+                    }}
                     className="text-xs text-[#5B7B6D] hover:text-[#3E564B] flex items-center gap-1 font-medium bg-white px-3 py-1.5 rounded-xl border border-[#5B7B6D]/20 shadow-2xs hover:bg-[#FAF8F5] transition-all"
                   >
                     <Edit3 className="w-3.5 h-3.5" /> 编辑
@@ -2493,6 +2406,16 @@ export default function App() {
                         </span>
                       )}
                     </div>
+
+                    {selectedPerson.tags && selectedPerson.tags.length > 0 && (
+                      <div className="flex items-center justify-center sm:justify-start gap-1.5 flex-wrap pt-0.5">
+                        {selectedPerson.tags.map((tag, idx) => (
+                          <span key={idx} className="text-[11px] px-2.5 py-0.5 rounded-full bg-[#FAF8F5] text-[#5B7B6D] font-medium border border-[#5B7B6D]/20 font-sans shadow-2xs">
+                            #{tag}
+                          </span>
+                        ))}
+                      </div>
+                    )}
 
                     <p className="text-xs text-[#526058] leading-relaxed font-serif max-w-md">
                       {selectedPerson.bio || '记录在时光册里的同路人'}
@@ -2607,11 +2530,48 @@ export default function App() {
                 )}
               </div>
 
+              {/* 生平寄语与自述 (Author Bio / Memoir Message Card) */}
+              {selectedPerson.message && (
+                <div className="bg-white p-5 sm:p-6 rounded-3xl border border-[#D9CFC1] shadow-2xs space-y-3 font-sans relative overflow-hidden">
+                  <div className="flex justify-between items-center pb-2 border-b border-[#5B7B6D]/10">
+                    <div className="flex items-center gap-2">
+                      <div className="w-7 h-7 rounded-xl bg-[#FAF8F5] border border-[#5B7B6D]/20 flex items-center justify-center text-[#5B7B6D]">
+                        <BookOpen className="w-3.5 h-3.5" />
+                      </div>
+                      <h3 className="font-bold text-[#2B332E] text-xs sm:text-sm font-serif">
+                        生平寄语与自述
+                      </h3>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handlePlayTts(selectedPerson.message!)}
+                      className="text-xs text-[#5B7B6D] hover:text-[#E88765] flex items-center gap-1 font-medium bg-[#FAF8F5] px-2.5 py-1 rounded-xl border border-[#5B7B6D]/15 transition-all shadow-2xs active:scale-95 cursor-pointer"
+                      title="朗读寄语"
+                    >
+                      <Volume2 className="w-3.5 h-3.5" /> 朗读寄语
+                    </button>
+                  </div>
+                  <div className="text-xs sm:text-[13px] text-[#3E4A44] leading-relaxed font-serif whitespace-pre-line bg-[#FAF8F5]/80 p-4 sm:p-4.5 rounded-2xl border border-[#5B7B6D]/10 tracking-wide">
+                    {selectedPerson.message}
+                  </div>
+                </div>
+              )}
+
+              {/* Person Exclusive Album Card (Located directly above Impressions & Stories) */}
+              <PersonAlbum
+                photos={selectedPerson.photos || []}
+                personName={selectedPerson.name}
+                onUpdatePhotos={(updatedPhotos) => {
+                  handleUpdatePerson({ photos: updatedPhotos });
+                }}
+                showToast={showToast}
+              />
+
               {/* Yearly Memories & Impressions Section - Clean Journal Stream */}
               <div className="bg-white p-5 sm:p-6 rounded-3xl border border-[#D9CFC1] shadow-2xs space-y-4">
                 <div className="flex justify-between items-center">
                   <h3 className="font-bold text-[#2B332E] text-sm flex items-center gap-2 font-serif">
-                    <Sparkles className="w-4 h-4 text-[#E88765]" />
+                    <Feather className="w-4 h-4 text-[#E88765]" />
                     <span>岁月印记与故事轨迹</span>
                   </h3>
                   <span className="text-[11px] text-[#6E7C75] font-sans">共 {selectedPerson.impressions?.length || 0} 则记录</span>
@@ -2621,13 +2581,38 @@ export default function App() {
                 <form onSubmit={handleAddImpression} className="p-3.5 bg-[#FAF8F5] rounded-2xl border border-[#5B7B6D]/15 space-y-2.5 text-xs font-sans">
                   <span className="font-bold text-[#5B7B6D] text-xs block">记录一段新回忆 / 印象切片：</span>
                   <div className="flex flex-col sm:flex-row gap-2">
-                    <input
-                      type="text"
-                      value={newImpressionYear}
-                      onChange={(e) => setNewImpressionYear(e.target.value)}
-                      placeholder="年份 (如 2026)"
-                      className="w-full sm:w-28 p-2.5 rounded-xl border border-[#5B7B6D]/20 bg-white focus:outline-none focus:border-[#5B7B6D] shrink-0 font-mono text-xs"
-                    />
+                    <div className="flex gap-1.5 w-full sm:w-44 shrink-0">
+                      <input
+                        type="text"
+                        value={newImpressionYear}
+                        onChange={(e) => setNewImpressionYear(e.target.value)}
+                        placeholder="年份/日期 (如 2026.8.6)"
+                        className="flex-1 p-2.5 rounded-xl border border-[#5B7B6D]/20 bg-white focus:outline-none focus:border-[#5B7B6D] font-mono text-xs"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setDatePickerConfig({
+                            isOpen: true,
+                            title: '选择印记切片日期',
+                            value: new Date().toISOString().slice(0, 10),
+                            mode: 'full',
+                            onConfirm: (val) => {
+                              const parts = val.split('-');
+                              if (parts.length === 3) {
+                                setNewImpressionYear(`${parts[0]}.${parseInt(parts[1], 10)}.${parseInt(parts[2], 10)}`);
+                              } else {
+                                setNewImpressionYear(val);
+                              }
+                            }
+                          });
+                        }}
+                        className="p-2.5 rounded-xl border border-[#5B7B6D]/20 bg-white hover:bg-[#F2EFE9] text-[#5B7B6D] shadow-2xs shrink-0 flex items-center justify-center transition-colors cursor-pointer"
+                        title="弹窗选择日期"
+                      >
+                        <Calendar className="w-4 h-4" />
+                      </button>
+                    </div>
                     <div className="flex gap-2 flex-1 min-w-0">
                       <input
                         type="text"
@@ -2638,7 +2623,7 @@ export default function App() {
                       />
                       <button
                         type="submit"
-                        className="px-4 py-2.5 bg-[#5B7B6D] hover:bg-[#3E564B] text-white font-bold rounded-xl transition-all shadow-xs shrink-0 whitespace-nowrap active:scale-95"
+                        className="px-4 py-2.5 bg-[#5B7B6D] hover:bg-[#3E564B] text-white font-bold rounded-xl transition-all shadow-xs shrink-0 whitespace-nowrap active:scale-95 cursor-pointer"
                       >
                         记录
                       </button>
@@ -2648,25 +2633,55 @@ export default function App() {
 
                 {/* Impressions Stream */}
                 <div className="space-y-3 pt-1">
-                  {selectedPerson.impressions?.map((imp, idx) => (
-                    <div key={imp.id || idx} className="p-4 bg-[#FAF7F2] rounded-2xl border border-[#5B7B6D]/10 text-xs text-[#2B332E] space-y-2 shadow-2xs hover:border-[#5B7B6D]/30 transition-all">
-                      <div className="flex justify-between items-center text-[11px] font-sans">
-                        <span className="font-bold text-[#E88765] bg-white px-2.5 py-0.5 rounded-lg border border-[#E88765]/20">
-                          {imp.year} 年切片
-                        </span>
-                        <button 
-                          type="button"
-                          onClick={() => handlePlayTts(imp.text)} 
-                          className="text-[#5B7B6D] hover:text-[#E88765] flex items-center gap-1 font-medium bg-white px-2.5 py-1 rounded-lg border border-[#5B7B6D]/15 transition-all shadow-2xs"
-                        >
-                          <Volume2 className="w-3 h-3" /> 朗诵
-                        </button>
+                  {selectedPerson.impressions?.map((imp, idx) => {
+                    return (
+                      <div key={imp.id || idx} className="p-4 bg-[#FAF7F2] rounded-2xl border border-[#5B7B6D]/10 text-xs text-[#2B332E] space-y-2.5 shadow-2xs hover:border-[#5B7B6D]/30 transition-all">
+                        <div className="flex justify-between items-center text-[11px] font-sans">
+                          <span className="font-bold text-[#E88765] bg-white px-2.5 py-0.5 rounded-lg border border-[#E88765]/20 font-mono">
+                            {formatImpressionDate(imp.year)}
+                          </span>
+                          <div className="flex items-center gap-1.5">
+                            <button 
+                              type="button"
+                              onClick={() => handlePlayTts(imp.text)} 
+                              className="text-[#5B7B6D] hover:text-[#E88765] flex items-center gap-1 font-medium bg-white px-2.5 py-1 rounded-lg border border-[#5B7B6D]/15 transition-all shadow-2xs cursor-pointer active:scale-95"
+                              title="朗诵印象"
+                            >
+                              <Volume2 className="w-3 h-3" /> 朗诵
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setEditingImpression(imp);
+                                setEditImpressionYear(formatImpressionDate(imp.year) || '');
+                                setEditImpressionText(imp.text || '');
+                              }}
+                              className="text-[#6E7C75] hover:text-[#5B7B6D] flex items-center gap-1 font-medium bg-white px-2.5 py-1 rounded-lg border border-[#5B7B6D]/15 transition-all shadow-2xs cursor-pointer active:scale-95"
+                              title="编辑此切片"
+                            >
+                              <Edit3 className="w-3 h-3 text-[#5B7B6D]" /> 编辑
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setConfirmDialog({
+                                  name: `${formatImpressionDate(imp.year)}时光切片: “${imp.text.slice(0, 16)}${imp.text.length > 16 ? '...' : ''}”`,
+                                  onConfirm: () => handleDeleteImpression(imp.id)
+                                });
+                              }}
+                              className="text-[#6E7C75]/60 hover:text-red-500 flex items-center p-1 rounded-lg hover:bg-red-50 transition-all cursor-pointer active:scale-95"
+                              title="删除此切片"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </div>
+                        <p className="leading-relaxed font-serif text-[#3E4A42] text-xs whitespace-pre-line break-words">
+                          {imp.text}
+                        </p>
                       </div>
-                      <p className="leading-relaxed font-serif text-[#3E4A42] text-xs whitespace-pre-line break-words">
-                        {imp.text}
-                      </p>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             </div>
@@ -2766,6 +2781,7 @@ export default function App() {
                             onClick={(e) => {
                               e.stopPropagation();
                               setEditingStory(story);
+                              setEditStoryDate(story.date || new Date().toISOString().slice(0, 10));
                             }}
                             className="p-1.5 text-[#6E7C75]/40 hover:text-[#5B7B6D] rounded-lg hover:bg-[#5B7B6D]/10 transition-all opacity-80 group-hover:opacity-100"
                             title="编辑篇章"
@@ -2805,7 +2821,10 @@ export default function App() {
                   </button>
                   <div className="flex items-center gap-2">
                     <button
-                      onClick={() => setEditingStory(readerStory)}
+                      onClick={() => {
+                        setEditingStory(readerStory);
+                        setEditStoryDate(readerStory.date || new Date().toISOString().slice(0, 10));
+                      }}
                       className="text-[11px] px-2.5 py-1 text-[#5B7B6D] bg-[#5B7B6D]/10 hover:bg-[#5B7B6D]/20 rounded-full font-sans transition-all flex items-center gap-1 active:scale-95"
                       title="编辑当前文章"
                     >
@@ -3113,7 +3132,7 @@ export default function App() {
         {/* Universal Creation & Settings Modals */}
         {activeModal && (
           <div className="absolute inset-0 bg-[#2B332E]/40 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 animate-fadeIn">
-            <div className="bg-[#FAF8F5] w-full max-h-[85%] overflow-y-auto p-5 rounded-t-3xl sm:rounded-3xl border border-[#5B7B6D]/20 shadow-2xl space-y-4">
+            <div className={`bg-[#FAF8F5] w-full ${isKeyboardVisible ? 'max-h-[96%] pb-12' : 'max-h-[85%]'} overflow-y-auto p-5 rounded-t-3xl sm:rounded-3xl border border-[#5B7B6D]/20 shadow-2xl space-y-4 transition-all duration-200`}>
               <div className="flex justify-between items-center border-b border-[#5B7B6D]/10 pb-3">
                 <h3 className="font-bold text-[#2B332E] text-base flex items-center gap-2 font-serif">
                   {activeModal === 'addTimeline' && '新建时光节点'}
@@ -3137,19 +3156,20 @@ export default function App() {
                   addItem('timeline', {
                     id: 't-' + Date.now(),
                     title: fd.get('title') as string,
-                    date: fd.get('date') as string,
+                    date: formTimelineDate || (fd.get('date') as string) || new Date().toISOString().slice(0, 10),
                     location: (fd.get('location') as string) || '时光驿站',
                     content: fd.get('content') as string,
                     tag: (fd.get('tag') as string) || '时光印记',
                     image: formTimelineImage || 'https://images.unsplash.com/photo-1517841905240-472988babdf9?w=600&auto=format&fit=crop&q=80'
                   });
                   setFormTimelineImage('');
+                  setFormTimelineDate(new Date().toISOString().slice(0, 10));
                 }} className="space-y-3.5 text-xs font-sans">
 
                   <div className="p-3 bg-[#FDF0EB]/80 border border-[#E88765]/30 rounded-2xl space-y-2">
                     <div className="flex justify-between items-center">
                       <span className="font-bold text-[#E88765] flex items-center gap-1">
-                        <Sparkles className="w-3.5 h-3.5" /> 照片 AI 智能识图填表
+                        <Camera className="w-3.5 h-3.5" /> 照片 AI 智能识图填表
                       </span>
                       <label className="cursor-pointer text-[11px] px-2.5 py-1 bg-[#E88765] text-white rounded-lg font-medium shadow-xs hover:bg-[#E88765]/90 transition-all">
                         {isAiVisionLoading ? 'AI 识别中...' : '选取照片/票据'}
@@ -3158,7 +3178,7 @@ export default function App() {
                             const form = document.getElementById('timelineForm') as HTMLFormElement;
                             if (form) {
                               if (data.title) (form.elements.namedItem('title') as HTMLInputElement).value = data.title;
-                              if (data.date) (form.elements.namedItem('date') as HTMLInputElement).value = data.date;
+                              if (data.date) setFormTimelineDate(data.date);
                               if (data.location) (form.elements.namedItem('location') as HTMLInputElement).value = data.location;
                               if (data.tag) (form.elements.namedItem('tag') as HTMLInputElement).value = data.tag;
                               if (data.story) (form.elements.namedItem('content') as HTMLTextAreaElement).value = data.story;
@@ -3190,7 +3210,7 @@ export default function App() {
                         disabled={isAiGenImageLoading}
                         className="text-[11px] text-[#E88765] hover:text-[#D46C49] flex items-center gap-1 font-medium transition-colors"
                       >
-                        <Sparkles className="w-3 h-3" />
+                        <Palette className="w-3 h-3" />
                         {isAiGenImageLoading ? '绘图中...' : '🎨 AI 生成时光画'}
                       </button>
                     }
@@ -3204,7 +3224,25 @@ export default function App() {
                   <div className="grid grid-cols-2 gap-2">
                     <div>
                       <label className="text-[10px] text-[#6E7C75] block mb-1">记录日期 <span className="text-[#E88765] font-bold">* 必填</span></label>
-                      <input name="date" type="date" required defaultValue={new Date().toISOString().slice(0, 10)} className="w-full p-3 rounded-xl border border-[#5B7B6D]/20 bg-white focus:outline-none focus:border-[#5B7B6D]" />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setDatePickerConfig({
+                            isOpen: true,
+                            title: '选择时光记录日期',
+                            value: formTimelineDate || new Date().toISOString().slice(0, 10),
+                            mode: 'full',
+                            onConfirm: (val) => setFormTimelineDate(val)
+                          });
+                        }}
+                        className="w-full p-3 rounded-xl border border-[#5B7B6D]/20 bg-white hover:bg-[#FAF8F5] focus:outline-none focus:border-[#5B7B6D] text-left flex items-center justify-between text-xs transition-colors shadow-2xs"
+                      >
+                        <span className="font-mono text-xs text-[#2B332E] font-medium truncate">
+                          {formTimelineDate || new Date().toISOString().slice(0, 10)}
+                        </span>
+                        <Calendar className="w-3.5 h-3.5 text-[#5B7B6D]/70 shrink-0 ml-1" />
+                      </button>
+                      <input type="hidden" name="date" value={formTimelineDate || new Date().toISOString().slice(0, 10)} />
                     </div>
                     <div>
                       <label className="text-[10px] text-[#6E7C75] block mb-1">地点 (选填)</label>
@@ -3229,7 +3267,7 @@ export default function App() {
                         disabled={isAiPolishLoading}
                         className="text-[10px] text-[#E88765] hover:underline flex items-center gap-0.5"
                       >
-                        <Wand2 className="w-3 h-3" /> {isAiPolishLoading ? '润色中...' : '✨ AI 润色故事'}
+                        <Feather className="w-3 h-3" /> {isAiPolishLoading ? '润色中...' : '文墨 AI 润色故事'}
                       </button>
                     </div>
                     <textarea name="content" required rows={3} placeholder="写下当时的感受、心境与难忘的细节..." className="w-full p-3 rounded-xl border border-[#5B7B6D]/20 bg-white focus:outline-none focus:border-[#5B7B6D]" />
@@ -3254,6 +3292,9 @@ export default function App() {
                   const wechatVal = (fd.get('wechat') as string)?.trim() || '';
                   const qqVal = (fd.get('qq') as string)?.trim() || '';
                   const phoneVal = (fd.get('phone') as string)?.trim() || '';
+                  const tagsInput = (fd.get('tags') as string)?.trim();
+                  const tagsVal = tagsInput ? tagsInput.split(/[\s,，]+/).filter(Boolean) : [];
+                  const messageVal = (fd.get('message') as string)?.trim() || '';
 
                   if (!formPersonAvatar) {
                     showToast('请上传人物头像相片（必填项）');
@@ -3273,6 +3314,7 @@ export default function App() {
                     avatar: formPersonAvatar,
                     relationship: relVal,
                     group: groupVal,
+                    tags: tagsVal,
                     birthday: birthdayVal || '未填写',
                     zodiac: zodiacVal,
                     knownDate: knownDateVal,
@@ -3282,6 +3324,7 @@ export default function App() {
                     hobbies: (fd.get('hobbies') as string)?.trim() || '未填写',
                     color: (fd.get('color') as string)?.trim() || '暖杏粉',
                     bio: (fd.get('bio') as string)?.trim() || `${relVal} · 珍贵回忆的同路人`,
+                    message: messageVal,
                     customFields: { '认识地点': knowWhereVal },
                     impressions: (fd.get('impression') as string)?.trim()
                       ? [{ id: 'imp-0', year: new Date().getFullYear().toString(), text: (fd.get('impression') as string)?.trim() }]
@@ -3403,21 +3446,60 @@ export default function App() {
                         <label className="text-[10px] text-[#6E7C75] block mb-1">
                           相识起始日期
                         </label>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setDatePickerConfig({
+                              isOpen: true,
+                              title: '选择相识起始日期',
+                              value: addPersonKnownDate || '2021-09-01',
+                              mode: 'full',
+                              onConfirm: (val) => {
+                                setAddPersonKnownDate(val);
+                              }
+                            });
+                          }}
+                          className="w-full p-2.5 rounded-xl border border-[#5B7B6D]/20 bg-[#FAF8F5] hover:bg-white focus:outline-none focus:border-[#5B7B6D] text-left flex items-center justify-between text-xs transition-colors"
+                        >
+                          <span className="font-mono text-xs text-[#2B332E] truncate">
+                            {addPersonKnownDate || '2021-09-01'}
+                          </span>
+                          <Calendar className="w-3.5 h-3.5 text-[#5B7B6D]/60 shrink-0 ml-1" />
+                        </button>
                         <input
+                          type="hidden"
                           name="knownDate"
-                          type="date"
-                          defaultValue="2021-09-01"
-                          className="w-full p-2.5 rounded-xl border border-[#5B7B6D]/20 bg-[#FAF8F5] focus:bg-white focus:outline-none focus:border-[#5B7B6D]"
+                          value={addPersonKnownDate || '2021-09-01'}
                         />
                       </div>
                       <div>
                         <label className="text-[10px] text-[#6E7C75] block mb-1">
-                          生日
+                          生日 (弹窗选择)
                         </label>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setDatePickerConfig({
+                              isOpen: true,
+                              title: '选择好友生日',
+                              value: addPersonBirthday || '',
+                              mode: 'month-day',
+                              onConfirm: (val) => {
+                                setAddPersonBirthday(val);
+                              }
+                            });
+                          }}
+                          className="w-full p-2.5 rounded-xl border border-[#5B7B6D]/20 bg-[#FAF8F5] hover:bg-white focus:outline-none focus:border-[#5B7B6D] text-left flex items-center justify-between text-xs transition-colors"
+                        >
+                          <span className={`truncate ${addPersonBirthday ? 'text-[#2B332E] font-medium' : 'text-[#6E7C75]/60'}`}>
+                            {addPersonBirthday || '点击选择生日'}
+                          </span>
+                          <Calendar className="w-3.5 h-3.5 text-[#E88765]/70 shrink-0 ml-1" />
+                        </button>
                         <input
+                          type="hidden"
                           name="birthday"
-                          placeholder="如：10月24日、1998-05-12"
-                          className="w-full p-2.5 rounded-xl border border-[#5B7B6D]/20 bg-[#FAF8F5] focus:bg-white focus:outline-none focus:border-[#5B7B6D]"
+                          value={addPersonBirthday || ''}
                         />
                       </div>
                     </div>
@@ -3497,8 +3579,18 @@ export default function App() {
                     </div>
 
                     <div>
+                      <label className="text-[10px] text-[#6E7C75] block mb-1">人物标签 (多个标签用空格隔开)</label>
+                      <input name="tags" placeholder="如：高中同窗 青春同窗 创作者" className="w-full p-2.5 rounded-xl border border-[#5B7B6D]/20 bg-[#FAF8F5] focus:bg-white focus:outline-none focus:border-[#5B7B6D]" />
+                    </div>
+
+                    <div>
                       <label className="text-[10px] text-[#6E7C75] block mb-1">一句话人物总结</label>
                       <input name="bio" placeholder="如：一起在晚自习后看过无数次晚霞的知心挚友" className="w-full p-2.5 rounded-xl border border-[#5B7B6D]/20 bg-[#FAF8F5] focus:bg-white focus:outline-none focus:border-[#5B7B6D]" />
+                    </div>
+
+                    <div>
+                      <label className="text-[10px] text-[#6E7C75] block mb-1">生平寄语与自述正文</label>
+                      <textarea name="message" rows={3} placeholder="记录生平寄语、自述故事或长篇心语..." className="w-full p-2.5 rounded-xl border border-[#5B7B6D]/20 bg-[#FAF8F5] focus:bg-white focus:outline-none focus:border-[#5B7B6D]" />
                     </div>
 
                     <div>
@@ -3523,12 +3615,33 @@ export default function App() {
                     chapter: fd.get('chapter') as string,
                     title: fd.get('title') as string,
                     content: fd.get('content') as string,
-                    date: (fd.get('date') as string) || new Date().toISOString().slice(0, 10)
+                    date: formStoryDate || (fd.get('date') as string) || new Date().toISOString().slice(0, 10)
                   });
+                  setFormStoryDate(new Date().toISOString().slice(0, 10));
                 }} className="space-y-3 text-xs font-sans">
                   <div className="grid grid-cols-2 gap-2">
                     <input name="chapter" required placeholder="章节序号 (例: 第一章)" className="p-3 rounded-xl border border-[#5B7B6D]/20 bg-white focus:outline-none focus:border-[#5B7B6D]" />
-                    <input name="date" type="date" required defaultValue={new Date().toISOString().slice(0, 10)} className="p-3 rounded-xl border border-[#5B7B6D]/20 bg-white focus:outline-none focus:border-[#5B7B6D]" />
+                    <div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setDatePickerConfig({
+                            isOpen: true,
+                            title: '选择故事篇章日期',
+                            value: formStoryDate || new Date().toISOString().slice(0, 10),
+                            mode: 'full',
+                            onConfirm: (val) => setFormStoryDate(val)
+                          });
+                        }}
+                        className="w-full p-3 rounded-xl border border-[#5B7B6D]/20 bg-white hover:bg-[#FAF8F5] focus:outline-none focus:border-[#5B7B6D] text-left flex items-center justify-between text-xs transition-colors shadow-2xs"
+                      >
+                        <span className="font-mono text-xs text-[#2B332E] font-medium truncate">
+                          {formStoryDate || new Date().toISOString().slice(0, 10)}
+                        </span>
+                        <Calendar className="w-3.5 h-3.5 text-[#5B7B6D]/70 shrink-0 ml-1" />
+                      </button>
+                      <input type="hidden" name="date" value={formStoryDate || new Date().toISOString().slice(0, 10)} />
+                    </div>
                   </div>
                   <input name="title" required placeholder="章节标题" className="w-full p-3 rounded-xl border border-[#5B7B6D]/20 bg-white focus:outline-none focus:border-[#5B7B6D]" />
 
@@ -3562,11 +3675,12 @@ export default function App() {
                   addItem('artifacts', {
                     id: 'a-' + Date.now(),
                     name: fd.get('name') as string,
-                    date: fd.get('date') as string,
+                    date: formArtifactDate || (fd.get('date') as string) || new Date().toISOString().slice(0, 10),
                     story: fd.get('story') as string,
                     image: formArtifactImage || 'https://images.unsplash.com/photo-1517604931442-7e0c8ed2963c?w=500&auto=format&fit=crop&q=80'
                   });
                   setFormArtifactImage('');
+                  setFormArtifactDate(new Date().toISOString().slice(0, 10));
                 }} className="space-y-3.5 text-xs font-sans">
 
                   <LocalImageUploader
@@ -3600,7 +3714,25 @@ export default function App() {
 
                   <div>
                     <label className="text-[10px] text-[#6E7C75] block mb-1">获得/纪念日期 <span className="text-[#E88765] font-bold">* 必填</span></label>
-                    <input name="date" type="date" required defaultValue={new Date().toISOString().slice(0, 10)} className="w-full p-3 rounded-xl border border-[#5B7B6D]/20 bg-white focus:outline-none focus:border-[#5B7B6D]" />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setDatePickerConfig({
+                          isOpen: true,
+                          title: '选择旧物获得/纪念日期',
+                          value: formArtifactDate || new Date().toISOString().slice(0, 10),
+                          mode: 'full',
+                          onConfirm: (val) => setFormArtifactDate(val)
+                        });
+                      }}
+                      className="w-full p-3 rounded-xl border border-[#5B7B6D]/20 bg-white hover:bg-[#FAF8F5] focus:outline-none focus:border-[#5B7B6D] text-left flex items-center justify-between text-xs transition-colors shadow-2xs"
+                    >
+                      <span className="font-mono text-xs text-[#2B332E] font-medium truncate">
+                        {formArtifactDate || new Date().toISOString().slice(0, 10)}
+                      </span>
+                      <Calendar className="w-3.5 h-3.5 text-[#E88765] shrink-0 ml-1" />
+                    </button>
+                    <input type="hidden" name="date" value={formArtifactDate || new Date().toISOString().slice(0, 10)} />
                   </div>
 
                   <div>
@@ -3620,15 +3752,34 @@ export default function App() {
                   addItem('letters', {
                     id: 'l-' + Date.now(),
                     title: fd.get('title') as string,
-                    unlockDate: fd.get('unlockDate') as string,
+                    unlockDate: formLetterUnlockDate || (fd.get('unlockDate') as string) || '2030-01-01',
                     content: fd.get('content') as string,
                     isUnlocked: false
                   });
+                  setFormLetterUnlockDate('2030-01-01');
                 }} className="space-y-3 text-xs font-sans">
                   <input name="title" required placeholder="信件标题" className="w-full p-3 rounded-xl border border-[#5B7B6D]/20 bg-white focus:outline-none focus:border-[#5B7B6D]" />
                   <div className="space-y-1">
-                    <label className="text-[10px] text-[#6E7C75]">设定的未来的开启日期：</label>
-                    <input name="unlockDate" type="date" required defaultValue="2030-01-01" className="w-full p-3 rounded-xl border border-[#5B7B6D]/20 bg-white focus:outline-none focus:border-[#5B7B6D]" />
+                    <label className="text-[10px] text-[#6E7C75]">设定的未来开启日期：</label>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setDatePickerConfig({
+                          isOpen: true,
+                          title: '设定未来寄信开启日期',
+                          value: formLetterUnlockDate || '2030-01-01',
+                          mode: 'full',
+                          onConfirm: (val) => setFormLetterUnlockDate(val)
+                        });
+                      }}
+                      className="w-full p-3 rounded-xl border border-[#5B7B6D]/20 bg-white hover:bg-[#FAF8F5] focus:outline-none focus:border-[#5B7B6D] text-left flex items-center justify-between text-xs transition-colors shadow-2xs"
+                    >
+                      <span className="font-mono text-xs text-[#2B332E] font-medium truncate">
+                        {formLetterUnlockDate || '2030-01-01'}
+                      </span>
+                      <Calendar className="w-3.5 h-3.5 text-[#5B7B6D]/70 shrink-0 ml-1" />
+                    </button>
+                    <input type="hidden" name="unlockDate" value={formLetterUnlockDate || '2030-01-01'} />
                   </div>
                   <textarea name="content" required rows={4} placeholder="写给未来的话语..." className="w-full p-3 rounded-xl border border-[#5B7B6D]/20 bg-white focus:outline-none focus:border-[#5B7B6D]" />
                   <button type="submit" className="w-full py-3 bg-[#5B7B6D] text-white font-bold rounded-xl shadow-sm hover:bg-[#3E564B] transition-all">封存胶囊</button>
@@ -4006,6 +4157,10 @@ export default function App() {
                 const phoneVal = (fd.get('phone') as string)?.trim() || '';
                 const finalAvatar = editPersonAvatar || selectedPerson.avatar;
 
+                const tagsInput = (fd.get('tags') as string)?.trim();
+                const tagsVal = tagsInput ? tagsInput.split(/[\s,，]+/).filter(Boolean) : (selectedPerson.tags || []);
+                const messageVal = (fd.get('message') as string)?.trim() || selectedPerson.message || '';
+
                 if (!finalAvatar) {
                   showToast('请上传人物头像相片（必填项）');
                   return;
@@ -4022,6 +4177,7 @@ export default function App() {
                   name: nameVal,
                   relationship: relVal,
                   group: groupVal,
+                  tags: tagsVal,
                   birthday: birthdayVal || '未填写',
                   zodiac: zodiacVal,
                   knownDate: knownDateVal,
@@ -4031,6 +4187,7 @@ export default function App() {
                   hobbies: (fd.get('hobbies') as string)?.trim() || '未填写',
                   color: (fd.get('color') as string)?.trim() || '暖杏粉',
                   bio: (fd.get('bio') as string)?.trim() || `${relVal} · 珍贵回忆的同路人`,
+                  message: messageVal,
                   avatar: finalAvatar,
                   customFields: {
                     ...(selectedPerson.customFields || {}),
@@ -4151,22 +4308,60 @@ export default function App() {
                       <label className="text-[10px] text-[#6E7C75] block mb-1">
                         相识起始日期
                       </label>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setDatePickerConfig({
+                            isOpen: true,
+                            title: `设置与【${selectedPerson.name}】相识日期`,
+                            value: editPersonKnownDate || selectedPerson.knownDate || '2021-09-01',
+                            mode: 'full',
+                            onConfirm: (val) => {
+                              setEditPersonKnownDate(val);
+                            }
+                          });
+                        }}
+                        className="w-full p-2.5 rounded-xl border border-[#5B7B6D]/20 bg-[#FAF8F5] hover:bg-white focus:outline-none focus:border-[#5B7B6D] text-left flex items-center justify-between text-xs transition-colors"
+                      >
+                        <span className="font-mono text-xs text-[#2B332E] truncate">
+                          {editPersonKnownDate || selectedPerson.knownDate || '2021-09-01'}
+                        </span>
+                        <Calendar className="w-3.5 h-3.5 text-[#5B7B6D]/60 shrink-0 ml-1" />
+                      </button>
                       <input
+                        type="hidden"
                         name="knownDate"
-                        type="date"
-                        defaultValue={selectedPerson.knownDate || '2021-09-01'}
-                        className="w-full p-2.5 rounded-xl border border-[#5B7B6D]/20 bg-[#FAF8F5] focus:bg-white focus:outline-none focus:border-[#5B7B6D]"
+                        value={editPersonKnownDate || selectedPerson.knownDate || '2021-09-01'}
                       />
                     </div>
                     <div>
                       <label className="text-[10px] text-[#6E7C75] block mb-1">
-                        生日
+                        生日 (弹窗选择)
                       </label>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setDatePickerConfig({
+                            isOpen: true,
+                            title: `设置【${selectedPerson.name}】的生日`,
+                            value: editPersonBirthday || (selectedPerson.birthday !== '未填写' ? selectedPerson.birthday : ''),
+                            mode: 'month-day',
+                            onConfirm: (val) => {
+                              setEditPersonBirthday(val);
+                            }
+                          });
+                        }}
+                        className="w-full p-2.5 rounded-xl border border-[#5B7B6D]/20 bg-[#FAF8F5] hover:bg-white focus:outline-none focus:border-[#5B7B6D] text-left flex items-center justify-between text-xs transition-colors"
+                      >
+                        <span className={`truncate ${editPersonBirthday || selectedPerson.birthday !== '未填写' ? 'text-[#2B332E] font-medium' : 'text-[#6E7C75]/60'}`}>
+                          {editPersonBirthday || (selectedPerson.birthday !== '未填写' ? selectedPerson.birthday : '点击选择生日')}
+                        </span>
+                        <Calendar className="w-3.5 h-3.5 text-[#E88765]/70 shrink-0 ml-1" />
+                      </button>
                       <input
+                        type="hidden"
                         name="birthday"
-                        defaultValue={selectedPerson.birthday !== '未填写' ? selectedPerson.birthday : ''}
-                        placeholder="如：10月24日、1998-05-12"
-                        className="w-full p-2.5 rounded-xl border border-[#5B7B6D]/20 bg-[#FAF8F5] focus:bg-white focus:outline-none focus:border-[#5B7B6D]"
+                        value={editPersonBirthday || (selectedPerson.birthday !== '未填写' ? selectedPerson.birthday : '')}
                       />
                     </div>
                   </div>
@@ -4250,8 +4445,23 @@ export default function App() {
                   </div>
 
                   <div>
+                    <label className="text-[10px] text-[#6E7C75] block mb-1">人物标签 (多个标签用空格隔开)</label>
+                    <input
+                      name="tags"
+                      defaultValue={selectedPerson.tags ? selectedPerson.tags.join(' ') : ''}
+                      placeholder="如：高中同窗 青春同窗 创作者"
+                      className="w-full p-2.5 rounded-xl border border-[#5B7B6D]/20 bg-[#FAF8F5] focus:bg-white focus:outline-none focus:border-[#5B7B6D]"
+                    />
+                  </div>
+
+                  <div>
                     <label className="text-[10px] text-[#6E7C75] block mb-1">一句话人物总结</label>
                     <textarea name="bio" defaultValue={selectedPerson.bio} rows={2} placeholder="如：一起在晚自习后看过无数次晚霞的知心挚友" className="w-full p-2.5 rounded-xl border border-[#5B7B6D]/20 bg-[#FAF8F5] focus:bg-white focus:outline-none focus:border-[#5B7B6D]" />
+                  </div>
+
+                  <div>
+                    <label className="text-[10px] text-[#6E7C75] block mb-1">生平寄语与自述正文</label>
+                    <textarea name="message" defaultValue={selectedPerson.message || ''} rows={4} placeholder="记录关于该人物的详细生平故事、自述与岁月寄语..." className="w-full p-2.5 rounded-xl border border-[#5B7B6D]/20 bg-[#FAF8F5] focus:bg-white focus:outline-none focus:border-[#5B7B6D]" />
                   </div>
                 </div>
 
@@ -4607,10 +4817,10 @@ export default function App() {
                     <div className="p-4 sm:p-5 bg-white/95 rounded-2xl border border-[#5B7B6D]/20 shadow-xs space-y-3 relative overflow-hidden animate-fadeIn">
                       <div className="flex items-center justify-between border-b border-[#5B7B6D]/10 pb-2">
                         <span className="text-[10px] text-[#5B7B6D] font-mono tracking-wider flex items-center gap-1">
-                          <Sparkles className="w-3 h-3 text-[#E88765]" /> 封存信笺 · 展读模式
+                          <Feather className="w-3 h-3 text-[#E88765]" /> 封存信笺 · 展读模式
                         </span>
                         <span className="text-[10px] text-[#E88765] bg-[#FDF0EB] px-2 py-0.5 rounded-full font-medium">
-                          ✦ 已化火漆 ✦
+                          已解开火漆
                         </span>
                       </div>
                       <div className="text-sm text-[#2B332E] font-serif leading-relaxed whitespace-pre-line break-words pt-1 select-text">
@@ -4637,22 +4847,18 @@ export default function App() {
                         这封信原约定于 <strong className="text-[#E88765] font-bold">{selectedLetter.unlockDate}</strong> 开启解封。
                       </p>
                       <p className="text-[11px] text-[#6E7C75]/80 font-sans">
-                        你可以静候约定之日自动开启，亦可现在由你亲手点触提前破蜡拆阅。
+                        你可以静候约定之日自动开启，亦可在下方滑动解开时光火漆封蜡提前展读。
                       </p>
                     </div>
 
-                    <div className="pt-2 flex justify-center">
-                      <button
-                        type="button"
-                        disabled={isUnsealingLetter}
-                        onClick={() => handleUnsealLetter(selectedLetter)}
-                        className={`px-5 py-2.5 bg-gradient-to-r from-[#E88765] to-[#D97350] hover:from-[#D97350] hover:to-[#C66240] text-white text-xs font-bold rounded-2xl shadow-md flex items-center gap-2 transition-all active:scale-95 ${
-                          isUnsealingLetter ? 'opacity-75 cursor-wait' : 'hover:shadow-lg'
-                        }`}
-                      >
-                        <Sparkles className={`w-4 h-4 ${isUnsealingLetter ? 'animate-spin' : ''}`} />
-                        <span>{isUnsealingLetter ? '正在解化火漆封蜡...' : '亲手拆开火漆信封'}</span>
-                      </button>
+                    {/* Slide to Unlock Interactive Component */}
+                    <div className="pt-2">
+                      <SlideToUnlock
+                        onUnlock={() => handleUnsealLetter(selectedLetter)}
+                        isUnlocking={isUnsealingLetter}
+                        theme={currentTheme}
+                        unlockDate={selectedLetter.unlockDate}
+                      />
                     </div>
                   </div>
                 )}
@@ -4717,7 +4923,7 @@ export default function App() {
                   id: editingStory.id,
                   chapter: (fd.get('chapter') as string)?.trim() || '篇章',
                   title: (fd.get('title') as string)?.trim() || '未命名故事',
-                  date: (fd.get('date') as string) || new Date().toISOString().slice(0, 10),
+                  date: editStoryDate || (fd.get('date') as string) || new Date().toISOString().slice(0, 10),
                   content: (fd.get('editStoryContent') as string)?.trim() || ''
                 });
               }} className="space-y-3.5 text-xs font-sans">
@@ -4734,12 +4940,28 @@ export default function App() {
                   </div>
                   <div>
                     <label className="text-[10px] text-[#6E7C75] block mb-1">故事所属日期：</label>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setDatePickerConfig({
+                          isOpen: true,
+                          title: '修改故事篇章所属日期',
+                          value: editStoryDate || editingStory.date || new Date().toISOString().slice(0, 10),
+                          mode: 'full',
+                          onConfirm: (val) => setEditStoryDate(val)
+                        });
+                      }}
+                      className="w-full p-3 rounded-xl border border-[#5B7B6D]/20 bg-white hover:bg-[#FAF8F5] focus:outline-none focus:border-[#5B7B6D] text-left flex items-center justify-between text-xs transition-colors shadow-2xs"
+                    >
+                      <span className="font-mono text-xs text-[#2B332E] font-medium truncate">
+                        {editStoryDate || editingStory.date || new Date().toISOString().slice(0, 10)}
+                      </span>
+                      <Calendar className="w-3.5 h-3.5 text-[#5B7B6D]/70 shrink-0 ml-1" />
+                    </button>
                     <input
+                      type="hidden"
                       name="date"
-                      type="date"
-                      required
-                      defaultValue={editingStory.date}
-                      className="w-full p-3 rounded-xl border border-[#5B7B6D]/20 bg-white focus:outline-none focus:border-[#5B7B6D]"
+                      value={editStoryDate || editingStory.date || new Date().toISOString().slice(0, 10)}
                     />
                   </div>
                 </div>
@@ -4767,7 +4989,7 @@ export default function App() {
                       disabled={isAiPolishLoading}
                       className="text-[10px] text-[#E88765] hover:underline flex items-center gap-0.5"
                     >
-                      <Wand2 className="w-3 h-3" /> {isAiPolishLoading ? '润色中...' : '✨ AI 润色正文'}
+                      <Feather className="w-3 h-3" /> {isAiPolishLoading ? '润色中...' : '文墨 AI 润色正文'}
                     </button>
                   </div>
                   <textarea
@@ -4793,6 +5015,100 @@ export default function App() {
                     className="flex-1 py-3 bg-[#5B7B6D] text-white font-bold rounded-xl shadow-sm hover:bg-[#3E564B] transition-all active:scale-[0.99]"
                   >
                     保存篇章修改
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* Impression (岁月印记时光切片) Card Modal */}
+        {editingImpression && (
+          <div className="absolute inset-0 bg-[#2B332E]/60 backdrop-blur-xs z-50 flex items-center justify-center p-4 sm:p-6 animate-fadeIn font-sans">
+            <div className="bg-[#FAF8F5] w-full max-w-md p-5 sm:p-6 rounded-3xl border border-[#5B7B6D]/20 shadow-2xl space-y-4.5 paper-texture">
+              <div className="flex justify-between items-center border-b border-[#5B7B6D]/15 pb-3">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-xl bg-[#5B7B6D]/10 flex items-center justify-center text-[#5B7B6D]">
+                    <Edit3 className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-[#2B332E] text-base font-serif">编辑时光印记切片</h3>
+                    <p className="text-[11px] text-[#6E7C75]">修订岁月切片记忆细节与年份描述</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setEditingImpression(null)}
+                  className="w-8 h-8 rounded-full flex items-center justify-center text-[#6E7C75] hover:text-[#2B332E] hover:bg-[#5B7B6D]/10 transition-all"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <form onSubmit={handleSaveEditedImpression} className="space-y-4">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-[#5B7B6D] flex items-center justify-between">
+                    <span>切片日期</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setDatePickerConfig({
+                          isOpen: true,
+                          title: '选取时光切片日期',
+                          value: new Date().toISOString().slice(0, 10),
+                          mode: 'full',
+                          onConfirm: (val) => {
+                            const parts = val.split('-');
+                            if (parts.length === 3) {
+                              setEditImpressionYear(`${parts[0]}.${parseInt(parts[1], 10)}.${parseInt(parts[2], 10)}`);
+                            } else {
+                              setEditImpressionYear(val);
+                            }
+                          }
+                        });
+                      }}
+                      className="text-[11px] text-[#E88765] hover:underline flex items-center gap-1 font-normal cursor-pointer"
+                    >
+                      <Calendar className="w-3 h-3" /> 弹窗选择日期
+                    </button>
+                  </label>
+                  <input
+                    type="text"
+                    value={editImpressionYear}
+                    onChange={(e) => setEditImpressionYear(e.target.value)}
+                    placeholder="如：2026.8.6"
+                    className="w-full p-2.5 rounded-xl border border-[#5B7B6D]/20 bg-white font-mono text-xs focus:outline-none focus:border-[#5B7B6D]"
+                    required
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-[#5B7B6D]">
+                    切片细节描述
+                  </label>
+                  <textarea
+                    rows={4}
+                    value={editImpressionText}
+                    onChange={(e) => setEditImpressionText(e.target.value)}
+                    placeholder="记录该年份留下的深刻印象、共同经历或瞬间..."
+                    className="w-full p-3 rounded-xl border border-[#5B7B6D]/20 bg-white font-serif text-xs leading-relaxed focus:outline-none focus:border-[#5B7B6D]"
+                    required
+                  />
+                </div>
+
+                <div className="flex gap-2.5 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => setEditingImpression(null)}
+                    className="flex-1 py-2.5 rounded-xl border border-[#5B7B6D]/25 bg-white text-[#6E7C75] text-xs font-semibold hover:bg-[#F2EFE9] transition-all active:scale-95 shadow-2xs"
+                  >
+                    取消
+                  </button>
+                  <button
+                    type="submit"
+                    className="flex-1 py-2.5 bg-[#5B7B6D] text-white text-xs font-bold rounded-xl shadow-md hover:bg-[#3E564B] transition-all active:scale-95"
+                  >
+                    保存切片修改
                   </button>
                 </div>
               </form>
@@ -4831,7 +5147,11 @@ export default function App() {
                 <button
                   type="button"
                   onClick={() => {
-                    deleteItem(confirmDialog.type, confirmDialog.id);
+                    if (confirmDialog.onConfirm) {
+                      confirmDialog.onConfirm();
+                    } else if (confirmDialog.type && confirmDialog.id) {
+                      deleteItem(confirmDialog.type, confirmDialog.id);
+                    }
                     setConfirmDialog(null);
                   }}
                   className="flex-1 py-2.5 rounded-xl text-white text-xs font-bold shadow-md transition-all active:scale-95 hover:brightness-110"
@@ -4845,7 +5165,7 @@ export default function App() {
         )}
 
         {/* Dynamic Frosted Glass Bottom Navigation Bar: Floating Capsule with Safe Area Inset */}
-        <div className="shrink-0 z-30 px-3 sm:px-4 pt-1 pb-[max(0.625rem,env(safe-area-inset-bottom))] select-none">
+        <div className="shrink-0 z-30 px-3 sm:px-4 pt-1 pb-[max(var(--safe-area-bottom,16px),env(safe-area-inset-bottom,16px),0.875rem)] select-none">
           <nav 
             id="dynamic-bottom-nav" 
             className="dynamic-glass-navbar relative rounded-[26px] sm:rounded-3xl px-1.5 py-1.5 flex justify-around items-center"
@@ -4857,6 +5177,20 @@ export default function App() {
             <NavItem id="artifacts" label="拾物阁" icon={Package} active={activeTab} onClick={() => setActiveTab('artifacts')} />
           </nav>
         </div>
+
+        {/* Global Themed Date Picker Modal */}
+        <ThemedDatePickerModal
+          isOpen={datePickerConfig.isOpen}
+          onClose={() => setDatePickerConfig(prev => ({ ...prev, isOpen: false }))}
+          title={datePickerConfig.title}
+          value={datePickerConfig.value}
+          mode={datePickerConfig.mode}
+          onConfirm={(val) => {
+            datePickerConfig.onConfirm(val);
+            setDatePickerConfig(prev => ({ ...prev, isOpen: false }));
+          }}
+          theme={currentTheme}
+        />
 
         {/* Friend Group Picker Bottom Sheet Modal */}
         <AnimatePresence>
@@ -5164,9 +5498,7 @@ interface ChronoYearPickerModalProps {
       timeline: number;
       stories: number;
       artifacts: number;
-      impressions: number;
       people: number;
-      letters: number;
     }>;
     totalAll: number;
     totals: {
@@ -5174,8 +5506,6 @@ interface ChronoYearPickerModalProps {
       stories: number;
       artifacts: number;
       people: number;
-      impressions: number;
-      letters: number;
     };
   };
   theme: HealingTheme;
@@ -5347,14 +5677,6 @@ function ChronoYearPickerModal({
               <span className="px-2 py-0.5 rounded-md bg-white border border-[#5B7B6D]/15 font-medium shadow-2xs">
                 {yearStats.totals.people} 人物
               </span>
-              <span className="px-2 py-0.5 rounded-md bg-white border border-[#5B7B6D]/15 font-medium shadow-2xs">
-                {yearStats.totals.impressions} 印象
-              </span>
-              {yearStats.totals.letters > 0 && (
-                <span className="px-2 py-0.5 rounded-md bg-white border border-[#5B7B6D]/15 font-medium shadow-2xs">
-                  {yearStats.totals.letters} 胶囊
-                </span>
-              )}
             </div>
 
             {/* Micro subtle sheen bar */}
@@ -5456,7 +5778,7 @@ function ChronoYearPickerModal({
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
               {displayedYears.map((yr) => {
                 const isCurrentSelected = selectedYear === yr;
-                const stats = yearStats.statsMap[yr] || { total: 0, timeline: 0, stories: 0, artifacts: 0, impressions: 0, people: 0, letters: 0 };
+                const stats = yearStats.statsMap[yr] || { total: 0, timeline: 0, stories: 0, artifacts: 0, people: 0 };
                 const yrNum = parseInt(yr, 10);
                 let relativeLabel = '';
                 if (!isNaN(yrNum)) {
@@ -5528,16 +5850,6 @@ function ChronoYearPickerModal({
                           {stats.people} 结识
                         </span>
                       )}
-                      {stats.impressions > 0 && (
-                        <span className="px-1.5 py-0.5 rounded bg-[#FAF8F5] border border-[#5B7B6D]/10">
-                          {stats.impressions} 印象
-                        </span>
-                      )}
-                      {stats.letters > 0 && (
-                        <span className="px-1.5 py-0.5 rounded bg-[#FAF8F5] border border-[#5B7B6D]/10">
-                          {stats.letters} 胶囊
-                        </span>
-                      )}
                     </div>
 
                     {/* Density Meter Bar */}
@@ -5563,7 +5875,7 @@ function ChronoYearPickerModal({
         </div>
 
         {/* Footer Info */}
-        <div className="p-3 bg-white/70 border-t border-[#5B7B6D]/10 flex items-center justify-between text-[11px] text-[#6E7C75]">
+        <div className="p-3 pb-[max(var(--safe-area-bottom,16px),env(safe-area-inset-bottom,16px),0.75rem)] bg-white/70 border-t border-[#5B7B6D]/10 flex items-center justify-between text-[11px] text-[#6E7C75]">
           <span className="font-serif">
             已选状态：
             <strong className="text-[#2B332E] font-medium ml-1">
@@ -5978,7 +6290,7 @@ function FriendGroupPickerModal({
         </div>
 
         {/* Footer Info */}
-        <div className="p-3 bg-white/70 border-t border-[#5B7B6D]/10 flex items-center justify-between text-[11px] text-[#6E7C75]">
+        <div className="p-3 pb-[max(var(--safe-area-bottom,16px),env(safe-area-inset-bottom,16px),0.75rem)] bg-white/70 border-t border-[#5B7B6D]/10 flex items-center justify-between text-[11px] text-[#6E7C75]">
           <span className="font-serif">
             已选状态：
             <strong className="text-[#2B332E] font-medium ml-1">

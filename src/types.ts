@@ -30,6 +30,7 @@ export interface Person {
   qq?: string;        // QQ号
   phone?: string;     // 手机号/电话
   customFields?: Record<string, string>;
+  photos?: string[];   // 人物相册照片数组（本地压缩存储）
   impressions: Impression[];
 }
 
@@ -68,4 +69,20 @@ export interface AppData {
 export interface ChatMessage {
   role: 'user' | 'model';
   text: string;
+}
+
+export interface HealingTheme {
+  id: string;
+  name: string;
+  enName: string;
+  quote: string;
+  primary: string;       // Primary brand color
+  primaryDark: string;   // Hover or deep state
+  accent: string;        // Accent / highlight color
+  accentLight: string;   // Soft badge background
+  paper: string;         // Light container background
+  canvas: string;        // Body & Card canvas
+  primaryRgb: string;    // R, G, B for opacity
+  primaryDarkRgb: string;
+  accentRgb: string;
 }

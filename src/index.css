@@ -10,6 +10,12 @@
   --primary-rgb: 91, 123, 109;
   --primary-dark-rgb: 62, 86, 75;
   --accent-rgb: 232, 135, 101;
+
+  /* Safe Area Variables with Dual-Fallback for Android & iOS Edge-to-Edge */
+  --safe-area-top: env(safe-area-inset-top, 28px);
+  --safe-area-bottom: env(safe-area-inset-bottom, 16px);
+  --safe-area-left: env(safe-area-inset-left, 0px);
+  --safe-area-right: env(safe-area-inset-right, 0px);
 }
 
 @theme {
