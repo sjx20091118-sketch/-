@@ -419,7 +419,7 @@ const ttsAudioCache = new Map<string, string>();
 
 export default function App() {
   const [data, setData] = useState<AppData>(() => {
-    const local = localStorage.getItem('shinian_app_data_v4');
+    const local = localStorage.getItem('shinian_app_data_v6');
     if (local) {
       try {
         const parsed = JSON.parse(local);
@@ -432,6 +432,8 @@ export default function App() {
     }
     // Clean up old cached versions
     try {
+      localStorage.removeItem('shinian_app_data_v5');
+      localStorage.removeItem('shinian_app_data_v4');
       localStorage.removeItem('shinian_app_data_v3');
       localStorage.removeItem('shinian_app_data_v2');
       localStorage.removeItem('shinian_app_data');
@@ -683,7 +685,7 @@ export default function App() {
   const chatEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    localStorage.setItem('shinian_app_data_v4', JSON.stringify(data));
+    localStorage.setItem('shinian_app_data_v6', JSON.stringify(data));
   }, [data]);
 
   useEffect(() => {
@@ -870,10 +872,10 @@ export default function App() {
     }
   }, [years, selectedYear]);
 
-  const [highlightIndex, setHighlightIndex] = useState<number>(0);
+  const [highlightIndex, setHighlightIndex] = useState<number>(() => Math.floor(Math.random() * 10000));
   const todayHighlight = useMemo(() => {
     if (!data.timeline.length) return null;
-    return data.timeline[highlightIndex % data.timeline.length];
+    return data.timeline[Math.abs(highlightIndex) % data.timeline.length];
   }, [data.timeline, highlightIndex]);
 
   const addItem = (type: keyof AppData, item: any) => {
@@ -1847,7 +1849,17 @@ export default function App() {
                       </span>
                       {data.timeline.length > 1 && (
                         <button
-                          onClick={() => setHighlightIndex(prev => prev + 1)}
+                          onClick={() => {
+                            setHighlightIndex(prev => {
+                              const len = data.timeline.length;
+                              if (len <= 1) return prev;
+                              let next = Math.floor(Math.random() * len);
+                              if (next === Math.abs(prev) % len) {
+                                next = (next + 1) % len;
+                              }
+                              return next;
+                            });
+                          }}
                           title="换一段回忆"
                           className="p-1.5 rounded-full bg-[#FAF8F5] hover:bg-[#F2EFE9] border border-[#5B7B6D]/15 text-[#6E7C75] hover:text-[#2B332E] transition-all shadow-2xs active:scale-95"
                         >
@@ -2255,31 +2267,16 @@ export default function App() {
                                     {person.relationship}
                                   </span>
                                 )}
-                                {person.group && person.group !== '未分组' && (
-                                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#5B7B6D]/10 text-[#5B7B6D] font-medium font-sans border border-[#5B7B6D]/20 shrink-0">
-                                    {person.group}
-                                  </span>
-                                )}
                               </div>
 
-                              {person.tags && person.tags.length > 0 && (
-                                <div className="flex items-center gap-1 flex-wrap pt-0.5">
-                                  {person.tags.map((t, idx) => (
-                                    <span key={idx} className="text-[9px] px-1.5 py-0.5 rounded-md bg-[#FAF8F5] text-[#5B7B6D] font-sans border border-[#5B7B6D]/15">
-                                      #{t}
-                                    </span>
-                                  ))}
-                                </div>
-                              )}
-
                               {person.knownDate && calculateDaysKnown(person.knownDate) !== null ? (
-                                <div className="text-[10px] text-[#5B7B6D] font-mono flex items-center gap-1 opacity-90">
+                                <div className="text-[10px] text-[#5B7B6D] font-mono flex items-center gap-1 opacity-90 pt-0.5">
                                   <Calendar className="w-2.5 h-2.5 text-[#5B7B6D]" />
                                   <span>相识第 {calculateDaysKnown(person.knownDate)?.toLocaleString()} 天</span>
                                 </div>
                               ) : (
-                                <div className="text-[10px] text-[#6E7C75]/70 font-sans">
-                                  {person.group || '拾光挚友'}
+                                <div className="text-[10px] text-[#6E7C75]/70 font-sans pt-0.5">
+                                  拾光挚友
                                 </div>
                               )}
                             </div>
@@ -2407,16 +2404,6 @@ export default function App() {
                       )}
                     </div>
 
-                    {selectedPerson.tags && selectedPerson.tags.length > 0 && (
-                      <div className="flex items-center justify-center sm:justify-start gap-1.5 flex-wrap pt-0.5">
-                        {selectedPerson.tags.map((tag, idx) => (
-                          <span key={idx} className="text-[11px] px-2.5 py-0.5 rounded-full bg-[#FAF8F5] text-[#5B7B6D] font-medium border border-[#5B7B6D]/20 font-sans shadow-2xs">
-                            #{tag}
-                          </span>
-                        ))}
-                      </div>
-                    )}
-
                     <p className="text-xs text-[#526058] leading-relaxed font-serif max-w-md">
                       {selectedPerson.bio || '记录在时光册里的同路人'}
                     </p>
@@ -2529,33 +2516,6 @@ export default function App() {
                   </div>
                 )}
               </div>
-
-              {/* 生平寄语与自述 (Author Bio / Memoir Message Card) */}
-              {selectedPerson.message && (
-                <div className="bg-white p-5 sm:p-6 rounded-3xl border border-[#D9CFC1] shadow-2xs space-y-3 font-sans relative overflow-hidden">
-                  <div className="flex justify-between items-center pb-2 border-b border-[#5B7B6D]/10">
-                    <div className="flex items-center gap-2">
-                      <div className="w-7 h-7 rounded-xl bg-[#FAF8F5] border border-[#5B7B6D]/20 flex items-center justify-center text-[#5B7B6D]">
-                        <BookOpen className="w-3.5 h-3.5" />
-                      </div>
-                      <h3 className="font-bold text-[#2B332E] text-xs sm:text-sm font-serif">
-                        生平寄语与自述
-                      </h3>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => handlePlayTts(selectedPerson.message!)}
-                      className="text-xs text-[#5B7B6D] hover:text-[#E88765] flex items-center gap-1 font-medium bg-[#FAF8F5] px-2.5 py-1 rounded-xl border border-[#5B7B6D]/15 transition-all shadow-2xs active:scale-95 cursor-pointer"
-                      title="朗读寄语"
-                    >
-                      <Volume2 className="w-3.5 h-3.5" /> 朗读寄语
-                    </button>
-                  </div>
-                  <div className="text-xs sm:text-[13px] text-[#3E4A44] leading-relaxed font-serif whitespace-pre-line bg-[#FAF8F5]/80 p-4 sm:p-4.5 rounded-2xl border border-[#5B7B6D]/10 tracking-wide">
-                    {selectedPerson.message}
-                  </div>
-                </div>
-              )}
 
               {/* Person Exclusive Album Card (Located directly above Impressions & Stories) */}
               <PersonAlbum
@@ -3314,7 +3274,6 @@ export default function App() {
                     avatar: formPersonAvatar,
                     relationship: relVal,
                     group: groupVal,
-                    tags: tagsVal,
                     birthday: birthdayVal || '未填写',
                     zodiac: zodiacVal,
                     knownDate: knownDateVal,
@@ -3324,7 +3283,6 @@ export default function App() {
                     hobbies: (fd.get('hobbies') as string)?.trim() || '未填写',
                     color: (fd.get('color') as string)?.trim() || '暖杏粉',
                     bio: (fd.get('bio') as string)?.trim() || `${relVal} · 珍贵回忆的同路人`,
-                    message: messageVal,
                     customFields: { '认识地点': knowWhereVal },
                     impressions: (fd.get('impression') as string)?.trim()
                       ? [{ id: 'imp-0', year: new Date().getFullYear().toString(), text: (fd.get('impression') as string)?.trim() }]
@@ -3566,12 +3524,12 @@ export default function App() {
                     </div>
                   </div>
 
-                  {/* Section 4: 时光印记与生平寄语 */}
+                  {/* Section 4: 一句话总结与初识印象 */}
                   <div className="bg-white p-3.5 rounded-2xl border border-[#5B7B6D]/15 shadow-2xs space-y-3">
                     <div className="flex items-center justify-between pb-2 border-b border-[#5B7B6D]/10">
                       <h4 className="font-bold text-[#2B332E] text-xs font-serif flex items-center gap-1.5">
                         <span className="w-1.5 h-3.5 bg-[#8C6D52] rounded-full inline-block"></span>
-                        生平寄语与初识印象
+                        人物介绍与初识印象
                       </h4>
                       <span className="text-[10px] text-[#6E7C75] bg-stone-100 px-2 py-0.5 rounded-full font-medium">
                         选填
@@ -3579,18 +3537,8 @@ export default function App() {
                     </div>
 
                     <div>
-                      <label className="text-[10px] text-[#6E7C75] block mb-1">人物标签 (多个标签用空格隔开)</label>
-                      <input name="tags" placeholder="如：高中同窗 青春同窗 创作者" className="w-full p-2.5 rounded-xl border border-[#5B7B6D]/20 bg-[#FAF8F5] focus:bg-white focus:outline-none focus:border-[#5B7B6D]" />
-                    </div>
-
-                    <div>
                       <label className="text-[10px] text-[#6E7C75] block mb-1">一句话人物总结</label>
                       <input name="bio" placeholder="如：一起在晚自习后看过无数次晚霞的知心挚友" className="w-full p-2.5 rounded-xl border border-[#5B7B6D]/20 bg-[#FAF8F5] focus:bg-white focus:outline-none focus:border-[#5B7B6D]" />
-                    </div>
-
-                    <div>
-                      <label className="text-[10px] text-[#6E7C75] block mb-1">生平寄语与自述正文</label>
-                      <textarea name="message" rows={3} placeholder="记录生平寄语、自述故事或长篇心语..." className="w-full p-2.5 rounded-xl border border-[#5B7B6D]/20 bg-[#FAF8F5] focus:bg-white focus:outline-none focus:border-[#5B7B6D]" />
                     </div>
 
                     <div>
@@ -4157,10 +4105,6 @@ export default function App() {
                 const phoneVal = (fd.get('phone') as string)?.trim() || '';
                 const finalAvatar = editPersonAvatar || selectedPerson.avatar;
 
-                const tagsInput = (fd.get('tags') as string)?.trim();
-                const tagsVal = tagsInput ? tagsInput.split(/[\s,，]+/).filter(Boolean) : (selectedPerson.tags || []);
-                const messageVal = (fd.get('message') as string)?.trim() || selectedPerson.message || '';
-
                 if (!finalAvatar) {
                   showToast('请上传人物头像相片（必填项）');
                   return;
@@ -4177,7 +4121,6 @@ export default function App() {
                   name: nameVal,
                   relationship: relVal,
                   group: groupVal,
-                  tags: tagsVal,
                   birthday: birthdayVal || '未填写',
                   zodiac: zodiacVal,
                   knownDate: knownDateVal,
@@ -4187,7 +4130,6 @@ export default function App() {
                   hobbies: (fd.get('hobbies') as string)?.trim() || '未填写',
                   color: (fd.get('color') as string)?.trim() || '暖杏粉',
                   bio: (fd.get('bio') as string)?.trim() || `${relVal} · 珍贵回忆的同路人`,
-                  message: messageVal,
                   avatar: finalAvatar,
                   customFields: {
                     ...(selectedPerson.customFields || {}),
@@ -4432,12 +4374,12 @@ export default function App() {
                   </div>
                 </div>
 
-                {/* Section 4: 生平寄语与概述 */}
+                {/* Section 4: 一句话人物总结 */}
                 <div className="bg-white p-3.5 rounded-2xl border border-[#5B7B6D]/15 shadow-2xs space-y-3">
                   <div className="flex items-center justify-between pb-2 border-b border-[#5B7B6D]/10">
                     <h4 className="font-bold text-[#2B332E] text-xs font-serif flex items-center gap-1.5">
                       <span className="w-1.5 h-3.5 bg-[#8C6D52] rounded-full inline-block"></span>
-                      生平寄语与概述
+                      一句话人物总结
                     </h4>
                     <span className="text-[10px] text-[#6E7C75] bg-stone-100 px-2 py-0.5 rounded-full font-medium">
                       选填
@@ -4445,23 +4387,8 @@ export default function App() {
                   </div>
 
                   <div>
-                    <label className="text-[10px] text-[#6E7C75] block mb-1">人物标签 (多个标签用空格隔开)</label>
-                    <input
-                      name="tags"
-                      defaultValue={selectedPerson.tags ? selectedPerson.tags.join(' ') : ''}
-                      placeholder="如：高中同窗 青春同窗 创作者"
-                      className="w-full p-2.5 rounded-xl border border-[#5B7B6D]/20 bg-[#FAF8F5] focus:bg-white focus:outline-none focus:border-[#5B7B6D]"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="text-[10px] text-[#6E7C75] block mb-1">一句话人物总结</label>
+                    <label className="text-[10px] text-[#6E7C75] block mb-1">人物总结</label>
                     <textarea name="bio" defaultValue={selectedPerson.bio} rows={2} placeholder="如：一起在晚自习后看过无数次晚霞的知心挚友" className="w-full p-2.5 rounded-xl border border-[#5B7B6D]/20 bg-[#FAF8F5] focus:bg-white focus:outline-none focus:border-[#5B7B6D]" />
-                  </div>
-
-                  <div>
-                    <label className="text-[10px] text-[#6E7C75] block mb-1">生平寄语与自述正文</label>
-                    <textarea name="message" defaultValue={selectedPerson.message || ''} rows={4} placeholder="记录关于该人物的详细生平故事、自述与岁月寄语..." className="w-full p-2.5 rounded-xl border border-[#5B7B6D]/20 bg-[#FAF8F5] focus:bg-white focus:outline-none focus:border-[#5B7B6D]" />
                   </div>
                 </div>
 

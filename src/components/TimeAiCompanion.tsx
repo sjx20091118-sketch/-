@@ -70,12 +70,22 @@ export const TimeAiCompanion: React.FC<TimeAiCompanionProps> = ({
   onPlayTts
 }) => {
   const [isMenuOpen, setIsMenuOpen] = useState<boolean>(false);
-  const chatEndRef = useRef<HTMLDivElement>(null);
+  const chatContainerRef = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+  const isFirstRender = useRef(true);
 
-  // Auto scroll to bottom on new message
+  // Scroll ONLY the internal chat container on user interaction, never the outer window
   useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (isFirstRender.current) {
+      isFirstRender.current = false;
+      return;
+    }
+    if (chatContainerRef.current) {
+      chatContainerRef.current.scrollTo({
+        top: chatContainerRef.current.scrollHeight,
+        behavior: 'smooth'
+      });
+    }
   }, [messages, isLoading]);
 
   // Click outside to close menu
@@ -227,7 +237,7 @@ export const TimeAiCompanion: React.FC<TimeAiCompanionProps> = ({
       </div>
 
       {/* 2. Chat Conversation Stream (Literary Essay Typography) */}
-      <div className="h-64 sm:h-72 overflow-y-auto custom-scrollbar p-4 space-y-4 relative">
+      <div ref={chatContainerRef} className="h-64 sm:h-72 overflow-y-auto custom-scrollbar p-4 space-y-4 relative">
         {messages.map((msg, idx) => {
           const isUser = msg.role === 'user';
           return (
@@ -298,8 +308,6 @@ export const TimeAiCompanion: React.FC<TimeAiCompanionProps> = ({
             </div>
           </div>
         )}
-
-        <div ref={chatEndRef} />
       </div>
 
       {/* 3. Poetic Inspiration Chips (Floating Pill Tags with 1px Highlight Border) */}
