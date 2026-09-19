@@ -18,7 +18,10 @@ export const INITIAL_SEED: AppData = {
       location: '环校香樟树单车坡道',
       content: '盛夏的蝉鸣格外喧嚣。放学后几辆单车并排滑下长长的林荫坡道，车篮里装着沉甸甸的参考书与刚买的冰棍。链条咔哒作响，海风把所有少年的笑闹声都吹得很远很远。',
       tag: '放学',
-      image: 'https://images.unsplash.com/photo-1471506480208-91b3a4cc78be?w=700&auto=format&fit=crop&q=80'
+      image: 'https://images.unsplash.com/photo-1471506480208-91b3a4cc78be?w=700&auto=format&fit=crop&q=80',
+      video: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4',
+      videoPoster: 'https://images.unsplash.com/photo-1471506480208-91b3a4cc78be?w=700&auto=format&fit=crop&q=80',
+      mediaType: 'video'
     },
     {
       id: 't-103',
@@ -38,11 +41,11 @@ export const INITIAL_SEED: AppData = {
       bio: '关于作者 我是一个还在读高中的普通男生，平时喜欢折腾一些乱七八糟的东西——编程、AI、软件、设计，也喜欢小说、电影和各种有意思的小众事物。比起只停留在“想做”，我更喜欢真的动手把它做出来，所以偶尔会突然给自己定一个很远的目标，再花很长时间一点点往前走。我挺喜欢规划，习惯把一件大事拆成很多小事，也喜欢研究怎么把一件事情做得更好。大概也是因为这样，我总觉得时间很奇妙：一边想着以后要去哪里，一边又舍不得那些已经过去的人和事。所以后来做了「拾年」——想给照片、故事和那些不愿意忘记的瞬间，留一个可以慢慢放进去的地方。说到到底，我只是想一边折腾着长大，一边尽量把沿途遇见的东西，好好留下来',
       relationship: '高中同窗',
       group: '青春同窗',
-      birthday: '2009.11.20',
+      birthday: '2009.11.18',
       zodiac: '天蝎座',
       hobbies: 'IT Ai vibecoding 写小说 跑步 台球',
       color: '浅灰 浅蓝 浅绿',
-      knownDate: '2009-11-20',
+      knownDate: '2009-11-18',
       wechat: 'sjx_20091118',
       qq: '1957497973',
       phone: '18852209323',
@@ -102,13 +105,6 @@ export const INITIAL_SEED: AppData = {
       date: '2024-06-10',
       story: '高一入学军训时领到的金属校徽，边缘已有了岁月轻微的氧化痕迹；旁边是用红丝线系好的校服第二颗纽扣，安安静静躺在木质小盒子里，锁住了整个高中时代的暗恋与微光心动。',
       image: 'https://images.unsplash.com/photo-1607604276583-eef5d076aa5f?w=600&auto=format&fit=crop&q=80'
-    },
-    {
-      id: 'a-103',
-      name: '装满用尽笔芯的透明笔袋',
-      date: '2024-05-30',
-      story: '整个高三冲刺阶段集齐的整整八十六支黑色0.5mm中性笔芯。每一支见证过的深夜小台灯与沙沙作响的真题试卷，是青春里最沉默却最有力量的奋斗勋章。',
-      image: 'https://images.unsplash.com/photo-1585336261026-7f5756c3cd91?w=600&auto=format&fit=crop&q=80'
     }
   ],
   letters: [

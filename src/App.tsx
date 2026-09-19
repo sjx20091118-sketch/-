@@ -7,6 +7,7 @@ import {
   Download,
   Upload,
   Volume2,
+  VolumeX,
   X,
   MapPin,
   Clock,
@@ -54,11 +55,20 @@ import {
   Hourglass,
   Camera
 } from 'lucide-react';
-import { AppData, Person, Story, Artifact, Letter, ChatMessage } from './types';
+import { AppData, Person, Story, Artifact, Letter, ChatMessage, TimelineItem } from './types';
 import { INITIAL_SEED } from './data/initialData';
 import { LocalImageUploader, PRESET_AVATARS, compressImageFile } from './components/LocalImageUploader';
+import { LocalMediaUploader } from './components/LocalMediaUploader';
+import { TimelineVideoCard } from './components/TimelineVideoCard';
+import { ChronoGalleryTimeline } from './components/ChronoGalleryTimeline';
+import { VinylMusicPlayer } from './components/VinylMusicPlayer';
+import { MemoirCardStudioModal } from './components/MemoirCardStudioModal';
+import { isVideoMedia } from './utils/mediaStorage';
 import { ThemedDatePickerModal } from './components/ThemedDatePickerModal';
 import { PersonAlbum } from './components/PersonAlbum';
+import { PersonArtifactsShelf } from './components/PersonArtifactsShelf';
+import { SealingWaxRitual } from './components/SealingWaxRitual';
+import { sound } from './utils/soundEngine';
 import { TimeAiCompanion } from './components/TimeAiCompanion';
 import { SlideToUnlock } from './components/SlideToUnlock';
 import { ThemedToast } from './components/ThemedToast';
@@ -306,66 +316,6 @@ export const HEALING_THEMES: HealingTheme[] = [
     accentRgb: '232, 135, 101'
   },
   {
-    id: 'mist-lavender',
-    name: '暮山晚紫',
-    enName: 'Twilight Iris',
-    quote: '山黛晚照，温柔如初',
-    primary: '#5D5580',
-    primaryDark: '#443D61',
-    accent: '#D97757',
-    accentLight: '#F7EDE9',
-    paper: '#EEEBF5',
-    canvas: '#FAF8FC',
-    primaryRgb: '93, 85, 128',
-    primaryDarkRgb: '68, 61, 97',
-    accentRgb: '217, 119, 87'
-  },
-  {
-    id: 'spring-tea',
-    name: '春水煎茶',
-    enName: 'Spring Matcha',
-    quote: '嫩芽初绽，满院草木清香',
-    primary: '#43765A',
-    primaryDark: '#2E553F',
-    accent: '#C87F3B',
-    accentLight: '#FAF1E8',
-    paper: '#EBF3EC',
-    canvas: '#F7FAF7',
-    primaryRgb: '67, 118, 90',
-    primaryDarkRgb: '46, 85, 63',
-    accentRgb: '200, 127, 59'
-  },
-  {
-    id: 'cherry-sakura',
-    name: '山樱初雪',
-    enName: 'Sakura & Frost',
-    quote: '落樱如雪，春光细语温柔',
-    primary: '#9C5874',
-    primaryDark: '#753C54',
-    accent: '#4B7B75',
-    accentLight: '#EBF4F2',
-    paper: '#F7EDF1',
-    canvas: '#FCF7F9',
-    primaryRgb: '156, 88, 116',
-    primaryDarkRgb: '117, 60, 84',
-    accentRgb: '75, 123, 117'
-  },
-  {
-    id: 'warm-amber',
-    name: '落叶琥珀',
-    enName: 'Autumn Amber',
-    quote: '暖阳斜照，满地金黄焦糖香',
-    primary: '#9E5B32',
-    primaryDark: '#753F1E',
-    accent: '#3D7A68',
-    accentLight: '#EBF5F1',
-    paper: '#F7EFE8',
-    canvas: '#FCFAF7',
-    primaryRgb: '158, 91, 50',
-    primaryDarkRgb: '117, 63, 30',
-    accentRgb: '61, 122, 104'
-  },
-  {
     id: 'ocean-glaze',
     name: '海盐雾蓝',
     enName: 'Nordic Mist',
@@ -381,34 +331,34 @@ export const HEALING_THEMES: HealingTheme[] = [
     accentRgb: '199, 117, 88'
   },
   {
-    id: 'bamboo-ink',
-    name: '竹林青黛',
-    enName: 'Bamboo & Slate',
-    quote: '青石阶前，竹影随清风婆娑',
-    primary: '#386660',
-    primaryDark: '#234742',
-    accent: '#BA7A40',
-    accentLight: '#F8F1E9',
-    paper: '#EAF0EE',
-    canvas: '#F6F9F8',
-    primaryRgb: '56, 102, 96',
-    primaryDarkRgb: '35, 71, 66',
-    accentRgb: '186, 122, 64'
+    id: 'mist-lavender',
+    name: '暮山晚紫',
+    enName: 'Twilight Iris',
+    quote: '山黛晚照，温柔如初',
+    primary: '#5D5580',
+    primaryDark: '#443D61',
+    accent: '#D97757',
+    accentLight: '#F7EDE9',
+    paper: '#EEEBF5',
+    canvas: '#FAF8FC',
+    primaryRgb: '93, 85, 128',
+    primaryDarkRgb: '68, 61, 97',
+    accentRgb: '217, 119, 87'
   },
   {
-    id: 'vintage-wine',
-    name: '晚风勃艮第',
-    enName: 'Vintage Burgundy',
-    quote: '壁炉微火，老黑胶唱片醇香',
-    primary: '#7E434D',
-    primaryDark: '#5E2D35',
-    accent: '#477B70',
-    accentLight: '#EBF5F2',
-    paper: '#F5ECEE',
-    canvas: '#FAF6F7',
-    primaryRgb: '126, 67, 77',
-    primaryDarkRgb: '94, 45, 53',
-    accentRgb: '71, 123, 112'
+    id: 'cherry-sakura',
+    name: '山樱初雪',
+    enName: 'Sakura & Frost',
+    quote: '落樱如雪，春光细语温柔',
+    primary: '#9C5874',
+    primaryDark: '#753C54',
+    accent: '#4B7B75',
+    accentLight: '#EBF4F2',
+    paper: '#F7EDF1',
+    canvas: '#FCF7F9',
+    primaryRgb: '156, 88, 116',
+    primaryDarkRgb: '117, 60, 84',
+    accentRgb: '75, 123, 117'
   }
 ];
 
@@ -424,6 +374,14 @@ export default function App() {
       try {
         const parsed = JSON.parse(local);
         if (parsed.people && parsed.people.length > 0) {
+          if (parsed.artifacts) {
+            parsed.artifacts = parsed.artifacts.filter((a: any) => a.id !== 'a-103' && a.name !== '装满用尽笔芯的透明笔袋');
+          }
+          const authorPerson = parsed.people.find((p: any) => p.id === 'p-author' || p.name === '作者');
+          if (authorPerson && authorPerson.birthday === '2009.11.20') {
+            authorPerson.birthday = '2009.11.18';
+            authorPerson.knownDate = '2009-11-18';
+          }
           return parsed;
         }
       } catch (e) {
@@ -444,7 +402,11 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<TabType>('home');
   const [selectedYear, setSelectedYear] = useState<string>('all');
   const [isYearPickerOpen, setIsYearPickerOpen] = useState<boolean>(false);
-  const [themeId, setThemeId] = useState<string>(() => localStorage.getItem('shinian_theme_id') || 'breeze-sage');
+  const [themeId, setThemeId] = useState<string>(() => {
+    const saved = localStorage.getItem('shinian_theme_id');
+    if (saved === 'grass-cream' || saved === 'autumn-amber' || saved === 'sunlit-apricot') return 'breeze-sage';
+    return saved || 'breeze-sage';
+  });
   const [isThemePickerOpen, setIsThemePickerOpen] = useState<boolean>(false);
   const [isLocked, setIsLocked] = useState<boolean>(() => localStorage.getItem('shinian_is_locked') === 'true');
   const [lockPin, setLockPin] = useState<string>(() => localStorage.getItem('shinian_lock_pin') || '1234');
@@ -455,6 +417,8 @@ export default function App() {
   const [selectedArtifact, setSelectedArtifact] = useState<Artifact | null>(null);
   const [selectedLetter, setSelectedLetter] = useState<Letter | null>(null);
   const [showSplash, setShowSplash] = useState<boolean>(true);
+  const [shareMemoirItem, setShareMemoirItem] = useState<TimelineItem | null>(null);
+  const [isShareModalOpen, setIsShareModalOpen] = useState<boolean>(false);
 
   // Auto-dismiss splash screen after 2.5 seconds
   useEffect(() => {
@@ -641,8 +605,11 @@ export default function App() {
   const [isAiVisionLoading, setIsAiVisionLoading] = useState<boolean>(false);
   const [isAiPolishLoading, setIsAiPolishLoading] = useState<boolean>(false);
 
-  // Modal Local Image Upload States
+  // Modal Local Image & Video Upload States
   const [formTimelineImage, setFormTimelineImage] = useState<string>('');
+  const [formTimelineVideo, setFormTimelineVideo] = useState<string>('');
+  const [formTimelineVideoPoster, setFormTimelineVideoPoster] = useState<string>('');
+  const [formTimelineMediaType, setFormTimelineMediaType] = useState<'image' | 'video'>('image');
   const [formPersonAvatar, setFormPersonAvatar] = useState<string>('');
   const [formPersonRel, setFormPersonRel] = useState<string>('挚友');
   const [formPersonGroup, setFormPersonGroup] = useState<string>('未分组');
@@ -674,6 +641,8 @@ export default function App() {
 
   // Letter Unsealing Animation State
   const [isUnsealingLetter, setIsUnsealingLetter] = useState<boolean>(false);
+  const [sealingRitualData, setSealingRitualData] = useState<{ title: string; unlockDate: string } | null>(null);
+  const [isSoundMuted, setIsSoundMuted] = useState<boolean>(() => sound.getIsMuted());
 
   const filteredPeople = useMemo(() => {
     return data.people.filter(p => {
@@ -1581,30 +1550,31 @@ export default function App() {
     <div className="h-full w-full flex items-center justify-center p-0 sm:p-4 text-[#2B332E] bg-[#FAF8F5] overflow-hidden">
       <div id="root-card" className="w-full max-w-md h-full sm:h-[880px] bg-[#FAF8F5] sm:rounded-3xl shadow-2xl overflow-hidden flex flex-col relative sm:border sm:border-[#E88765]/20 paper-texture select-none">
 
-        {/* Top HeaderBar with Seamless Safe Area Inset Support */}
-        <header className="px-4 pt-[max(var(--safe-area-top,28px),env(safe-area-inset-top,28px),1.75rem)] pb-2.5 bg-[#FAF8F5]/98 sm:bg-white/90 backdrop-blur-md text-[#2B332E] flex items-center justify-between border-b border-[#5B7B6D]/15 shadow-2xs z-20 relative transition-colors shrink-0 select-none">
+        {/* Refined Seamless Apple Translucent Frosted Glass Header */}
+        <header className="px-4 pt-[max(var(--safe-area-top,20px),env(safe-area-inset-top,20px),1.25rem)] pb-2.5 bg-[#FAF8F5]/88 backdrop-blur-xl border-b border-[#5B7B6D]/12 text-[#2B332E] flex items-center justify-between z-20 relative transition-colors shrink-0 select-none shadow-[0_1px_8px_rgba(91,123,109,0.04)]">
+          {/* Left: Original Refined Calligraphy Typography + Palette Pill */}
           <div className="flex flex-col">
             <div className="flex items-center gap-1.5">
-              <h1 className="text-lg font-bold tracking-widest font-serif text-[#5B7B6D]">
+              <h1 className="text-lg font-bold tracking-widest font-serif text-[#5B7B6D] leading-none">
                 拾年
               </h1>
               <button
                 onClick={() => setIsThemePickerOpen(prev => !prev)}
-                title="切换治愈雅致色调"
-                className="flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-[#F2EFE9] hover:bg-[#E88765]/15 text-[#5B7B6D] hover:text-[#E88765] transition-all border border-[#5B7B6D]/20 text-[10px] font-sans font-medium"
+                title="切换时光治愈雅致配色"
+                className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-white/80 hover:bg-white text-[#5B7B6D] hover:text-[#E88765] transition-all border border-[#5B7B6D]/15 text-[11px] font-sans font-medium shadow-2xs active:scale-95 ml-1"
               >
                 <Palette className="w-3 h-3 text-[#E88765]" />
-                <span className="hidden xs:inline">{currentTheme.name}</span>
+                <span className="hidden xs:inline text-[10px]">{currentTheme.name}</span>
               </button>
             </div>
-            <p className="text-[10px] text-[#6E7C75] font-serif tracking-wider mt-0.5 leading-none">
+            <p className="text-[10px] text-[#6E7C75] font-serif tracking-wider mt-1 leading-none">
               岁华清照 · 拾年归处
             </p>
           </div>
 
           {/* Healing Palette Theme Picker Popup */}
           {isThemePickerOpen && (
-            <div className="absolute top-full left-3 mt-1.5 w-64 p-3 bg-white rounded-2xl shadow-xl border border-[#5B7B6D]/20 z-50 animate-fadeIn font-sans">
+            <div className="absolute top-full left-4 mt-2 w-64 p-3 bg-white/95 backdrop-blur-xl rounded-2xl shadow-xl border border-[#5B7B6D]/20 z-50 animate-fadeIn font-sans">
               <div className="flex items-center justify-between pb-2 mb-2 border-b border-[#F2EFE9]">
                 <div>
                   <h4 className="text-xs font-bold text-[#2B332E]">选择时光色调</h4>
@@ -1659,31 +1629,18 @@ export default function App() {
                   );
                 })}
               </div>
-
-              {/* Replay iOS Entrance Animation */}
-              <div className="pt-2 mt-2 border-t border-[#F2EFE9]">
-                <button
-                  onClick={() => {
-                    setIsThemePickerOpen(false);
-                    setShowSplash(true);
-                  }}
-                  className="w-full py-1.5 px-2.5 rounded-xl bg-[#FAF8F5] hover:bg-[#F2EFE9] border border-[#5B7B6D]/15 text-[#5B7B6D] text-[11px] font-sans flex items-center justify-center gap-1.5 transition-all active:scale-95"
-                >
-                  <Play className="w-3 h-3 text-[#E88765]" />
-                  <span>重温 iOS 开屏入场动画</span>
-                </button>
-              </div>
             </div>
           )}
 
-          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+          {/* Right: Dimension Filter & Space Controls - Apple Pill Capsules */}
+          <div className="flex items-center gap-1.5 shrink-0">
             {activeTab === 'people' ? (
               /* Silky Animated iOS Friend Group Trigger Capsule */
               <button
                 onClick={() => setIsGroupPickerOpen(true)}
-                className={`px-2.5 sm:px-3 py-1.5 rounded-xl border flex items-center gap-1.5 transition-all text-xs font-sans font-medium shadow-2xs active:scale-95 shrink-0 ${
+                className={`px-3 py-1.5 rounded-full border flex items-center gap-1.5 transition-all text-xs font-sans font-medium shadow-2xs active:scale-95 shrink-0 ${
                   selectedPersonGroup === 'all'
-                    ? 'bg-[#F2EFE9] text-[#5B7B6D] border-[#5B7B6D]/20 hover:bg-[#E88765]/10'
+                    ? 'bg-white/80 text-[#5B7B6D] border-[#5B7B6D]/20 hover:bg-white backdrop-blur-md'
                     : 'bg-[#FDF0EB] text-[#E88765] border-[#E88765]/35 hover:bg-[#FBE6DC]'
                 }`}
                 title="点击选择好友分组"
@@ -1696,7 +1653,7 @@ export default function App() {
                 ) : (
                   <>
                     <FolderOpen className="w-3.5 h-3.5 text-[#E88765] shrink-0" />
-                    <span className="font-bold whitespace-nowrap truncate max-w-[80px]">{selectedPersonGroup}</span>
+                    <span className="font-bold whitespace-nowrap truncate max-w-[70px]">{selectedPersonGroup}</span>
                     <span
                       onClick={(e) => {
                         e.stopPropagation();
@@ -1716,9 +1673,9 @@ export default function App() {
               /* Silky Animated iOS Year Trigger Capsule */
               <button
                 onClick={() => setIsYearPickerOpen(true)}
-                className={`px-2.5 sm:px-3 py-1.5 rounded-xl border flex items-center gap-1.5 transition-all text-xs font-sans font-medium shadow-2xs active:scale-95 shrink-0 ${
+                className={`px-3 py-1.5 rounded-full border flex items-center gap-1.5 transition-all text-xs font-sans font-medium shadow-2xs active:scale-95 shrink-0 ${
                   selectedYear === 'all'
-                    ? 'bg-[#F2EFE9] text-[#5B7B6D] border-[#5B7B6D]/20 hover:bg-[#E88765]/10'
+                    ? 'bg-white/80 text-[#5B7B6D] border-[#5B7B6D]/20 hover:bg-white backdrop-blur-md'
                     : 'bg-[#FDF0EB] text-[#E88765] border-[#E88765]/35 hover:bg-[#FBE6DC]'
                 }`}
                 title="点击选择回溯年份或全景时光"
@@ -1752,9 +1709,9 @@ export default function App() {
             <button
               onClick={() => setActiveModal('backup')}
               title="空间设置与数据管理"
-              className="p-2 rounded-xl bg-[#F2EFE9] border border-[#5B7B6D]/20 text-[#5B7B6D] hover:bg-[#5B7B6D] hover:text-white transition-all shadow-2xs shrink-0 active:scale-95"
+              className="w-8 h-8 rounded-full bg-white/80 hover:bg-white border border-[#5B7B6D]/15 text-[#5B7B6D] hover:text-[#2B332E] transition-all shadow-2xs flex items-center justify-center shrink-0 active:scale-95 backdrop-blur-md"
             >
-              <Settings className="w-4 h-4" />
+              <Settings className="w-3.5 h-3.5" />
             </button>
 
             <button
@@ -1764,9 +1721,9 @@ export default function App() {
                 showToast('已锁定私人空间');
               }}
               title="锁定私人空间"
-              className="p-2 rounded-xl bg-[#F2EFE9] border border-[#5B7B6D]/20 text-[#5B7B6D] hover:bg-[#5B7B6D] hover:text-white transition-all shadow-2xs shrink-0 active:scale-95"
+              className="w-8 h-8 rounded-full bg-white/80 hover:bg-white border border-[#5B7B6D]/15 text-[#5B7B6D] hover:text-[#2B332E] transition-all shadow-2xs flex items-center justify-center shrink-0 active:scale-95 backdrop-blur-md"
             >
-              <Lock className="w-4 h-4" />
+              <Lock className="w-3.5 h-3.5" />
             </button>
           </div>
         </header>
@@ -1819,12 +1776,18 @@ export default function App() {
           </div>
         )}
 
-        {/* Main Content Area */}
-        <main ref={mainContentRef} id="main-content-scroll" className="flex-1 overflow-y-auto custom-scrollbar p-4 pb-2 space-y-4 overscroll-contain">
+        {/* Main Content Area: Flows seamlessly underneath the floating Apple Liquid Glass dock */}
+        <main ref={mainContentRef} id="main-content-scroll" className="flex-1 overflow-y-auto custom-scrollbar p-4 pb-28 sm:pb-32 space-y-4 overscroll-contain">
 
           {/* Home Tab */}
           {activeTab === 'home' && (
-            <div className="space-y-4 animate-fadeIn">
+            <motion.div
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -16 }}
+              transition={{ duration: 0.28, ease: [0.25, 0.1, 0.25, 1] }}
+              className="space-y-4"
+            >
               {/* Today's Memory / Featured Spotlight Card (Classic Polaroid with Soft Floating & Shimmer Animation) */}
               {todayHighlight ? (
                 <div className="bg-white p-4.5 sm:p-5 rounded-3xl border border-[#5B7B6D]/20 shadow-md relative overflow-hidden transition-all duration-300 hover:shadow-xl hover:border-[#E88765]/40 animate-float-card group">
@@ -2030,134 +1993,49 @@ export default function App() {
                 showToast={showToast}
                 onPlayTts={(text) => handlePlayTts(text)}
               />
-            </div>
+            </motion.div>
           )}
 
-          {/* Timeline Tab */}
+          {/* Timeline Tab: Chrono Gallery Architecture */}
           {activeTab === 'timeline' && (
-            <div className="space-y-4 animate-fadeIn">
-              <div className="flex justify-between items-center mb-1">
-                <h2 className="text-lg font-bold text-[#2B332E] tracking-wider font-serif">
-                  拾光轴 ({data.timeline.filter(item => selectedYear === 'all' || getYearFromDate(item.date) === selectedYear).length})
-                </h2>
-                <button
-                  onClick={() => setActiveModal('addTimeline')}
-                  className="flex items-center gap-1 text-xs px-3 py-1.5 bg-[#5B7B6D] text-white rounded-xl shadow-sm hover:bg-[#3E564B] font-medium"
-                >
-                  <Plus className="w-3.5 h-3.5" /> 新建节点
-                </button>
-              </div>
-
-              {/* Year Filter Status Banner */}
-              {selectedYear !== 'all' && (
-                <div className="p-3 bg-[#5B7B6D]/10 rounded-2xl border border-[#5B7B6D]/20 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 text-xs text-[#5B7B6D] font-sans shadow-2xs">
-                  <div className="flex items-center gap-2 font-medium leading-normal">
-                    <Filter className="w-3.5 h-3.5 text-[#E88765] shrink-0" />
-                    <span>
-                      正在筛选【<strong className="font-bold text-[#E88765]">{selectedYear} 年</strong>】时光轴
-                      <span className="opacity-75 font-normal ml-1">（共 {data.timeline.filter(item => getYearFromDate(item.date) === selectedYear).length} 条）</span>
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-2 shrink-0 self-end sm:self-auto">
-                    <button
-                      onClick={() => setIsYearPickerOpen(true)}
-                      className="text-[11px] font-semibold text-[#5B7B6D] bg-white/95 hover:bg-white px-2.5 py-1 rounded-xl border border-[#5B7B6D]/20 flex items-center gap-1 shadow-2xs transition-all active:scale-95"
-                    >
-                      <CalendarRange className="w-3 h-3 text-[#E88765]" /> 换年份
-                    </button>
-                    <button
-                      onClick={() => {
-                        setSelectedYear('all');
-                        showToast('已切换至全景时光');
-                      }}
-                      className="text-[11px] font-bold text-[#E88765] hover:underline flex items-center gap-1 px-1.5 py-1"
-                    >
-                      <RotateCcw className="w-3 h-3" /> 全景时光
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {data.timeline.filter(item => selectedYear === 'all' || getYearFromDate(item.date) === selectedYear).length === 0 ? (
-                <div className="bg-white p-8 rounded-2xl border border-dashed border-[#5B7B6D]/20 text-center space-y-3">
-                  <div className="w-10 h-10 mx-auto rounded-full bg-[#FAF8F5] flex items-center justify-center text-[#5B7B6D]">
-                    <Clock className="w-5 h-5 opacity-60" />
-                  </div>
-                  <div className="text-xs text-[#6E7C75] font-serif">
-                    {selectedYear === 'all' ? '暂无拾光轴记录' : `暂无 ${selectedYear} 年的拾光记录`}
-                  </div>
-                  <div className="flex justify-center gap-2 pt-1 font-sans">
-                    {selectedYear !== 'all' && (
-                      <button
-                        onClick={() => setSelectedYear('all')}
-                        className="text-xs px-3 py-1.5 bg-[#F2EFE9] text-[#5B7B6D] rounded-xl hover:bg-[#E8E4DC] font-medium"
-                      >
-                        查看全景时光
-                      </button>
-                    )}
-                    <button
-                      onClick={() => setActiveModal('addTimeline')}
-                      className="text-xs px-3 py-1.5 bg-[#5B7B6D] text-white rounded-xl hover:bg-[#3E564B] font-medium"
-                    >
-                      新建节点
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <div className="relative pl-4 space-y-6 before:absolute before:left-[11px] before:top-2 before:bottom-2 before:w-[2px] before:bg-[#5B7B6D]/25">
-                  {data.timeline
-                    .filter(item => selectedYear === 'all' || getYearFromDate(item.date) === selectedYear)
-                    .map((item) => (
-                      <div key={item.id} className="relative pl-6 group">
-                        <div className="absolute -left-[19px] top-1.5 w-3 h-3 rounded-full bg-[#E88765] border-2 border-[#FAF8F5] shadow-sm" />
-
-                        <div className="bg-white p-4 rounded-2xl border border-[#5B7B6D]/15 shadow-sm space-y-2 hover:border-[#E88765]/30 transition-all">
-                          <div className="flex justify-between items-start">
-                            <span className="text-xs font-bold text-[#E88765] flex items-center gap-1 font-sans">
-                              <Calendar className="w-3 h-3" /> {item.date}
-                            </span>
-                            <div className="flex items-center gap-2">
-                              <button
-                                onClick={() => handlePlayTts(`${item.title}。${item.content}`)}
-                                title="AI 朗诵"
-                                className="text-[#5B7B6D] hover:text-[#E88765] p-1"
-                              >
-                                <Volume2 className="w-3.5 h-3.5" />
-                              </button>
-                              <button
-                                onClick={() => requestDelete('timeline', item.id, item.title)}
-                                title="删除节点"
-                                className="text-[#6E7C75]/40 hover:text-red-500 p-1"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
-                            </div>
-                          </div>
-
-                          <h3 className="font-bold text-[#2B332E] text-base font-serif">{item.title}</h3>
-                          <p className="text-xs text-[#6E7C75] leading-relaxed whitespace-pre-line font-serif">{item.content}</p>
-
-                          {item.image && (
-                            <div className="h-40 w-full rounded-xl overflow-hidden border border-[#5B7B6D]/10 mt-2">
-                              <img src={item.image} alt={item.title} className="w-full h-full object-cover" />
-                            </div>
-                          )}
-
-                          <div className="flex justify-between items-center text-[11px] text-[#6E7C75]/70 pt-2 border-t border-[#F2EFE9]">
-                            <span className="flex items-center gap-1"><MapPin className="w-3 h-3" /> {item.location || '离线记忆'}</span>
-                            <span className="px-2 py-0.5 rounded-md bg-[#F2EFE9] text-[#5B7B6D] text-[10px] font-medium font-sans">{item.tag}</span>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                </div>
-              )}
-            </div>
+            <motion.div
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -16 }}
+              transition={{ duration: 0.28, ease: [0.25, 0.1, 0.25, 1] }}
+            >
+              <ChronoGalleryTimeline
+                items={data.timeline}
+                selectedYear={selectedYear}
+                onSelectYear={(yr) => {
+                  setSelectedYear(yr);
+                  if (yr === 'all') {
+                    showToast('已切换至全景时光画卷');
+                  } else {
+                    showToast(`已定格至 ${yr} 年纪`);
+                  }
+                }}
+                onOpenAdd={() => setActiveModal('addTimeline')}
+                onPlayTts={(text) => handlePlayTts(text)}
+                onDelete={(item) => requestDelete('timeline', item.id, item.title)}
+                onOpenYearPicker={() => setIsYearPickerOpen(true)}
+                onShare={(item) => {
+                  setShareMemoirItem(item);
+                  setIsShareModalOpen(true);
+                }}
+              />
+            </motion.div>
           )}
 
           {/* People List Tab: High-Aesthetic Japanese Literary Portrait Memoir Album */}
           {activeTab === 'people' && !selectedPerson && (
-            <div className="space-y-4 animate-fadeIn">
+            <motion.div
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -16 }}
+              transition={{ duration: 0.28, ease: [0.25, 0.1, 0.25, 1] }}
+              className="space-y-4"
+            >
               <div className="flex justify-between items-center mb-1">
                 <h2 className="text-lg font-bold text-[#2B332E] tracking-wider font-serif">
                   拾人册 ({selectedPersonGroup === 'all' ? data.people.length : filteredPeople.length})
@@ -2236,9 +2114,13 @@ export default function App() {
                 </div>
               ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-                  {filteredPeople.map(person => (
-                    <div
+                  {filteredPeople.map((person, idx) => (
+                    <motion.div
                       key={person.id}
+                      initial={{ opacity: 0, y: 18 }}
+                      whileInView={{ opacity: 1, y: 0 }}
+                      viewport={{ once: true, margin: '-20px' }}
+                      transition={{ duration: 0.35, delay: Math.min(idx * 0.03, 0.2), ease: 'easeOut' }}
                       onClick={() => setSelectedPerson(person)}
                       className="bg-[#FFFDF9] hover:bg-white rounded-3xl p-4.5 border border-[#E3DACD] hover:border-[#5B7B6D]/45 shadow-2xs hover:shadow-md transition-all duration-300 cursor-pointer group relative overflow-hidden flex flex-col justify-between"
                     >
@@ -2326,16 +2208,22 @@ export default function App() {
                           <ChevronRight className="w-3.5 h-3.5" />
                         </div>
                       </div>
-                    </div>
+                    </motion.div>
                   ))}
                 </div>
               )}
-            </div>
+            </motion.div>
           )}
 
           {/* Selected Person Detailed Archive View - Curated Japanese Indie Profile Journal */}
           {activeTab === 'people' && selectedPerson && (
-            <div className="space-y-4 animate-fadeIn">
+            <motion.div
+              initial={{ opacity: 0, y: 22 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -22 }}
+              transition={{ duration: 0.3, ease: 'easeOut' }}
+              className="space-y-4"
+            >
               {/* Header Navigation */}
               <div className="flex justify-between items-center">
                 <button
@@ -2527,6 +2415,17 @@ export default function App() {
                 showToast={showToast}
               />
 
+              {/* 专属信物陈列柜 (直接从拾物阁拣选并陈列) */}
+              <PersonArtifactsShelf
+                personName={selectedPerson.name}
+                boundArtifactIds={selectedPerson.artifactIds || []}
+                allArtifacts={data.artifacts || []}
+                onUpdateBoundArtifacts={(newIds) => {
+                  handleUpdatePerson({ artifactIds: newIds });
+                }}
+                showToast={showToast}
+              />
+
               {/* Yearly Memories & Impressions Section - Clean Journal Stream */}
               <div className="bg-white p-5 sm:p-6 rounded-3xl border border-[#D9CFC1] shadow-2xs space-y-4">
                 <div className="flex justify-between items-center">
@@ -2644,12 +2543,18 @@ export default function App() {
                   })}
                 </div>
               </div>
-            </div>
+            </motion.div>
           )}
 
           {/* Stories Tab */}
           {activeTab === 'stories' && !readerStory && (
-            <div className="space-y-4 animate-fadeIn">
+            <motion.div
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -16 }}
+              transition={{ duration: 0.28, ease: [0.25, 0.1, 0.25, 1] }}
+              className="space-y-4"
+            >
               <div className="flex justify-between items-center mb-1">
                 <h2 className="text-lg font-bold text-[#2B332E] tracking-wider font-serif">
                   拾忆篇 ({data.stories.filter(story => selectedYear === 'all' || getYearFromDate(story.date) === selectedYear).length})
@@ -2765,12 +2670,18 @@ export default function App() {
                     ))}
                 </div>
               )}
-            </div>
+            </motion.div>
           )}
 
           {/* Reading Mode View */}
           {activeTab === 'stories' && readerStory && (
-            <div className="bg-white p-6 rounded-2xl border border-[#5B7B6D]/20 shadow-md space-y-4 animate-fadeIn min-h-[500px] flex flex-col justify-between">
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              transition={{ duration: 0.28, ease: 'easeOut' }}
+              className="bg-white p-6 rounded-2xl border border-[#5B7B6D]/20 shadow-md space-y-4 min-h-[500px] flex flex-col justify-between"
+            >
               <div>
                 <div className="flex justify-between items-center mb-4 flex-wrap gap-2">
                   <button
@@ -2818,12 +2729,18 @@ export default function App() {
               <div className="text-center text-[10px] text-[#6E7C75]/50 border-t border-[#5B7B6D]/10 pt-4 font-sans">
                 《拾年》电子书阅读模式 · {readerStory.date}
               </div>
-            </div>
+            </motion.div>
           )}
 
           {/* Artifacts Tab */}
           {activeTab === 'artifacts' && (
-            <div className="space-y-4 animate-fadeIn">
+            <motion.div
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -16 }}
+              transition={{ duration: 0.28, ease: [0.25, 0.1, 0.25, 1] }}
+              className="space-y-4"
+            >
               <div className="flex justify-between items-center mb-1">
                 <h2 className="text-lg font-bold text-[#2B332E] tracking-wider font-serif">
                   拾物阁 ({data.artifacts.filter(item => selectedYear === 'all' || getYearFromDate(item.date) === selectedYear).length})
@@ -2895,9 +2812,13 @@ export default function App() {
                 <div className="grid grid-cols-2 gap-3">
                   {data.artifacts
                     .filter(item => selectedYear === 'all' || getYearFromDate(item.date) === selectedYear)
-                    .map(item => (
-                      <div
+                    .map((item, idx) => (
+                      <motion.div
                         key={item.id}
+                        initial={{ opacity: 0, y: 18 }}
+                        whileInView={{ opacity: 1, y: 0 }}
+                        viewport={{ once: true, margin: '-20px' }}
+                        transition={{ duration: 0.35, delay: Math.min(idx * 0.04, 0.2), ease: 'easeOut' }}
                         onClick={() => setSelectedArtifact(item)}
                         className="bg-white p-3 rounded-2xl border border-[#5B7B6D]/15 shadow-sm flex flex-col justify-between cursor-pointer hover:border-[#E88765]/50 hover:shadow-md transition-all group"
                       >
@@ -2929,16 +2850,22 @@ export default function App() {
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
                         </div>
-                      </div>
+                      </motion.div>
                     ))}
                 </div>
               )}
-            </div>
+            </motion.div>
           )}
 
           {/* Future Letters Tab - Curated Japanese Indie Time Capsule Aesthetic */}
           {activeTab === 'letters' && (
-            <div className="space-y-5 animate-fadeIn">
+            <motion.div
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -16 }}
+              transition={{ duration: 0.28, ease: [0.25, 0.1, 0.25, 1] }}
+              className="space-y-5"
+            >
               {/* Header */}
               <div className="flex justify-between items-center">
                 <div className="flex items-center gap-2.5">
@@ -2981,11 +2908,15 @@ export default function App() {
                 </div>
               ) : (
                 <div className="grid grid-cols-1 gap-3.5">
-                  {data.letters.map(letter => {
+                  {data.letters.map((letter, idx) => {
                     const isUnlocked = letter.isUnlocked || new Date().toISOString().slice(0, 10) >= letter.unlockDate;
                     return (
-                      <div
+                      <motion.div
                         key={letter.id}
+                        initial={{ opacity: 0, y: 18 }}
+                        whileInView={{ opacity: 1, y: 0 }}
+                        viewport={{ once: true, margin: '-20px' }}
+                        transition={{ duration: 0.35, delay: Math.min(idx * 0.04, 0.2), ease: 'easeOut' }}
                         onClick={() => setSelectedLetter(letter)}
                         className={`p-4 sm:p-5 rounded-3xl border transition-all cursor-pointer group select-none flex flex-col justify-between ${
                           isUnlocked
@@ -3079,12 +3010,12 @@ export default function App() {
                             </div>
                           </div>
                         )}
-                      </div>
+                      </motion.div>
                     );
                   })}
                 </div>
               )}
-            </div>
+            </motion.div>
           )}
 
         </main>
@@ -3120,60 +3051,44 @@ export default function App() {
                     location: (fd.get('location') as string) || '时光驿站',
                     content: fd.get('content') as string,
                     tag: (fd.get('tag') as string) || '时光印记',
-                    image: formTimelineImage || 'https://images.unsplash.com/photo-1517841905240-472988babdf9?w=600&auto=format&fit=crop&q=80'
+                    image: formTimelineMediaType === 'image'
+                      ? (formTimelineImage || 'https://images.unsplash.com/photo-1517841905240-472988babdf9?w=600&auto=format&fit=crop&q=80')
+                      : undefined,
+                    video: formTimelineMediaType === 'video' ? formTimelineVideo : undefined,
+                    videoPoster: formTimelineVideoPoster || undefined,
+                    mediaType: formTimelineMediaType
                   });
                   setFormTimelineImage('');
+                  setFormTimelineVideo('');
+                  setFormTimelineVideoPoster('');
+                  setFormTimelineMediaType('image');
                   setFormTimelineDate(new Date().toISOString().slice(0, 10));
                 }} className="space-y-3.5 text-xs font-sans">
 
-                  <div className="p-3 bg-[#FDF0EB]/80 border border-[#E88765]/30 rounded-2xl space-y-2">
-                    <div className="flex justify-between items-center">
-                      <span className="font-bold text-[#E88765] flex items-center gap-1">
-                        <Camera className="w-3.5 h-3.5" /> 照片 AI 智能识图填表
-                      </span>
-                      <label className="cursor-pointer text-[11px] px-2.5 py-1 bg-[#E88765] text-white rounded-lg font-medium shadow-xs hover:bg-[#E88765]/90 transition-all">
-                        {isAiVisionLoading ? 'AI 识别中...' : '选取照片/票据'}
-                        <input type="file" accept="image/*" className="hidden" onChange={(e) => {
-                          handleImageUploadVision(e, (data) => {
-                            const form = document.getElementById('timelineForm') as HTMLFormElement;
-                            if (form) {
-                              if (data.title) (form.elements.namedItem('title') as HTMLInputElement).value = data.title;
-                              if (data.date) setFormTimelineDate(data.date);
-                              if (data.location) (form.elements.namedItem('location') as HTMLInputElement).value = data.location;
-                              if (data.tag) (form.elements.namedItem('tag') as HTMLInputElement).value = data.tag;
-                              if (data.story) (form.elements.namedItem('content') as HTMLTextAreaElement).value = data.story;
-                            }
-                            if (data.image) setFormTimelineImage(data.image);
-                          });
-                        }} />
-                      </label>
-                    </div>
-                    <p className="text-[10px] text-[#6E7C75]">上传老照片、车票或纪念物，AI 将自动填写标题、日期、地点与叙事内容！</p>
-                  </div>
-
-                  {/* Local Image Uploader */}
-                  <LocalImageUploader
-                    value={formTimelineImage}
-                    onChange={setFormTimelineImage}
-                    label="时光配图 (本地上传)"
-                    helperText="支持本地选取/拖拽图片，自动压缩离线保存到本地档案"
-                    aspectRatio="video"
-                    extraAction={
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const title = (document.querySelector('input[name="title"]') as HTMLInputElement)?.value || '时光记忆';
-                          handleGenerateAiImage(title, (url) => {
-                            setFormTimelineImage(url);
-                          });
-                        }}
-                        disabled={isAiGenImageLoading}
-                        className="text-[11px] text-[#E88765] hover:text-[#D46C49] flex items-center gap-1 font-medium transition-colors"
-                      >
-                        <Palette className="w-3 h-3" />
-                        {isAiGenImageLoading ? '绘图中...' : '🎨 AI 生成时光画'}
-                      </button>
-                    }
+                  {/* Local Media Uploader (支持老照片与珍藏短视频，自动提取首帧 Poster) */}
+                  <LocalMediaUploader
+                    value={formTimelineMediaType === 'video' ? formTimelineVideo : formTimelineImage}
+                    poster={formTimelineVideoPoster}
+                    mediaType={formTimelineMediaType}
+                    onChange={(url, type, poster) => {
+                      setFormTimelineMediaType(type);
+                      if (type === 'video') {
+                        setFormTimelineVideo(url);
+                        setFormTimelineVideoPoster(poster || '');
+                      } else {
+                        setFormTimelineImage(url);
+                        setFormTimelineVideo('');
+                        setFormTimelineVideoPoster('');
+                      }
+                    }}
+                    onClear={() => {
+                      setFormTimelineImage('');
+                      setFormTimelineVideo('');
+                      setFormTimelineVideoPoster('');
+                      setFormTimelineMediaType('image');
+                    }}
+                    label="时光影像记录 (支持照片 / 视频)"
+                    allowVideo={true}
                   />
 
                   <div>
@@ -3473,7 +3388,7 @@ export default function App() {
                       </div>
                       <div>
                         <label className="text-[10px] text-[#6E7C75] block mb-1">喜欢的颜色</label>
-                        <input name="color" placeholder="如：鼠尾草绿、暖杏粉" className="w-full p-2.5 rounded-xl border border-[#5B7B6D]/20 bg-[#FAF8F5] focus:bg-white focus:outline-none focus:border-[#5B7B6D]" />
+                        <input name="color" placeholder="如：奶油白、青草绿、松烟青瓷" className="w-full p-2.5 rounded-xl border border-[#5B7B6D]/20 bg-[#FAF8F5] focus:bg-white focus:outline-none focus:border-[#5B7B6D]" />
                       </div>
                     </div>
 
@@ -3697,14 +3612,20 @@ export default function App() {
                 <form onSubmit={(e) => {
                   e.preventDefault();
                   const fd = new FormData(e.currentTarget);
+                  const title = (fd.get('title') as string) || '未命名时光信笺';
+                  const unlockDate = formLetterUnlockDate || (fd.get('unlockDate') as string) || '2030-01-01';
+                  const content = fd.get('content') as string;
+
                   addItem('letters', {
                     id: 'l-' + Date.now(),
-                    title: fd.get('title') as string,
-                    unlockDate: formLetterUnlockDate || (fd.get('unlockDate') as string) || '2030-01-01',
-                    content: fd.get('content') as string,
+                    title,
+                    unlockDate,
+                    content,
                     isUnlocked: false
                   });
                   setFormLetterUnlockDate('2030-01-01');
+                  setActiveModal(null);
+                  setSealingRitualData({ title, unlockDate });
                 }} className="space-y-3 text-xs font-sans">
                   <input name="title" required placeholder="信件标题" className="w-full p-3 rounded-xl border border-[#5B7B6D]/20 bg-white focus:outline-none focus:border-[#5B7B6D]" />
                   <div className="space-y-1">
@@ -3737,6 +3658,52 @@ export default function App() {
               {/* Modal: Backup, Password, and Gemini Settings */}
               {activeModal === 'backup' && (
                 <div className="space-y-4 text-xs font-sans">
+                  {/* Paper & Ink Micro-Haptic Audio Settings */}
+                  <div className="p-3.5 bg-white rounded-2xl border border-[#5B7B6D]/15 space-y-2.5">
+                    <div className="flex justify-between items-center">
+                      <h4 className="font-bold text-[#2B332E] flex items-center gap-1.5 text-xs font-serif">
+                        {isSoundMuted ? <VolumeX className="w-4 h-4 text-[#6E7C75]" /> : <Volume2 className="w-4 h-4 text-[#E88765]" />}
+                        纸墨触觉微音效
+                      </h4>
+                      <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium font-sans ${
+                        !isSoundMuted ? 'bg-[#5B7B6D]/10 text-[#5B7B6D]' : 'bg-stone-100 text-stone-500'
+                      }`}>
+                        {!isSoundMuted ? '已开启' : '已静音'}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-[#6E7C75] leading-relaxed">
+                      开启后在翻阅时光卡片、切换年代刻度、拆开信笺与封存印章时伴有轻微、空灵温润的纸墨物理触觉轻响。
+                    </p>
+                    <div className="flex items-center justify-between pt-1">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const muted = sound.toggleMute();
+                          setIsSoundMuted(muted);
+                          if (!muted) sound.playWaterDrop();
+                          showToast(muted ? '已静音纸墨音效' : '已开启纸墨物理微音效');
+                        }}
+                        className={`flex-1 py-2 px-3 rounded-xl border text-xs font-medium transition-all flex items-center justify-center gap-1.5 shadow-2xs active:scale-95 ${
+                          !isSoundMuted
+                            ? 'bg-[#F2EFE9] text-[#5B7B6D] border-[#5B7B6D]/20 hover:bg-[#E88765]/10'
+                            : 'bg-white text-[#6E7C75] border-[#5B7B6D]/15 hover:bg-[#FAF8F5]'
+                        }`}
+                      >
+                        {isSoundMuted ? (
+                          <>
+                            <Volume2 className="w-3.5 h-3.5 text-[#5B7B6D]" />
+                            <span>点击开启纸墨音效</span>
+                          </>
+                        ) : (
+                          <>
+                            <VolumeX className="w-3.5 h-3.5 text-[#6E7C75]" />
+                            <span>静音纸墨音效</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  </div>
+
                   {/* Security PIN & Persistent Lock Section */}
                   <div className="p-3.5 bg-white rounded-2xl border border-[#5B7B6D]/15 space-y-2.5">
                     <div className="flex justify-between items-center">
@@ -4320,7 +4287,7 @@ export default function App() {
                     </div>
                     <div>
                       <label className="text-[10px] text-[#6E7C75] block mb-1">喜欢的颜色</label>
-                      <input name="color" defaultValue={selectedPerson.color} placeholder="如：鼠尾草绿、暖杏粉" className="w-full p-2.5 rounded-xl border border-[#5B7B6D]/20 bg-[#FAF8F5] focus:bg-white focus:outline-none focus:border-[#5B7B6D]" />
+                      <input name="color" defaultValue={selectedPerson.color} placeholder="如：奶油白、青草绿、松烟青瓷" className="w-full p-2.5 rounded-xl border border-[#5B7B6D]/20 bg-[#FAF8F5] focus:bg-white focus:outline-none focus:border-[#5B7B6D]" />
                     </div>
                   </div>
 
@@ -5091,11 +5058,11 @@ export default function App() {
           </div>
         )}
 
-        {/* Dynamic Frosted Glass Bottom Navigation Bar: Floating Capsule with Safe Area Inset */}
-        <div className="shrink-0 z-30 px-3 sm:px-4 pt-1 pb-[max(var(--safe-area-bottom,16px),env(safe-area-inset-bottom,16px),0.875rem)] select-none">
+        {/* Apple Dynamic Liquid Glass Floating Capsule Dock */}
+        <div className="absolute bottom-3 sm:bottom-4 left-3 right-3 sm:left-4 sm:right-4 z-30 pointer-events-none select-none">
           <nav 
             id="dynamic-bottom-nav" 
-            className="dynamic-glass-navbar relative rounded-[26px] sm:rounded-3xl px-1.5 py-1.5 flex justify-around items-center"
+            className="apple-liquid-glass pointer-events-auto relative rounded-full px-2 py-1.5 flex justify-around items-center"
           >
             <NavItem id="home" label="首页" icon={Landmark} active={activeTab} onClick={() => setActiveTab('home')} />
             <NavItem id="timeline" label="拾光轴" icon={Clock} active={activeTab} onClick={() => setActiveTab('timeline')} />
@@ -5159,6 +5126,20 @@ export default function App() {
           )}
         </AnimatePresence>
 
+        {/* 寄年火漆封蜡崇高仪式微动效 */}
+        <AnimatePresence>
+          {sealingRitualData && (
+            <SealingWaxRitual
+              title={sealingRitualData.title}
+              unlockDate={sealingRitualData.unlockDate}
+              onComplete={() => {
+                setSealingRitualData(null);
+                showToast(`信笺已通过火漆印章封存，将于 ${sealingRitualData.unlockDate} 启封`);
+              }}
+            />
+          )}
+        </AnimatePresence>
+
         {/* iOS Styled Splash Screen Entrance Animation */}
         <AnimatePresence>
           {showSplash && (
@@ -5168,6 +5149,22 @@ export default function App() {
             />
           )}
         </AnimatePresence>
+
+        {/* 记忆卡片艺术工坊（拍立得 / 电影票根高清海报生成与多端分享） */}
+        <MemoirCardStudioModal
+          item={shareMemoirItem}
+          isOpen={isShareModalOpen}
+          onClose={() => {
+            setIsShareModalOpen(false);
+            setShareMemoirItem(null);
+          }}
+          onShowToast={(msg) => showToast(msg)}
+        />
+
+        {/* 常驻灵动黑胶唱机（全网任意搜歌播放 + 复古复调大唱盘） */}
+        <VinylMusicPlayer
+          onShowToast={(msg) => showToast(msg)}
+        />
 
       </div>
     </div>
@@ -5351,31 +5348,43 @@ function NavItem({
 }) {
   const isActive = active === id;
   return (
-    <button
+    <motion.button
       type="button"
       id={`nav-item-${id}`}
-      onClick={onClick}
-      className={`min-h-[46px] min-w-[52px] flex-1 max-w-[76px] flex flex-col items-center justify-center gap-0.5 px-1 py-1 rounded-2xl transition-all duration-200 select-none touch-manipulation active:scale-95 ${
+      onClick={() => {
+        sound.playWaterDrop(880);
+        onClick();
+      }}
+      whileTap={{ scale: 0.91 }}
+      transition={{ type: 'spring', stiffness: 480, damping: 26 }}
+      className={`min-h-[46px] min-w-[50px] flex-1 max-w-[76px] flex flex-col items-center justify-center gap-0.5 px-1 py-1 rounded-full transition-colors duration-200 select-none touch-manipulation relative ${
         isActive
           ? 'text-[#E88765] font-bold'
           : 'text-[#6E7C75] hover:text-[#2B332E] active:text-[#2B332E]'
       }`}
     >
+      {isActive && (
+        <motion.div
+          layoutId="active-floating-dock-pill"
+          className="absolute inset-0.5 rounded-full bg-white/80 shadow-xs border border-white/90"
+          transition={{ type: 'spring', stiffness: 440, damping: 32 }}
+        />
+      )}
       <div 
-        className={`p-1.5 rounded-xl transition-all duration-200 ${
+        className={`p-1.5 rounded-full transition-all duration-300 relative z-10 ${
           isActive 
-            ? 'bg-[#E88765]/15 text-[#E88765] shadow-2xs scale-105' 
+            ? 'text-[#E88765] scale-105' 
             : 'text-current bg-transparent'
         }`}
       >
         <IconComp className="w-4 h-4" />
       </div>
-      <span className={`text-[10px] tracking-wider font-serif whitespace-nowrap leading-none transition-colors duration-200 ${
+      <span className={`text-[10px] tracking-wider font-serif whitespace-nowrap leading-none transition-colors duration-200 relative z-10 ${
         isActive ? 'text-[#E88765] font-bold' : 'text-[#6E7C75]'
       }`}>
         {label}
       </span>
-    </button>
+    </motion.button>
   );
 }
 

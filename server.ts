@@ -466,6 +466,146 @@ app.post('/api/ai/tts', async (req, res) => {
   }
 });
 
+// ==================== Free Music Streaming API ====================
+
+function cleanSongText(str: string): string {
+  if (!str) return '';
+  return str
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/<[^>]+>/g, '')
+    .trim();
+}
+
+app.get('/api/music/search', async (req, res) => {
+  try {
+    const q = String(req.query.q || '').trim();
+    if (!q) {
+      return res.json({ songs: [] });
+    }
+
+    const searchUrl = `http://search.kuwo.cn/r.s?client=kt&all=${encodeURIComponent(q)}&pn=0&rn=18&vipver=1&ft=music&encoding=utf8&rformat=json&mobi=1`;
+    const response = await fetch(searchUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      },
+    });
+
+    if (!response.ok) {
+      return res.json({ songs: [] });
+    }
+
+    const rawText = await response.text();
+    let data: any = {};
+    try {
+      data = JSON.parse(rawText);
+    } catch {
+      // Sometimes Kuwo returns relaxed JSON without quotes on keys
+      try {
+        const fixed = rawText.replace(/'/g, '"');
+        data = JSON.parse(fixed);
+      } catch {
+        data = {};
+      }
+    }
+
+    const abslist = data.abslist || [];
+    const songs = abslist.map((item: any) => {
+      const id = item.DC_TARGETID || (item.MUSICRID ? String(item.MUSICRID).replace(/^MUSIC_/, '') : '');
+      const durationSec = parseInt(item.DURATION || '0', 10);
+      const minutes = Math.floor(durationSec / 60);
+      const seconds = durationSec % 60;
+      const durationFormatted = `${minutes}:${seconds < 10 ? '0' : ''}${seconds}`;
+
+      return {
+        id,
+        title: cleanSongText(item.SONGNAME || '未知曲目'),
+        artist: cleanSongText(item.ARTIST || '未知歌手'),
+        album: cleanSongText(item.ALBUM || '拾光单曲'),
+        duration: durationSec,
+        durationFormatted,
+        cover: id ? `http://artistpicserver.kuwo.cn/pic.web?corp=kuwo&type=rid_pic&pictype=url&size=500&rid=${id}` : '',
+      };
+    }).filter((s: any) => Boolean(s.id));
+
+    return res.json({ songs });
+  } catch (err: any) {
+    console.error('Error in /api/music/search:', err);
+    return res.status(500).json({ error: err.message || '音乐检索失败' });
+  }
+});
+
+app.get('/api/music/play-url', async (req, res) => {
+  try {
+    const id = String(req.query.id || '').trim();
+    if (!id) {
+      return res.status(400).json({ error: 'Missing song ID' });
+    }
+
+    const antiUrl = `http://antiserver.kuwo.cn/anti.s?type=convert_url&rid=${id}&format=mp3&response=url`;
+    const response = await fetch(antiUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      },
+    });
+
+    if (!response.ok) {
+      return res.status(502).json({ error: '获取播放直链失败' });
+    }
+
+    const playUrl = (await response.text()).trim();
+    if (!playUrl || !playUrl.startsWith('http')) {
+      return res.status(404).json({ error: '暂无可播音频直链' });
+    }
+
+    return res.json({ id, url: playUrl });
+  } catch (err: any) {
+    console.error('Error in /api/music/play-url:', err);
+    return res.status(500).json({ error: err.message || '获取播放地址失败' });
+  }
+});
+
+// Proxy stream for cross-origin or HTTP compatibility
+app.get('/api/music/stream', async (req, res) => {
+  try {
+    const url = String(req.query.url || '').trim();
+    if (!url || !url.startsWith('http')) {
+      return res.status(400).send('Invalid audio URL');
+    }
+
+    const audioRes = await fetch(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      },
+    });
+
+    if (!audioRes.ok || !audioRes.body) {
+      return res.status(502).send('Failed to fetch audio stream');
+    }
+
+    res.setHeader('Content-Type', 'audio/mpeg');
+    res.setHeader('Accept-Ranges', 'bytes');
+    res.setHeader('Cache-Control', 'public, max-age=86400');
+
+    // @ts-ignore
+    const nodeStream = audioRes.body;
+    // @ts-ignore
+    for await (const chunk of nodeStream) {
+      res.write(chunk);
+    }
+    res.end();
+  } catch (err: any) {
+    console.error('Error in /api/music/stream:', err);
+    if (!res.headersSent) {
+      res.status(500).send('Stream error');
+    }
+  }
+});
+
 // ==================== Vite Integration ====================
 
 async function startServer() {

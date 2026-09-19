@@ -6,6 +6,9 @@ export interface TimelineItem {
   content: string;
   tag: string;
   image?: string;
+  video?: string;
+  videoPoster?: string;
+  mediaType?: 'image' | 'video';
 }
 
 export interface Impression {
@@ -31,6 +34,7 @@ export interface Person {
   phone?: string;     // 手机号/电话
   customFields?: Record<string, string>;
   photos?: string[];   // 人物相册照片数组（本地压缩存储）
+  artifactIds?: string[]; // 专属信物柜绑定的拾物阁物品ID
   impressions: Impression[];
 }
 

@@ -1,0 +1,334 @@
+import React, { useRef, useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
+import { motion, AnimatePresence } from 'motion/react';
+import { Play, Pause, Volume2, VolumeX, Maximize2, X, RotateCcw, Film } from 'lucide-react';
+import { formatVideoDuration } from '../utils/mediaStorage';
+
+interface VintageVideoPlayerProps {
+  src: string;
+  poster?: string;
+  autoPlayMuted?: boolean;       // 是否在视口停留时自动静音起播
+  title?: string;                // 视频标题/留影标签
+  date?: string;                 // 视频记录时间
+  className?: string;
+  showFullscreenButton?: boolean;
+  onOpenFullscreen?: () => void;
+}
+
+export const VintageVideoPlayer: React.FC<VintageVideoPlayerProps> = ({
+  src,
+  poster,
+  autoPlayMuted = false,
+  title = '旧日影像',
+  date,
+  className = '',
+  showFullscreenButton = true,
+  onOpenFullscreen
+}) => {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [isMuted, setIsMuted] = useState(true);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const [isHovered, setIsHovered] = useState(false);
+  const [isFullscreenModalOpen, setIsFullscreenModalOpen] = useState(false);
+  const [playbackRate, setPlaybackRate] = useState<number>(1);
+
+  // 处理视口停留自动播放
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    if (autoPlayMuted) {
+      video.muted = true;
+      setIsMuted(true);
+      video.play().then(() => {
+        setIsPlaying(true);
+      }).catch(() => {
+        // 浏览器受策略限制暂缓起播
+      });
+    } else {
+      video.pause();
+      setIsPlaying(false);
+    }
+  }, [autoPlayMuted]);
+
+  const handleTogglePlay = (e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    const video = videoRef.current;
+    if (!video) return;
+
+    if (video.paused) {
+      video.play();
+      setIsPlaying(true);
+    } else {
+      video.pause();
+      setIsPlaying(false);
+    }
+  };
+
+  const handleToggleMute = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    const video = videoRef.current;
+    if (!video) return;
+
+    video.muted = !video.muted;
+    setIsMuted(video.muted);
+  };
+
+  const handleTimeUpdate = () => {
+    if (videoRef.current) {
+      setCurrentTime(videoRef.current.currentTime);
+      if (!duration && videoRef.current.duration) {
+        setDuration(videoRef.current.duration);
+      }
+    }
+  };
+
+  const handleLoadedMetadata = () => {
+    if (videoRef.current) {
+      setDuration(videoRef.current.duration);
+    }
+  };
+
+  const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const time = parseFloat(e.target.value);
+    if (videoRef.current) {
+      videoRef.current.currentTime = time;
+      setCurrentTime(time);
+    }
+  };
+
+  const openFullscreen = (e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    if (onOpenFullscreen) {
+      onOpenFullscreen();
+    } else {
+      setIsFullscreenModalOpen(true);
+    }
+  };
+
+  // 全屏锁定背景滚动
+  useEffect(() => {
+    if (isFullscreenModalOpen) {
+      const orig = document.body.style.overflow;
+      document.body.style.overflow = 'hidden';
+      return () => {
+        document.body.style.overflow = orig;
+      };
+    }
+  }, [isFullscreenModalOpen]);
+
+  const progressPercent = duration > 0 ? (currentTime / duration) * 100 : 0;
+
+  return (
+    <div
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+      className={`relative group rounded-2xl overflow-hidden bg-black/90 border border-[#5B7B6D]/20 shadow-xs select-none ${className}`}
+    >
+      {/* 视频容器 */}
+      <div className="relative w-full h-full flex items-center justify-center cursor-pointer" onClick={handleTogglePlay}>
+        <video
+          ref={videoRef}
+          src={src}
+          poster={poster}
+          playsInline
+          loop
+          muted={isMuted}
+          onTimeUpdate={handleTimeUpdate}
+          onLoadedMetadata={handleLoadedMetadata}
+          className="w-full h-full object-cover max-h-[360px]"
+        />
+
+        {/* 胶片颗粒纹理与四周暗角微晕 */}
+        <div className="absolute inset-0 pointer-events-none bg-radial from-transparent via-black/10 to-black/40" />
+
+        {/* 胶片放映标识（左上角微型标） */}
+        <div className="absolute top-2.5 left-2.5 pointer-events-none z-10 flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-black/50 backdrop-blur-xs border border-white/10 text-white/80 text-[10px] font-mono">
+          <Film className="w-3 h-3 text-[#E88765]" />
+          <span>{isPlaying ? '放映中' : '旧日胶片'}</span>
+          {duration > 0 && <span className="opacity-70">· {formatVideoDuration(duration)}</span>}
+        </div>
+
+        {/* 右上角快捷控制区：轻触静音/发声 + 放大放映 */}
+        <div className="absolute top-2.5 right-2.5 z-20 flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={handleToggleMute}
+            className="p-1.5 rounded-full bg-black/60 hover:bg-black/80 text-white/90 backdrop-blur-xs transition-all active:scale-90 border border-white/15"
+            title={isMuted ? '轻触开启声音' : '静音'}
+          >
+            {isMuted ? <VolumeX className="w-3.5 h-3.5 text-amber-200" /> : <Volume2 className="w-3.5 h-3.5 text-emerald-400" />}
+          </button>
+
+          {showFullscreenButton && (
+            <button
+              type="button"
+              onClick={openFullscreen}
+              className="p-1.5 rounded-full bg-black/60 hover:bg-black/80 text-white/90 backdrop-blur-xs transition-all active:scale-90 border border-white/15"
+              title="沉浸放大放映"
+            >
+              <Maximize2 className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
+
+        {/* 暂停时居中的温雅播放按键 */}
+        {!isPlaying && (
+          <motion.div
+            initial={{ scale: 0.8, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            exit={{ scale: 0.8, opacity: 0 }}
+            className="absolute z-10 w-12 h-12 rounded-full bg-black/50 hover:bg-black/70 backdrop-blur-sm border border-white/20 flex items-center justify-center text-white shadow-lg transition-transform group-hover:scale-105"
+          >
+            <Play className="w-5 h-5 fill-white translate-x-0.5" />
+          </motion.div>
+        )}
+
+        {/* 悬停或播放时的底部时光极细刻度与进度条 */}
+        <div className="absolute bottom-0 inset-x-0 z-20 bg-gradient-to-t from-black/80 via-black/30 to-transparent p-2.5 pt-4 transition-opacity">
+          <div className="w-full bg-white/20 h-1 rounded-full overflow-hidden mb-1.5 relative">
+            <div
+              className="h-full bg-amber-200/90 rounded-full transition-all duration-100"
+              style={{ width: `${progressPercent}%` }}
+            />
+          </div>
+
+          <div className="flex items-center justify-between text-[10px] text-white/80 font-mono">
+            <span>{formatVideoDuration(currentTime)}</span>
+            <span>{formatVideoDuration(duration)}</span>
+          </div>
+        </div>
+      </div>
+
+      {/* 全屏沉浸式胶片放映室 (Portal 挂载至 document.body) */}
+      {typeof document !== 'undefined' && createPortal(
+        <AnimatePresence>
+          {isFullscreenModalOpen && (
+            <div className="fixed inset-0 w-screen h-[100dvh] z-[10050] flex items-center justify-center p-2 sm:p-6 bg-black/95 backdrop-blur-md select-none">
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.95 }}
+                className="relative w-full max-w-3xl max-h-[94dvh] bg-[#1a1c1a] rounded-3xl border border-white/15 shadow-2xl flex flex-col overflow-hidden font-sans"
+              >
+                {/* 顶栏控制 */}
+                <div className="p-3 sm:px-5 sm:py-3.5 bg-black/60 border-b border-white/10 flex items-center justify-between shrink-0">
+                  <div className="flex items-center gap-2">
+                    <Film className="w-4 h-4 text-[#E88765]" />
+                    <span className="text-xs sm:text-sm font-serif font-bold text-white tracking-wide">
+                      {title}
+                    </span>
+                    {date && <span className="text-[11px] text-white/50 font-mono">· {date}</span>}
+                  </div>
+
+                  <div className="flex items-center gap-3">
+                    {/* 倍速调节 */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const rates = [0.75, 1, 1.25, 1.5];
+                        const nextIdx = (rates.indexOf(playbackRate) + 1) % rates.length;
+                        const nextRate = rates[nextIdx];
+                        setPlaybackRate(nextRate);
+                        if (videoRef.current) videoRef.current.playbackRate = nextRate;
+                      }}
+                      className="px-2 py-0.5 rounded-lg bg-white/10 hover:bg-white/20 text-white/80 text-[11px] font-mono transition-all"
+                    >
+                      {playbackRate === 0.75 ? '0.75x 慢放' : `${playbackRate}x`}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setIsFullscreenModalOpen(false)}
+                      className="p-1 text-white/70 hover:text-white rounded-lg hover:bg-white/10 transition-all cursor-pointer"
+                    >
+                      <X className="w-5 h-5" />
+                    </button>
+                  </div>
+                </div>
+
+                {/* 视频主画幅 */}
+                <div
+                  className="relative flex-1 bg-black flex items-center justify-center overflow-hidden min-h-[280px]"
+                  onClick={handleTogglePlay}
+                >
+                  <video
+                    src={src}
+                    poster={poster}
+                    playsInline
+                    autoPlay
+                    loop
+                    onTimeUpdate={(e) => setCurrentTime(e.currentTarget.currentTime)}
+                    className="max-h-[70dvh] max-w-full object-contain"
+                  />
+                  {!isPlaying && (
+                    <div className="absolute inset-0 flex items-center justify-center bg-black/30 pointer-events-none">
+                      <div className="w-14 h-14 rounded-full bg-white/20 backdrop-blur-md flex items-center justify-center text-white">
+                        <Play className="w-6 h-6 fill-white translate-x-0.5" />
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* 底栏全功能手账控制条 */}
+                <div className="p-3 sm:px-5 sm:py-4 bg-black/80 border-t border-white/10 flex flex-col gap-2 shrink-0">
+                  {/* 可拖动时光刻度滑轨 */}
+                  <input
+                    type="range"
+                    min={0}
+                    max={duration || 100}
+                    step={0.1}
+                    value={currentTime}
+                    onChange={handleSeek}
+                    className="w-full h-1.5 bg-white/20 rounded-lg appearance-none cursor-pointer accent-[#E88765]"
+                  />
+
+                  <div className="flex items-center justify-between text-xs text-white/70 font-mono">
+                    <div className="flex items-center gap-3">
+                      <button
+                        type="button"
+                        onClick={handleTogglePlay}
+                        className="p-1 text-white hover:text-[#E88765] transition-colors"
+                      >
+                        {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4 fill-white" />}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={handleToggleMute}
+                        className="p-1 text-white hover:text-amber-200 transition-colors"
+                      >
+                        {isMuted ? <VolumeX className="w-4 h-4 text-amber-300" /> : <Volume2 className="w-4 h-4" />}
+                      </button>
+
+                      <span>{formatVideoDuration(currentTime)} / {formatVideoDuration(duration)}</span>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (videoRef.current) {
+                            videoRef.current.currentTime = 0;
+                            setCurrentTime(0);
+                          }
+                        }}
+                        className="p-1 hover:text-white transition-colors"
+                        title="从头放映"
+                      >
+                        <RotateCcw className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>,
+        document.body
+      )}
+    </div>
+  );
+};
