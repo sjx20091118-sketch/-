@@ -171,7 +171,7 @@ export const ThemedDatePickerModal: React.FC<ThemedDatePickerModalProps> = ({
         animate={{ scale: 1, opacity: 1, y: 0 }}
         exit={{ scale: 0.94, opacity: 0, y: 10 }}
         transition={{ duration: 0.22, ease: [0.32, 0.72, 0, 1] }}
-        className="relative w-full max-w-sm bg-[#FAF8F5] rounded-3xl border border-[#5B7B6D]/20 shadow-2xl overflow-hidden flex flex-col font-sans z-10 paper-texture max-h-[92vh]"
+        className="relative w-full max-w-sm bg-[#FAF8F5] rounded-3xl border border-[#5B7B6D]/20 shadow-none overflow-hidden flex flex-col font-sans z-10 paper-texture max-h-[92vh]"
       >
         {/* Header */}
         <div className="px-4 py-3 bg-white/90 border-b border-[#5B7B6D]/15 flex items-center justify-between">

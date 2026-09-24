@@ -686,6 +686,15 @@ export default function App() {
     } catch (e) {}
     return ['大学同窗', '师长前辈', '青春同窗', '挚友亲朋', '未分组'];
   });
+
+  const allGroupsList = useMemo(() => {
+    const set = new Set<string>([...customGroups, ...data.people.map(p => p.group || '未分组')]);
+    const list = Array.from(set).filter(Boolean);
+    return [
+      ...list.filter(g => g !== '未分组'),
+      ...(list.includes('未分组') ? ['未分组'] : [])
+    ];
+  }, [customGroups, data.people]);
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
   const [isAddingGroup, setIsAddingGroup] = useState<boolean>(false);
   const [newGroupName, setNewGroupName] = useState<string>('');
@@ -1736,7 +1745,11 @@ export default function App() {
                         animate={{ opacity: 1, scale: 1, y: 0 }}
                         exit={{ opacity: 0, scale: 0.94, y: -6 }}
                         transition={{ duration: 0.22, ease: [0.25, 1, 0.5, 1] }}
-                        className="absolute top-full right-0 mt-2 w-52 p-2 apple-liquid-glass rounded-3xl shadow-2xl border border-white/85 z-50 font-sans space-y-1"
+                        className={`absolute top-full right-0 mt-2 w-52 p-2 apple-liquid-glass rounded-3xl shadow-none border z-50 font-sans space-y-1 ${
+                          isDarkMode
+                            ? 'bg-[#161D19]/90 border-white/15 text-[#FAF8F5]'
+                            : 'bg-white/80 border-white/85 text-[#2B332E]'
+                        }`}
                       >
                         {/* Item 1: 全景时光 or 好友分组 depending on active tab */}
                         {activeTab === 'people' ? (
@@ -1746,18 +1759,27 @@ export default function App() {
                               setIsTopNavMenuOpen(false);
                               setTimeout(() => setIsGroupPickerOpen(true), 120);
                             }}
-                            className="w-full px-3 py-2 rounded-2xl flex items-center justify-between hover:bg-white/80 active:bg-white transition-all text-left text-xs text-[#2B332E] group"
+                            className={`w-full px-3 py-2 rounded-2xl flex items-center justify-between transition-all text-left text-xs group ${
+                              isDarkMode
+                                ? 'hover:bg-white/10 active:bg-white/20 text-[#FAF8F5]'
+                                : 'hover:bg-white/80 active:bg-white text-[#2B332E]'
+                            }`}
                           >
                             <div className="flex items-center gap-2.5">
                               <div
                                 className="w-6 h-6 rounded-xl flex items-center justify-center group-hover:scale-105 transition-transform"
-                                style={{ backgroundColor: `${currentTheme.primary}18`, color: currentTheme.primaryDark }}
+                                style={{
+                                  backgroundColor: isDarkMode ? `${currentTheme.accent}25` : `${currentTheme.primary}18`,
+                                  color: isDarkMode ? currentTheme.accent : currentTheme.primaryDark
+                                }}
                               >
                                 <Users className="w-3.5 h-3.5" />
                               </div>
                               <span className="font-serif font-medium">好友分组</span>
                             </div>
-                            <span className="text-[10px] text-[#6E7C75] px-1.5 py-0.5 rounded-md bg-black/5 font-sans truncate max-w-[64px]">
+                            <span className={`text-[10px] px-1.5 py-0.5 rounded-md font-sans truncate max-w-[64px] ${
+                              isDarkMode ? 'bg-white/10 text-[#A0B0A7]' : 'bg-black/5 text-[#6E7C75]'
+                            }`}>
                               {selectedPersonGroup === 'all' ? '全部' : selectedPersonGroup}
                             </span>
                           </button>
@@ -1768,35 +1790,51 @@ export default function App() {
                               setIsTopNavMenuOpen(false);
                               setTimeout(() => setIsYearPickerOpen(true), 120);
                             }}
-                            className="w-full px-3 py-2 rounded-2xl flex items-center justify-between hover:bg-white/80 active:bg-white transition-all text-left text-xs text-[#2B332E] group"
+                            className={`w-full px-3 py-2 rounded-2xl flex items-center justify-between transition-all text-left text-xs group ${
+                              isDarkMode
+                                ? 'hover:bg-white/10 active:bg-white/20 text-[#FAF8F5]'
+                                : 'hover:bg-white/80 active:bg-white text-[#2B332E]'
+                            }`}
                           >
                             <div className="flex items-center gap-2.5">
                               <div
                                 className="w-6 h-6 rounded-xl flex items-center justify-center group-hover:scale-105 transition-transform"
-                                style={{ backgroundColor: `${currentTheme.primary}18`, color: currentTheme.primaryDark }}
+                                style={{
+                                  backgroundColor: isDarkMode ? `${currentTheme.accent}25` : `${currentTheme.primary}18`,
+                                  color: isDarkMode ? currentTheme.accent : currentTheme.primaryDark
+                                }}
                               >
                                 <Compass className="w-3.5 h-3.5" />
                               </div>
                               <span className="font-serif font-medium">全景时光</span>
                             </div>
-                            <span className="text-[10px] text-[#6E7C75] px-1.5 py-0.5 rounded-md bg-black/5 font-sans">
+                            <span className={`text-[10px] px-1.5 py-0.5 rounded-md font-sans ${
+                              isDarkMode ? 'bg-white/10 text-[#A0B0A7]' : 'bg-black/5 text-[#6E7C75]'
+                            }`}>
                               {selectedYear === 'all' ? '全景' : `${selectedYear}年`}
                             </span>
                           </button>
                         )}
 
-                        {/* Item 2: 调色 (Cascades into Level 2 Theme Palette) */}
+                        {/* Item 3: 调色 (Cascades into Level 2 Theme Palette) */}
                         <button
                           onClick={() => {
                             sound.playWaterDrop(880);
                             setTopNavSubView('theme');
                           }}
-                          className="w-full px-3 py-2 rounded-2xl flex items-center justify-between hover:bg-white/80 active:bg-white transition-all text-left text-xs text-[#2B332E] group"
+                          className={`w-full px-3 py-2 rounded-2xl flex items-center justify-between transition-all text-left text-xs group ${
+                            isDarkMode
+                              ? 'hover:bg-white/10 active:bg-white/20 text-[#FAF8F5]'
+                              : 'hover:bg-white/80 active:bg-white text-[#2B332E]'
+                          }`}
                         >
                           <div className="flex items-center gap-2.5">
                             <div
                               className="w-6 h-6 rounded-xl flex items-center justify-center group-hover:scale-105 transition-transform"
-                              style={{ backgroundColor: `${currentTheme.primary}18`, color: currentTheme.primaryDark }}
+                              style={{
+                                backgroundColor: isDarkMode ? `${currentTheme.accent}25` : `${currentTheme.primary}18`,
+                                color: isDarkMode ? currentTheme.accent : currentTheme.primaryDark
+                              }}
                             >
                               <Palette className="w-3.5 h-3.5" />
                             </div>
@@ -1807,49 +1845,38 @@ export default function App() {
                               className="w-2.5 h-2.5 rounded-full border border-white shadow-2xs"
                               style={{ backgroundColor: currentTheme.primary }}
                             />
-                            <span className="text-[10px] text-[#6E7C75] font-serif">{currentTheme.name}</span>
-                            <ChevronRight className="w-3 h-3 text-[#6E7C75]/60 group-hover:text-[#2B332E] transition-colors" />
+                            <span className={`text-[10px] font-serif ${isDarkMode ? 'text-[#A0B0A7]' : 'text-[#6E7C75]'}`}>
+                              {currentTheme.name}
+                            </span>
+                            <ChevronRight className="w-3 h-3 opacity-60 group-hover:opacity-100 transition-colors" />
                           </div>
                         </button>
 
-                        {/* Item 3: 设置 (Cascades into Level 2 Settings Menu) */}
+                        {/* Item 4: 设置 (Cascades into Level 2 Settings Menu) */}
                         <button
                           onClick={() => {
                             sound.playWaterDrop(880);
                             setTopNavSubView('settings');
                           }}
-                          className="w-full px-3 py-2 rounded-2xl flex items-center justify-between hover:bg-white/80 active:bg-white transition-all text-left text-xs text-[#2B332E] group"
+                          className={`w-full px-3 py-2 rounded-2xl flex items-center justify-between transition-all text-left text-xs group ${
+                            isDarkMode
+                              ? 'hover:bg-white/10 active:bg-white/20 text-[#FAF8F5]'
+                              : 'hover:bg-white/80 active:bg-white text-[#2B332E]'
+                          }`}
                         >
                           <div className="flex items-center gap-2.5">
                             <div
                               className="w-6 h-6 rounded-xl flex items-center justify-center group-hover:scale-105 transition-transform"
-                              style={{ backgroundColor: `${currentTheme.primary}18`, color: currentTheme.primaryDark }}
+                              style={{
+                                backgroundColor: isDarkMode ? `${currentTheme.accent}25` : `${currentTheme.primary}18`,
+                                color: isDarkMode ? currentTheme.accent : currentTheme.primaryDark
+                              }}
                             >
                               <Settings className="w-3.5 h-3.5" />
                             </div>
                             <span className="font-serif font-medium">设置</span>
                           </div>
-                          <ChevronRight className="w-3 h-3 text-[#6E7C75]/60 group-hover:text-[#2B332E] transition-colors" />
-                        </button>
-
-                        {/* Item 4: 全屏时钟 */}
-                        <button
-                          onClick={() => {
-                            sound.playWaterDrop(880);
-                            setIsTopNavMenuOpen(false);
-                            setTimeout(() => setIsFullscreenClockOpen(true), 120);
-                          }}
-                          className="w-full px-3 py-2 rounded-2xl flex items-center justify-between hover:bg-white/80 active:bg-white transition-all text-left text-xs text-[#2B332E] group"
-                        >
-                          <div className="flex items-center gap-2.5">
-                            <div
-                              className="w-6 h-6 rounded-xl flex items-center justify-center group-hover:scale-105 transition-transform"
-                              style={{ backgroundColor: `${currentTheme.primary}18`, color: currentTheme.primaryDark }}
-                            >
-                              <Clock className="w-3.5 h-3.5" />
-                            </div>
-                            <span className="font-serif font-medium">全屏时钟</span>
-                          </div>
+                          <ChevronRight className="w-3 h-3 opacity-60 group-hover:opacity-100 transition-colors" />
                         </button>
 
                         {/* Item 5: 锁定空间 */}
@@ -1861,12 +1888,19 @@ export default function App() {
                             localStorage.setItem('shinian_is_locked', 'true');
                             showToast('已锁定私人空间');
                           }}
-                          className="w-full px-3 py-2 rounded-2xl flex items-center justify-between hover:bg-white/80 active:bg-white transition-all text-left text-xs text-[#2B332E] group"
+                          className={`w-full px-3 py-2 rounded-2xl flex items-center justify-between transition-all text-left text-xs group ${
+                            isDarkMode
+                              ? 'hover:bg-white/10 active:bg-white/20 text-[#FAF8F5]'
+                              : 'hover:bg-white/80 active:bg-white text-[#2B332E]'
+                          }`}
                         >
                           <div className="flex items-center gap-2.5">
                             <div
                               className="w-6 h-6 rounded-xl flex items-center justify-center group-hover:scale-105 transition-transform"
-                              style={{ backgroundColor: `${currentTheme.primary}18`, color: currentTheme.primaryDark }}
+                              style={{
+                                backgroundColor: isDarkMode ? `${currentTheme.accent}25` : `${currentTheme.primary}18`,
+                                color: isDarkMode ? currentTheme.accent : currentTheme.primaryDark
+                              }}
                             >
                               <Lock className="w-3.5 h-3.5" />
                             </div>
@@ -2507,7 +2541,11 @@ export default function App() {
             >
               {/* Today's Memory / Featured Spotlight Card (Classic Polaroid with Soft Floating & Shimmer Animation) */}
               {todayHighlight ? (
-                <div className="bg-white p-4.5 sm:p-5 rounded-3xl border border-[#5B7B6D]/20 shadow-md relative overflow-hidden transition-all duration-300 hover:shadow-xl hover:border-[#E88765]/40 animate-float-card group">
+                <div className={`p-4.5 sm:p-5 rounded-3xl border relative overflow-hidden transition-all duration-300 animate-float-card group ${
+                  isDarkMode
+                    ? 'bg-[#161D19]/90 border-white/12 shadow-[0_8px_32px_rgba(0,0,0,0.35)] hover:border-white/25 text-[#FAF8F5]'
+                    : 'bg-white border-[#5B7B6D]/20 shadow-md hover:shadow-xl hover:border-[#E88765]/40 text-[#2B332E]'
+                }`}>
                   {/* Subtle Polaroid Ambient Shimmer */}
                   <div className="polaroid-shimmer" />
 
@@ -2518,8 +2556,8 @@ export default function App() {
                         <Hourglass className="w-3.5 h-3.5 text-[#E88765]" />
                       </div>
                       <div>
-                        <span className="text-[#2B332E] font-bold text-xs tracking-wide">今日回顾</span>
-                        <span className="text-[11px] text-[#6E7C75] ml-1.5 font-mono font-normal">· {todayHighlight.date}</span>
+                        <span className={`font-bold text-xs tracking-wide ${isDarkMode ? 'text-[#FAF8F5]' : 'text-[#2B332E]'}`}>今日回顾</span>
+                        <span className={`text-[11px] ml-1.5 font-mono font-normal ${isDarkMode ? 'text-[#A0B0A7]' : 'text-[#6E7C75]'}`}>· {todayHighlight.date}</span>
                       </div>
                     </div>
 
@@ -2541,7 +2579,11 @@ export default function App() {
                             });
                           }}
                           title="换一段回忆"
-                          className="p-1.5 rounded-full bg-[#FAF8F5] hover:bg-[#F2EFE9] border border-[#5B7B6D]/15 text-[#6E7C75] hover:text-[#2B332E] transition-all shadow-2xs active:scale-95"
+                          className={`p-1.5 rounded-full border transition-all shadow-2xs active:scale-95 ${
+                            isDarkMode
+                              ? 'bg-[#222B26] border-white/15 text-[#A0B0A7] hover:text-[#FAF8F5]'
+                              : 'bg-[#FAF8F5] hover:bg-[#F2EFE9] border-[#5B7B6D]/15 text-[#6E7C75] hover:text-[#2B332E]'
+                          }`}
                         >
                           <Shuffle className="w-3.5 h-3.5" />
                         </button>
@@ -2551,10 +2593,14 @@ export default function App() {
 
                   {/* Main Highlight Story Body */}
                   <div className="relative z-10">
-                    <h2 className="text-base sm:text-lg font-bold text-[#2B332E] mb-2 font-serif group-hover:text-[#5B7B6D] transition-colors leading-snug">
+                    <h2 className={`text-base sm:text-lg font-bold mb-2 font-serif transition-colors leading-snug ${
+                      isDarkMode ? 'text-[#FAF8F5] group-hover:text-amber-200' : 'text-[#2B332E] group-hover:text-[#5B7B6D]'
+                    }`}>
                       {todayHighlight.title}
                     </h2>
-                    <p className="text-xs text-[#526058] line-clamp-3 leading-relaxed mb-3.5 font-serif">
+                    <p className={`text-xs line-clamp-3 leading-relaxed mb-3.5 font-serif ${
+                      isDarkMode ? 'text-[#C2CDC7]' : 'text-[#526058]'
+                    }`}>
                       {todayHighlight.content}
                     </p>
 
@@ -2564,7 +2610,9 @@ export default function App() {
                       const videoSrc = todayHighlight.video || (isVideo ? todayHighlight.image : undefined);
 
                       return (
-                        <div className="p-2 bg-[#FAF8F5] border border-[#5B7B6D]/15 rounded-2xl mb-3.5 shadow-xs transition-transform duration-300 group-hover:scale-[1.01]">
+                        <div className={`p-2 border rounded-2xl mb-3.5 shadow-xs transition-transform duration-300 group-hover:scale-[1.01] ${
+                          isDarkMode ? 'bg-[#1C2621] border-white/10' : 'bg-[#FAF8F5] border-[#5B7B6D]/15'
+                        }`}>
                           {isVideo && videoSrc ? (
                             <div className="rounded-xl overflow-hidden border border-black/10 shadow-sm">
                               <TimelineVideoCard
@@ -2589,8 +2637,10 @@ export default function App() {
                     })()}
 
                     {/* Card Footer Actions & Location */}
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 text-[11px] text-[#6E7C75] border-t border-[#F2EFE9] pt-3">
-                      <div className="flex items-center gap-1.5 font-sans text-[#526058] min-w-0">
+                    <div className={`flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 text-[11px] border-t pt-3 ${
+                      isDarkMode ? 'border-white/10 text-[#A0B0A7]' : 'border-[#F2EFE9] text-[#6E7C75]'
+                    }`}>
+                      <div className="flex items-center gap-1.5 font-sans min-w-0">
                         <MapPin className="w-3.5 h-3.5 text-[#E88765] shrink-0" />
                         <span className="truncate">{todayHighlight.location || '离线记忆'}</span>
                       </div>
@@ -2599,7 +2649,11 @@ export default function App() {
                           type="button"
                           onClick={() => handlePlayTts(todayHighlight.content)}
                           disabled={isTtsGenerating}
-                          className="px-3 py-1.5 rounded-full bg-[#FAF8F5] hover:bg-[#F2EFE9] border border-[#5B7B6D]/20 text-[#2B332E] font-medium flex items-center gap-1.5 transition-all text-xs active:scale-95 shadow-2xs whitespace-nowrap"
+                          className={`px-3 py-1.5 rounded-full border font-medium flex items-center gap-1.5 transition-all text-xs active:scale-95 shadow-2xs whitespace-nowrap ${
+                            isDarkMode
+                              ? 'bg-[#222B26] hover:bg-[#2A3630] border-white/15 text-[#FAF8F5]'
+                              : 'bg-[#FAF8F5] hover:bg-[#F2EFE9] border-[#5B7B6D]/20 text-[#2B332E]'
+                          }`}
                         >
                           <Volume2 className={`w-3.5 h-3.5 text-[#E88765] shrink-0 ${isTtsGenerating ? 'animate-bounce' : ''}`} />
                           <span>{isTtsGenerating ? '准备语音...' : '听回忆'}</span>
@@ -2617,8 +2671,12 @@ export default function App() {
                   </div>
                 </div>
               ) : (
-                <div className="p-6 bg-white rounded-2xl border border-dashed border-[#5B7B6D]/20 text-center space-y-2">
-                  <p className="text-xs text-[#6E7C75] font-serif leading-relaxed">暂无拾光节点，点击下方「拾光轴」开启你的十年记录</p>
+                <div className={`p-6 rounded-2xl border border-dashed text-center space-y-2 ${
+                  isDarkMode ? 'bg-[#161D19]/90 border-white/15 text-[#FAF8F5]' : 'bg-white border-[#5B7B6D]/20'
+                }`}>
+                  <p className={`text-xs font-serif leading-relaxed ${isDarkMode ? 'text-[#A0B0A7]' : 'text-[#6E7C75]'}`}>
+                    暂无拾光节点，点击下方「拾光轴」开启你的十年记录
+                  </p>
                   <button
                     onClick={() => setActiveModal('addTimeline')}
                     className="text-xs px-3.5 py-1.5 bg-[#5B7B6D] text-white rounded-xl hover:bg-[#3E564B] font-medium shadow-2xs"
@@ -2637,6 +2695,7 @@ export default function App() {
                   count={data.timeline.length}
                   unit="条记录"
                   onClick={() => setActiveTab('timeline')}
+                  isDarkMode={isDarkMode}
                 />
                 <EntranceCard
                   title="拾人册"
@@ -2648,6 +2707,7 @@ export default function App() {
                     setSelectedPerson(null);
                     setActiveTab('people');
                   }}
+                  isDarkMode={isDarkMode}
                 />
                 <EntranceCard
                   title="拾忆篇"
@@ -2659,6 +2719,7 @@ export default function App() {
                     setReaderStory(null);
                     setActiveTab('stories');
                   }}
+                  isDarkMode={isDarkMode}
                 />
                 <EntranceCard
                   title="拾物阁"
@@ -2667,13 +2728,18 @@ export default function App() {
                   count={data.artifacts.length}
                   unit="件藏品"
                   onClick={() => setActiveTab('artifacts')}
+                  isDarkMode={isDarkMode}
                 />
               </div>
 
               {/* Time Capsule Entry Banner - Japanese Indie Capsule Design */}
               <div 
                 onClick={() => setActiveTab('letters')}
-                className="group relative p-4 sm:p-5 rounded-2xl sm:rounded-3xl border border-[#5B7B6D]/15 bg-white shadow-sm hover:shadow-md hover:border-[#E88765]/40 transition-all cursor-pointer overflow-hidden flex items-center justify-between"
+                className={`group relative p-4 sm:p-5 rounded-2xl sm:rounded-3xl border transition-all cursor-pointer overflow-hidden flex items-center justify-between ${
+                  isDarkMode
+                    ? 'bg-[#161D19]/90 border-white/12 hover:border-white/25 text-[#FAF8F5] shadow-[0_4px_20px_rgba(0,0,0,0.3)]'
+                    : 'bg-white border-[#5B7B6D]/15 hover:border-[#E88765]/40 shadow-sm'
+                }`}
               >
                 {/* Decorative retro stamp & background texture accent */}
                 <div className="absolute top-0 right-0 w-32 h-32 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-[#E88765]/10 via-transparent to-transparent pointer-events-none" />
@@ -2682,25 +2748,33 @@ export default function App() {
                 </div>
 
                 <div className="flex items-center gap-3.5 min-w-0 flex-1 relative z-10">
-                  <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-2xl bg-[#F2EFE9] group-hover:bg-[#FDF0EB] text-[#5B7B6D] group-hover:text-[#E88765] border border-[#5B7B6D]/15 flex items-center justify-center shrink-0 shadow-2xs transition-colors">
+                  <div className={`w-11 h-11 sm:w-12 sm:h-12 rounded-2xl border flex items-center justify-center shrink-0 shadow-2xs transition-colors ${
+                    isDarkMode
+                      ? 'bg-[#222B26] border-white/15 text-[#E88765]'
+                      : 'bg-[#F2EFE9] group-hover:bg-[#FDF0EB] text-[#5B7B6D] group-hover:text-[#E88765] border-[#5B7B6D]/15'
+                  }`}>
                     <Mail className="w-5 h-5 sm:w-6 sm:h-6" />
                   </div>
                   <div className="min-w-0 flex-1 space-y-0.5">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <h4 className="text-sm sm:text-base font-bold text-[#2B332E] font-serif group-hover:text-[#5B7B6D] transition-colors">
+                      <h4 className={`text-sm sm:text-base font-bold font-serif group-hover:text-[#E88765] transition-colors ${
+                        isDarkMode ? 'text-[#FAF8F5]' : 'text-[#2B332E]'
+                      }`}>
                         寄年 · 时光胶囊
                       </h4>
                       <span className="text-[10px] sm:text-[11px] font-bold text-[#E88765] font-sans">
                         {data.letters.length} 封信件
                       </span>
                     </div>
-                    <p className="text-[11px] sm:text-xs text-[#6E7C75] font-sans leading-relaxed line-clamp-1">
+                    <p className={`text-[11px] sm:text-xs font-sans leading-relaxed line-clamp-1 ${
+                      isDarkMode ? 'text-[#A0B0A7]' : 'text-[#6E7C75]'
+                    }`}>
                       寄给未来的信，写给岁月深处的微光与期许
                     </p>
                   </div>
                 </div>
 
-                <div className="flex items-center text-[#6E7C75] group-hover:text-[#5B7B6D] group-hover:translate-x-0.5 transition-all shrink-0 ml-2 relative z-10">
+                <div className="flex items-center text-[#6E7C75] group-hover:text-[#E88765] group-hover:translate-x-0.5 transition-all shrink-0 ml-2 relative z-10">
                   <ChevronRight className="w-4 h-4" />
                 </div>
               </div>
@@ -2725,6 +2799,7 @@ export default function App() {
                 theme={currentTheme}
                 showToast={showToast}
                 onPlayTts={(text) => handlePlayTts(text)}
+                isDarkMode={isDarkMode}
               />
             </motion.div>
           )}
@@ -2740,6 +2815,8 @@ export default function App() {
               <ChronoGalleryTimeline
                 items={data.timeline}
                 selectedYear={selectedYear}
+                themeColor={currentTheme.primary}
+                isDarkMode={isDarkMode}
                 onSelectYear={(yr) => {
                   setSelectedYear(yr);
                   if (yr === 'all') {
@@ -5391,6 +5468,7 @@ export default function App() {
               onAddGroup={handleAddGroup}
               onDeleteGroup={handleDeleteGroup}
               theme={currentTheme}
+              isDarkMode={isDarkMode}
             />
           )}
         </AnimatePresence>
@@ -5410,6 +5488,7 @@ export default function App() {
               years={years}
               yearStats={yearStats}
               theme={currentTheme}
+              isDarkMode={isDarkMode}
             />
           )}
         </AnimatePresence>
@@ -5606,7 +5685,8 @@ function EntranceCard({
   icon: IconComp,
   count,
   unit = '项记录',
-  onClick
+  onClick,
+  isDarkMode = false
 }: {
   title: string;
   subtitle: string;
@@ -5614,21 +5694,34 @@ function EntranceCard({
   count: number;
   unit?: string;
   onClick: () => void;
+  isDarkMode?: boolean;
 }) {
   return (
     <div
       onClick={onClick}
-      className="bg-white p-3.5 rounded-2xl border border-[#5B7B6D]/15 shadow-sm cursor-pointer hover:border-[#E88765]/40 active:border-[#E88765] active:scale-[0.98] transition-all flex flex-col justify-between h-28 group select-none touch-manipulation"
+      className={`p-3.5 rounded-2xl border cursor-pointer hover:border-[#E88765]/40 active:border-[#E88765] active:scale-[0.98] transition-all flex flex-col justify-between h-28 group select-none touch-manipulation ${
+        isDarkMode
+          ? 'bg-[#161D19]/90 border-white/12 text-[#FAF8F5] shadow-[0_4px_20px_rgba(0,0,0,0.3)]'
+          : 'bg-white border-[#5B7B6D]/15 shadow-sm text-[#2B332E]'
+      }`}
     >
       <div className="flex justify-between items-start">
-        <div className="p-2 rounded-xl bg-[#F2EFE9] text-[#5B7B6D] group-hover:bg-[#FDF0EB] group-hover:text-[#E88765] transition-colors">
+        <div className={`p-2 rounded-xl transition-colors ${
+          isDarkMode
+            ? 'bg-[#222B26] text-[#E88765]'
+            : 'bg-[#F2EFE9] text-[#5B7B6D] group-hover:bg-[#FDF0EB] group-hover:text-[#E88765]'
+        }`}>
           <IconComp className="w-4 h-4" />
         </div>
         <span className="text-[11px] font-bold text-[#E88765] font-sans">{count} {unit}</span>
       </div>
       <div>
-        <h3 className="font-bold text-[#2B332E] text-sm font-serif group-hover:text-[#5B7B6D] transition-colors">{title}</h3>
-        <p className="text-[10px] text-[#6E7C75] font-sans">{subtitle}</p>
+        <h3 className={`font-bold text-sm font-serif group-hover:text-[#E88765] transition-colors ${
+          isDarkMode ? 'text-[#FAF8F5]' : 'text-[#2B332E]'
+        }`}>
+          {title}
+        </h3>
+        <p className={`text-[10px] font-sans ${isDarkMode ? 'text-[#A0B0A7]' : 'text-[#6E7C75]'}`}>{subtitle}</p>
       </div>
     </div>
   );
@@ -5657,6 +5750,7 @@ interface ChronoYearPickerModalProps {
     };
   };
   theme: HealingTheme;
+  isDarkMode?: boolean;
 }
 
 function ChronoYearPickerModal({
@@ -5666,7 +5760,8 @@ function ChronoYearPickerModal({
   onSelectYear,
   years,
   yearStats,
-  theme
+  theme,
+  isDarkMode = false
 }: ChronoYearPickerModalProps) {
   const [filterMode, setFilterMode] = useState<'all_recorded' | 'recent' | 'custom'>('all_recorded');
   const [customYearInput, setCustomYearInput] = useState<string>('');
@@ -5716,7 +5811,7 @@ function ChronoYearPickerModal({
         exit={{ opacity: 0 }}
         transition={{ duration: 0.22 }}
         onClick={onClose}
-        className="absolute inset-0 bg-[#2B332E]/40"
+        className="absolute inset-0 bg-black/60 backdrop-blur-xs"
       />
 
       {/* iOS Modal Sheet Card */}
@@ -5725,38 +5820,50 @@ function ChronoYearPickerModal({
         animate={{ y: 0 }}
         exit={{ y: '100%' }}
         transition={{ duration: 0.28, ease: [0.32, 0.72, 0, 1] }}
-        className="relative w-full max-w-lg bg-[#FAF8F5] rounded-t-[32px] sm:rounded-[28px] border border-[#5B7B6D]/20 shadow-2xl overflow-hidden flex flex-col max-h-[85vh] sm:max-h-[80vh] z-10 font-sans transform-gpu"
+        className={`relative w-full max-w-lg rounded-t-[32px] sm:rounded-[28px] border shadow-2xl overflow-hidden flex flex-col max-h-[85vh] sm:max-h-[80vh] z-10 font-sans transform-gpu apple-liquid-glass ${
+          isDarkMode
+            ? 'bg-[#141A17]/90 border-white/15 text-[#FAF8F5]'
+            : 'bg-[#FAF8F5]/95 border-[#5B7B6D]/20 text-[#2B332E]'
+        }`}
         style={{
-          boxShadow: '0 -10px 40px -10px rgba(43, 51, 46, 0.2), 0 0 0 1px rgba(255, 255, 255, 0.8) inset',
+          boxShadow: isDarkMode
+            ? '0 -10px 40px -10px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.1) inset'
+            : '0 -10px 40px -10px rgba(43, 51, 46, 0.2), 0 0 0 1px rgba(255, 255, 255, 0.8) inset',
           willChange: 'transform'
         }}
       >
         {/* iOS Grabber */}
         <div className="w-full flex justify-center pt-3 pb-1 sm:hidden">
-          <div className="w-10 h-1 bg-black/20 rounded-full" />
+          <div className={`w-10 h-1 rounded-full ${isDarkMode ? 'bg-white/20' : 'bg-black/20'}`} />
         </div>
 
         {/* Modal Header */}
-        <div className="px-5 py-3.5 border-b border-[#5B7B6D]/10 flex items-center justify-between bg-white/40">
+        <div className={`px-5 py-3.5 border-b flex items-center justify-between ${
+          isDarkMode ? 'border-white/10 bg-[#1A231F]/80' : 'border-[#5B7B6D]/10 bg-white/40'
+        }`}>
           <div className="flex items-center gap-2.5">
             <div
               className="p-2 rounded-2xl shadow-xs"
-              style={{ backgroundColor: `${theme.primary}20`, color: theme.primaryDark }}
+              style={{ backgroundColor: `${theme.primary}20`, color: isDarkMode ? theme.accent : theme.primaryDark }}
             >
               <CalendarRange className="w-4 h-4" />
             </div>
             <div>
-              <h3 className="font-bold text-[#2B332E] text-sm font-serif flex items-center gap-1.5">
+              <h3 className={`font-bold text-sm font-serif flex items-center gap-1.5 ${
+                isDarkMode ? 'text-[#FAF8F5]' : 'text-[#2B332E]'
+              }`}>
                 时光纪年 · 岁月回溯
               </h3>
-              <p className="text-[10px] text-[#6E7C75] font-serif">
+              <p className={`text-[10px] font-serif ${isDarkMode ? 'text-[#A0B0A7]' : 'text-[#6E7C75]'}`}>
                 默认全景时光 · 沉淀十载光阴
               </p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 rounded-full bg-black/5 hover:bg-black/10 text-[#6E7C75] hover:text-[#2B332E] transition-all active:scale-90"
+            className={`p-1.5 rounded-full transition-all active:scale-90 ${
+              isDarkMode ? 'bg-white/10 text-[#C2CDC7] hover:bg-white/20 hover:text-white' : 'bg-black/5 text-[#6E7C75] hover:bg-black/10 hover:text-[#2B332E]'
+            }`}
             title="关闭"
           >
             <X className="w-4 h-4" />
@@ -5770,8 +5877,12 @@ function ChronoYearPickerModal({
             onClick={() => onSelectYear('all')}
             className={`p-4 rounded-2xl border transition-all cursor-pointer relative overflow-hidden group ${
               selectedYear === 'all'
-                ? 'bg-gradient-to-br from-white via-[#FAF8F5] to-[#F2EFE9] border-[#5B7B6D] shadow-md ring-2 ring-[#5B7B6D]/20'
-                : 'bg-white/80 border-[#5B7B6D]/15 hover:border-[#5B7B6D]/40 hover:bg-white'
+                ? isDarkMode
+                  ? 'bg-gradient-to-br from-[#1E2823] via-[#161D19] to-[#121815] border-[#E88765] shadow-md ring-2 ring-[#E88765]/30'
+                  : 'bg-gradient-to-br from-white via-[#FAF8F5] to-[#F2EFE9] border-[#5B7B6D] shadow-md ring-2 ring-[#5B7B6D]/20'
+                : isDarkMode
+                  ? 'bg-[#1A221E]/80 border-white/10 hover:border-white/25 hover:bg-[#202B26]'
+                  : 'bg-white/80 border-[#5B7B6D]/15 hover:border-[#5B7B6D]/40 hover:bg-white'
             }`}
           >
             <div className="flex items-start justify-between relative z-10">
@@ -5780,21 +5891,21 @@ function ChronoYearPickerModal({
                   className={`w-10 h-10 rounded-2xl flex items-center justify-center transition-all ${
                     selectedYear === 'all'
                       ? 'bg-[#5B7B6D] text-white shadow-sm'
-                      : 'bg-[#F2EFE9] text-[#5B7B6D] group-hover:bg-[#E8E4DC]'
+                      : isDarkMode ? 'bg-[#222B26] text-[#E88765]' : 'bg-[#F2EFE9] text-[#5B7B6D] group-hover:bg-[#E8E4DC]'
                   }`}
                 >
                   <Compass className="w-5 h-5" />
                 </div>
                 <div>
                   <div className="flex items-center gap-2">
-                    <h4 className="font-bold text-sm text-[#2B332E] font-serif">
+                    <h4 className={`font-bold text-sm font-serif ${isDarkMode ? 'text-[#FAF8F5]' : 'text-[#2B332E]'}`}>
                       🌟 全景时光 · 浩瀚岁月
                     </h4>
-                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#5B7B6D]/10 text-[#5B7B6D] font-medium">
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#5B7B6D]/20 text-[#E88765] font-medium">
                       默认全览
                     </span>
                   </div>
-                  <p className="text-[11px] text-[#6E7C75] mt-0.5 font-serif">
+                  <p className={`text-[11px] mt-0.5 font-serif ${isDarkMode ? 'text-[#A0B0A7]' : 'text-[#6E7C75]'}`}>
                     汇聚全部时光记忆（共 {yearStats.totalAll} 项时光档案）
                   </p>
                 </div>
@@ -5805,24 +5916,34 @@ function ChronoYearPickerModal({
                   <Check className="w-3.5 h-3.5" />
                 </div>
               ) : (
-                <span className="text-[11px] font-medium text-[#5B7B6D] opacity-0 group-hover:opacity-100 transition-opacity">
+                <span className="text-[11px] font-medium text-[#E88765] opacity-0 group-hover:opacity-100 transition-opacity">
                   切换全览 →
                 </span>
               )}
             </div>
 
             {/* Real-time Category Breakdown in Panorama Card */}
-            <div className="flex flex-wrap gap-1.5 mt-3 pt-2.5 border-t border-[#5B7B6D]/10 text-[10px] text-[#5B7B6D] font-sans">
-              <span className="px-2 py-0.5 rounded-md bg-white border border-[#5B7B6D]/15 font-medium shadow-2xs">
+            <div className={`flex flex-wrap gap-1.5 mt-3 pt-2.5 border-t text-[10px] font-sans ${
+              isDarkMode ? 'border-white/10 text-[#C2CDC7]' : 'border-[#5B7B6D]/10 text-[#5B7B6D]'
+            }`}>
+              <span className={`px-2 py-0.5 rounded-md border font-medium shadow-2xs ${
+                isDarkMode ? 'bg-[#222B26] border-white/10' : 'bg-white border-[#5B7B6D]/15'
+              }`}>
                 {yearStats.totals.timeline} 节点
               </span>
-              <span className="px-2 py-0.5 rounded-md bg-white border border-[#5B7B6D]/15 font-medium shadow-2xs">
+              <span className={`px-2 py-0.5 rounded-md border font-medium shadow-2xs ${
+                isDarkMode ? 'bg-[#222B26] border-white/10' : 'bg-white border-[#5B7B6D]/15'
+              }`}>
                 {yearStats.totals.stories} 篇章
               </span>
-              <span className="px-2 py-0.5 rounded-md bg-white border border-[#5B7B6D]/15 font-medium shadow-2xs">
+              <span className={`px-2 py-0.5 rounded-md border font-medium shadow-2xs ${
+                isDarkMode ? 'bg-[#222B26] border-white/10' : 'bg-white border-[#5B7B6D]/15'
+              }`}>
                 {yearStats.totals.artifacts} 旧物
               </span>
-              <span className="px-2 py-0.5 rounded-md bg-white border border-[#5B7B6D]/15 font-medium shadow-2xs">
+              <span className={`px-2 py-0.5 rounded-md border font-medium shadow-2xs ${
+                isDarkMode ? 'bg-[#222B26] border-white/10' : 'bg-white border-[#5B7B6D]/15'
+              }`}>
                 {yearStats.totals.people} 人物
               </span>
             </div>
@@ -5836,16 +5957,18 @@ function ChronoYearPickerModal({
             )}
           </div>
 
-          {/* Quick Filter Navigation Tabs & Search (Responsive mobile layout) */}
+          {/* Quick Filter Navigation Tabs & Search */}
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 pt-1">
-            <div className="flex items-center gap-1 bg-black/5 p-1 rounded-xl w-full sm:w-auto">
+            <div className={`flex items-center gap-1 p-1 rounded-xl w-full sm:w-auto ${
+              isDarkMode ? 'bg-white/10' : 'bg-black/5'
+            }`}>
               <button
                 type="button"
                 onClick={() => setFilterMode('all_recorded')}
                 className={`flex-1 sm:flex-initial whitespace-nowrap px-3 py-1.5 rounded-lg text-xs font-medium transition-all text-center ${
                   filterMode === 'all_recorded'
-                    ? 'bg-white text-[#2B332E] shadow-2xs font-semibold'
-                    : 'text-[#6E7C75] hover:text-[#2B332E]'
+                    ? isDarkMode ? 'bg-[#222B26] text-[#FAF8F5] font-semibold' : 'bg-white text-[#2B332E] shadow-2xs font-semibold'
+                    : isDarkMode ? 'text-[#A0B0A7] hover:text-white' : 'text-[#6E7C75] hover:text-[#2B332E]'
                 }`}
               >
                 全部年份 ({years.length})
@@ -5855,8 +5978,8 @@ function ChronoYearPickerModal({
                 onClick={() => setFilterMode('recent')}
                 className={`flex-1 sm:flex-initial whitespace-nowrap px-3 py-1.5 rounded-lg text-xs font-medium transition-all text-center ${
                   filterMode === 'recent'
-                    ? 'bg-white text-[#2B332E] shadow-2xs font-semibold'
-                    : 'text-[#6E7C75] hover:text-[#2B332E]'
+                    ? isDarkMode ? 'bg-[#222B26] text-[#FAF8F5] font-semibold' : 'bg-white text-[#2B332E] shadow-2xs font-semibold'
+                    : isDarkMode ? 'text-[#A0B0A7] hover:text-white' : 'text-[#6E7C75] hover:text-[#2B332E]'
                 }`}
               >
                 近3年
@@ -5866,8 +5989,8 @@ function ChronoYearPickerModal({
                 onClick={() => setFilterMode('custom')}
                 className={`flex-1 sm:flex-initial whitespace-nowrap px-3 py-1.5 rounded-lg text-xs font-medium transition-all text-center ${
                   filterMode === 'custom'
-                    ? 'bg-white text-[#2B332E] shadow-2xs font-semibold'
-                    : 'text-[#6E7C75] hover:text-[#2B332E]'
+                    ? isDarkMode ? 'bg-[#222B26] text-[#FAF8F5] font-semibold' : 'bg-white text-[#2B332E] shadow-2xs font-semibold'
+                    : isDarkMode ? 'text-[#A0B0A7] hover:text-white' : 'text-[#6E7C75] hover:text-[#2B332E]'
                 }`}
               >
                 任意年份
@@ -5882,9 +6005,13 @@ function ChronoYearPickerModal({
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   placeholder="搜索年份..."
-                  className="w-full pl-7 pr-2.5 py-1.5 bg-white/80 border border-[#5B7B6D]/15 rounded-xl text-xs focus:outline-none focus:border-[#5B7B6D] transition-colors"
+                  className={`w-full pl-7 pr-2.5 py-1.5 border rounded-xl text-xs focus:outline-none transition-colors ${
+                    isDarkMode
+                      ? 'bg-[#18201C] border-white/15 text-[#FAF8F5] placeholder-[#A0B0A7]/60'
+                      : 'bg-white/80 border-[#5B7B6D]/15 text-[#2B332E]'
+                  }`}
                 />
-                <Search className="w-3.5 h-3.5 text-[#6E7C75] absolute left-2 top-2.5" />
+                <Search className={`w-3.5 h-3.5 absolute left-2 top-2.5 ${isDarkMode ? 'text-[#A0B0A7]' : 'text-[#6E7C75]'}`} />
               </div>
             )}
           </div>
@@ -5893,9 +6020,11 @@ function ChronoYearPickerModal({
           {filterMode === 'custom' ? (
             <form
               onSubmit={handleCustomYearSubmit}
-              className="p-4 bg-white rounded-2xl border border-[#5B7B6D]/20 shadow-xs space-y-3"
+              className={`p-4 rounded-2xl border space-y-3 ${
+                isDarkMode ? 'bg-[#1A221E] border-white/15' : 'bg-white border-[#5B7B6D]/20 shadow-xs'
+              }`}
             >
-              <div className="text-xs text-[#2B332E] font-medium font-serif">
+              <div className={`text-xs font-medium font-serif ${isDarkMode ? 'text-[#FAF8F5]' : 'text-[#2B332E]'}`}>
                 🧭 快速回溯或筛选任意指定年份：
               </div>
               <div className="flex gap-2">
@@ -5906,7 +6035,11 @@ function ChronoYearPickerModal({
                   value={customYearInput}
                   onChange={(e) => setCustomYearInput(e.target.value)}
                   placeholder="例如: 2018 或 2025"
-                  className="flex-1 p-2.5 bg-[#FAF8F5] border border-[#5B7B6D]/20 rounded-xl text-xs focus:outline-none focus:border-[#E88765] font-mono"
+                  className={`flex-1 p-2.5 border rounded-xl text-xs focus:outline-none font-mono ${
+                    isDarkMode
+                      ? 'bg-[#121815] border-white/15 text-[#FAF8F5] placeholder-[#A0B0A7]/60'
+                      : 'bg-[#FAF8F5] border-[#5B7B6D]/20 text-[#2B332E]'
+                  }`}
                   autoFocus
                 />
                 <button
@@ -5917,7 +6050,7 @@ function ChronoYearPickerModal({
                   回溯此年
                 </button>
               </div>
-              <p className="text-[10px] text-[#6E7C75]">
+              <p className={`text-[10px] ${isDarkMode ? 'text-[#A0B0A7]' : 'text-[#6E7C75]'}`}>
                 提示：选择后可针对该特定年份进行记录检索或新增专属时光碎片。
               </p>
             </form>
@@ -5946,20 +6079,26 @@ function ChronoYearPickerModal({
                     onClick={() => onSelectYear(yr)}
                     className={`p-3 rounded-2xl border transition-all cursor-pointer relative overflow-hidden group active:scale-[0.98] ${
                       isCurrentSelected
-                        ? 'bg-[#FDF0EB] border-[#E88765] shadow-sm ring-2 ring-[#E88765]/25'
-                        : 'bg-white hover:bg-[#FAF8F5] border-[#5B7B6D]/15 hover:border-[#5B7B6D]/30'
+                        ? isDarkMode
+                          ? 'bg-[#281E19] border-[#E88765] ring-2 ring-[#E88765]/30'
+                          : 'bg-[#FDF0EB] border-[#E88765] shadow-sm ring-2 ring-[#E88765]/25'
+                        : isDarkMode
+                          ? 'bg-[#1A221E] hover:bg-[#202B26] border-white/10 hover:border-white/20'
+                          : 'bg-white hover:bg-[#FAF8F5] border-[#5B7B6D]/15 hover:border-[#5B7B6D]/30'
                     }`}
                   >
                     <div className="flex justify-between items-start">
                       <div className="flex items-baseline gap-1.5">
                         <span className={`text-base font-bold font-mono tracking-tight ${
-                          isCurrentSelected ? 'text-[#E88765]' : 'text-[#2B332E]'
+                          isCurrentSelected ? 'text-[#E88765]' : isDarkMode ? 'text-[#FAF8F5]' : 'text-[#2B332E]'
                         }`}>
                           {yr}
                         </span>
-                        <span className="text-xs text-[#6E7C75] font-serif">年</span>
+                        <span className={`text-xs font-serif ${isDarkMode ? 'text-[#A0B0A7]' : 'text-[#6E7C75]'}`}>年</span>
                         {relativeLabel && (
-                          <span className="text-[10px] px-1.5 py-0.2 rounded-md bg-black/5 text-[#6E7C75] font-sans">
+                          <span className={`text-[10px] px-1.5 py-0.2 rounded-md font-sans ${
+                            isDarkMode ? 'bg-white/10 text-[#A0B0A7]' : 'bg-black/5 text-[#6E7C75]'
+                          }`}>
                             {relativeLabel}
                           </span>
                         )}
@@ -5970,38 +6109,48 @@ function ChronoYearPickerModal({
                           <Check className="w-3 h-3" />
                         </div>
                       ) : (
-                        <span className="text-[10px] font-bold font-mono text-[#5B7B6D] bg-[#F2EFE9] px-2 py-0.5 rounded-full">
+                        <span className={`text-[10px] font-bold font-mono px-2 py-0.5 rounded-full ${
+                          isDarkMode ? 'text-[#E88765] bg-white/10' : 'text-[#5B7B6D] bg-[#F2EFE9]'
+                        }`}>
                           {stats.total} 项
                         </span>
                       )}
                     </div>
 
                     {/* Breakdown Tags */}
-                    <div className="flex flex-wrap gap-1 mt-2 text-[9px] text-[#6E7C75] font-sans">
+                    <div className="flex flex-wrap gap-1 mt-2 text-[9px] font-sans">
                       {stats.timeline > 0 && (
-                        <span className="px-1.5 py-0.5 rounded bg-[#FAF8F5] border border-[#5B7B6D]/10">
+                        <span className={`px-1.5 py-0.5 rounded border ${
+                          isDarkMode ? 'bg-white/5 border-white/10 text-[#A0B0A7]' : 'bg-[#FAF8F5] border-[#5B7B6D]/10 text-[#6E7C75]'
+                        }`}>
                           {stats.timeline} 节点
                         </span>
                       )}
                       {stats.stories > 0 && (
-                        <span className="px-1.5 py-0.5 rounded bg-[#FAF8F5] border border-[#5B7B6D]/10">
+                        <span className={`px-1.5 py-0.5 rounded border ${
+                          isDarkMode ? 'bg-white/5 border-white/10 text-[#A0B0A7]' : 'bg-[#FAF8F5] border-[#5B7B6D]/10 text-[#6E7C75]'
+                        }`}>
                           {stats.stories} 篇章
                         </span>
                       )}
                       {stats.artifacts > 0 && (
-                        <span className="px-1.5 py-0.5 rounded bg-[#FAF8F5] border border-[#5B7B6D]/10">
+                        <span className={`px-1.5 py-0.5 rounded border ${
+                          isDarkMode ? 'bg-white/5 border-white/10 text-[#A0B0A7]' : 'bg-[#FAF8F5] border-[#5B7B6D]/10 text-[#6E7C75]'
+                        }`}>
                           {stats.artifacts} 旧物
                         </span>
                       )}
                       {stats.people > 0 && (
-                        <span className="px-1.5 py-0.5 rounded bg-[#FAF8F5] border border-[#5B7B6D]/10">
+                        <span className={`px-1.5 py-0.5 rounded border ${
+                          isDarkMode ? 'bg-white/5 border-white/10 text-[#A0B0A7]' : 'bg-[#FAF8F5] border-[#5B7B6D]/10 text-[#6E7C75]'
+                        }`}>
                           {stats.people} 结识
                         </span>
                       )}
                     </div>
 
                     {/* Density Meter Bar */}
-                    <div className="mt-2.5 w-full bg-black/5 h-1 rounded-full overflow-hidden">
+                    <div className={`mt-2.5 w-full h-1 rounded-full overflow-hidden ${isDarkMode ? 'bg-white/10' : 'bg-black/5'}`}>
                       <div
                         className={`h-full rounded-full transition-all duration-300 ${
                           isCurrentSelected ? 'bg-[#E88765]' : 'bg-[#5B7B6D]/60 group-hover:bg-[#5B7B6D]'
@@ -6014,7 +6163,9 @@ function ChronoYearPickerModal({
               })}
 
               {displayedYears.length === 0 && (
-                <div className="col-span-full py-8 text-center bg-white rounded-2xl border border-dashed border-[#5B7B6D]/20 text-xs text-[#6E7C75] font-serif">
+                <div className={`col-span-full py-8 text-center rounded-2xl border border-dashed text-xs font-serif ${
+                  isDarkMode ? 'bg-[#1A221E] border-white/15 text-[#A0B0A7]' : 'bg-white border-[#5B7B6D]/20 text-[#6E7C75]'
+                }`}>
                   未找到与当前筛选匹配的年份
                 </div>
               )}
@@ -6023,10 +6174,12 @@ function ChronoYearPickerModal({
         </div>
 
         {/* Footer Info */}
-        <div className="p-3 pb-[max(var(--safe-area-bottom,16px),env(safe-area-inset-bottom,16px),0.75rem)] bg-white/70 border-t border-[#5B7B6D]/10 flex items-center justify-between text-[11px] text-[#6E7C75]">
+        <div className={`p-3 pb-[max(var(--safe-area-bottom,16px),env(safe-area-inset-bottom,16px),0.75rem)] border-t flex items-center justify-between text-[11px] ${
+          isDarkMode ? 'bg-[#18201C]/80 border-white/10 text-[#A0B0A7]' : 'bg-white/70 border-[#5B7B6D]/10 text-[#6E7C75]'
+        }`}>
           <span className="font-serif">
             已选状态：
-            <strong className="text-[#2B332E] font-medium ml-1">
+            <strong className={`font-medium ml-1 ${isDarkMode ? 'text-[#FAF8F5]' : 'text-[#2B332E]'}`}>
               {selectedYear === 'all' ? '全景时光（无年份限制）' : `回溯 ${selectedYear} 年档案`}
             </strong>
           </span>
@@ -6058,6 +6211,7 @@ interface FriendGroupPickerModalProps {
   onAddGroup: (groupName: string) => void;
   onDeleteGroup: (groupName: string) => void;
   theme: HealingTheme;
+  isDarkMode?: boolean;
 }
 
 function FriendGroupPickerModal({
@@ -6069,7 +6223,8 @@ function FriendGroupPickerModal({
   customGroups,
   onAddGroup,
   onDeleteGroup,
-  theme
+  theme,
+  isDarkMode = false
 }: FriendGroupPickerModalProps) {
   const [filterMode, setFilterMode] = useState<'all_groups' | 'create_group'>('all_groups');
   const [newGroupNameInput, setNewGroupNameInput] = useState<string>('');
@@ -6138,7 +6293,7 @@ function FriendGroupPickerModal({
         exit={{ opacity: 0 }}
         transition={{ duration: 0.22 }}
         onClick={onClose}
-        className="absolute inset-0 bg-[#2B332E]/40"
+        className="absolute inset-0 bg-black/60 backdrop-blur-xs"
       />
 
       {/* iOS Modal Sheet Card */}
@@ -6147,38 +6302,50 @@ function FriendGroupPickerModal({
         animate={{ y: 0 }}
         exit={{ y: '100%' }}
         transition={{ duration: 0.28, ease: [0.32, 0.72, 0, 1] }}
-        className="relative w-full max-w-lg bg-[#FAF8F5] rounded-t-[32px] sm:rounded-[28px] border border-[#5B7B6D]/20 shadow-2xl overflow-hidden flex flex-col max-h-[85vh] sm:max-h-[80vh] z-10 font-sans transform-gpu"
+        className={`relative w-full max-w-lg rounded-t-[32px] sm:rounded-[28px] border shadow-none overflow-hidden flex flex-col max-h-[85vh] sm:max-h-[80vh] z-10 font-sans backdrop-blur-xl transform-gpu ${
+          isDarkMode
+            ? 'bg-[#151D18]/95 text-emerald-50 border-emerald-500/30'
+            : 'bg-[#FAF8F5]/95 text-[#2B332E] border-[#5B7B6D]/20'
+        }`}
         style={{
-          boxShadow: '0 -10px 40px -10px rgba(43, 51, 46, 0.2), 0 0 0 1px rgba(255, 255, 255, 0.8) inset',
+          boxShadow: 'none',
           willChange: 'transform'
         }}
       >
         {/* iOS Grabber */}
         <div className="w-full flex justify-center pt-3 pb-1 sm:hidden">
-          <div className="w-10 h-1 bg-black/20 rounded-full" />
+          <div className={`w-10 h-1 rounded-full ${isDarkMode ? 'bg-white/20' : 'bg-black/20'}`} />
         </div>
 
         {/* Modal Header */}
-        <div className="px-5 py-3.5 border-b border-[#5B7B6D]/10 flex items-center justify-between bg-white/40">
+        <div className={`px-5 py-3.5 border-b flex items-center justify-between ${
+          isDarkMode ? 'border-emerald-500/20 bg-black/20' : 'border-[#5B7B6D]/10 bg-white/40'
+        }`}>
           <div className="flex items-center gap-2.5">
             <div
               className="p-2 rounded-2xl shadow-xs"
-              style={{ backgroundColor: `${theme.primary}20`, color: theme.primaryDark }}
+              style={{ backgroundColor: `${theme.primary}25`, color: isDarkMode ? '#86EFAC' : theme.primaryDark }}
             >
               <Users className="w-4 h-4" />
             </div>
             <div>
-              <h3 className="font-bold text-[#2B332E] text-sm font-serif flex items-center gap-1.5">
+              <h3 className={`font-bold text-sm font-serif flex items-center gap-1.5 ${
+                isDarkMode ? 'text-emerald-100' : 'text-[#2B332E]'
+              }`}>
                 好友分组 · 拾人图谱
               </h3>
-              <p className="text-[10px] text-[#6E7C75] font-serif">
+              <p className={`text-[10px] font-serif ${isDarkMode ? 'text-emerald-400/80' : 'text-[#6E7C75]'}`}>
                 沉淀相遇缘起
               </p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 rounded-full bg-black/5 hover:bg-black/10 text-[#6E7C75] hover:text-[#2B332E] transition-all active:scale-90"
+            className={`p-1.5 rounded-full transition-all active:scale-90 ${
+              isDarkMode
+                ? 'bg-white/10 hover:bg-white/20 text-emerald-200'
+                : 'bg-black/5 hover:bg-black/10 text-[#6E7C75] hover:text-[#2B332E]'
+            }`}
             title="关闭"
           >
             <X className="w-4 h-4" />
@@ -6192,8 +6359,12 @@ function FriendGroupPickerModal({
             onClick={() => onSelectGroup('all')}
             className={`p-3.5 rounded-2xl border transition-all cursor-pointer relative overflow-hidden group ${
               selectedGroup === 'all'
-                ? 'bg-gradient-to-br from-white via-[#FAF8F5] to-[#F2EFE9] border-[#5B7B6D] shadow-md ring-2 ring-[#5B7B6D]/20'
-                : 'bg-white/80 border-[#5B7B6D]/15 hover:border-[#5B7B6D]/40 hover:bg-white'
+                ? isDarkMode
+                  ? 'bg-gradient-to-br from-emerald-950/80 via-emerald-900/40 to-black/60 border-emerald-500/60 shadow-lg ring-2 ring-emerald-500/30'
+                  : 'bg-gradient-to-br from-white via-[#FAF8F5] to-[#F2EFE9] border-[#5B7B6D] shadow-md ring-2 ring-[#5B7B6D]/20'
+                : isDarkMode
+                  ? 'bg-white/5 border-emerald-500/15 hover:border-emerald-500/30 hover:bg-white/10'
+                  : 'bg-white/80 border-[#5B7B6D]/15 hover:border-[#5B7B6D]/40 hover:bg-white'
             }`}
           >
             <div className="flex items-start justify-between relative z-10">
@@ -6201,57 +6372,68 @@ function FriendGroupPickerModal({
                 <div
                   className={`w-10 h-10 rounded-2xl flex items-center justify-center transition-all ${
                     selectedGroup === 'all'
-                      ? 'bg-[#5B7B6D] text-white shadow-sm'
-                      : 'bg-[#F2EFE9] text-[#5B7B6D] group-hover:bg-[#E8E4DC]'
+                      ? 'bg-emerald-600 text-white shadow-sm'
+                      : isDarkMode
+                        ? 'bg-emerald-900/50 text-emerald-300'
+                        : 'bg-[#F2EFE9] text-[#5B7B6D] group-hover:bg-[#E8E4DC]'
                   }`}
                 >
                   <Users className="w-5 h-5" />
                 </div>
                 <div>
                   <div className="flex items-center gap-2">
-                    <h4 className="font-bold text-sm text-[#2B332E] font-serif">
+                    <h4 className={`font-bold text-sm font-serif ${isDarkMode ? 'text-emerald-100' : 'text-[#2B332E]'}`}>
                       🌟 全部好友 · 拾人全览
                     </h4>
-                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#5B7B6D]/10 text-[#5B7B6D] font-medium">
+                    <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${
+                      isDarkMode ? 'bg-emerald-500/20 text-emerald-300' : 'bg-[#5B7B6D]/10 text-[#5B7B6D]'
+                    }`}>
                       默认全览
                     </span>
                   </div>
-                  <p className="text-[11px] text-[#6E7C75] mt-0.5 font-serif">
+                  <p className={`text-[11px] mt-0.5 font-serif ${isDarkMode ? 'text-emerald-300/70' : 'text-[#6E7C75]'}`}>
                     汇聚全部相遇的同路人（共 {people.length} 位好友）
                   </p>
                 </div>
               </div>
 
               {selectedGroup === 'all' ? (
-                <div className="w-6 h-6 rounded-full bg-[#5B7B6D] text-white flex items-center justify-center shadow-xs">
+                <div className="w-6 h-6 rounded-full bg-emerald-500 text-white flex items-center justify-center shadow-xs">
                   <Check className="w-3.5 h-3.5" />
                 </div>
               ) : (
-                <span className="text-[11px] font-medium text-[#5B7B6D] opacity-0 group-hover:opacity-100 transition-opacity">
+                <span className={`text-[11px] font-medium opacity-0 group-hover:opacity-100 transition-opacity ${
+                  isDarkMode ? 'text-emerald-400' : 'text-[#5B7B6D]'
+                }`}>
                   切换全览 →
                 </span>
               )}
             </div>
 
-            {/* Micro subtle sheen bar */}
             {selectedGroup === 'all' && (
               <div
                 className="absolute bottom-0 left-0 right-0 h-1"
-                style={{ backgroundColor: theme.primary }}
+                style={{ backgroundColor: isDarkMode ? '#10B981' : theme.primary }}
               />
             )}
           </div>
 
           {/* Quick Filter Navigation Tabs & Search */}
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 pt-1">
-            <div className="flex items-center gap-1 bg-black/5 p-1 rounded-xl w-full sm:w-auto">
+            <div className={`flex items-center gap-1 p-1 rounded-xl w-full sm:w-auto ${
+              isDarkMode ? 'bg-white/5' : 'bg-black/5'
+            }`}>
               <button
                 type="button"
                 onClick={() => setFilterMode('all_groups')}
                 className={`flex-1 sm:flex-initial whitespace-nowrap px-3 py-1.5 rounded-lg text-xs font-medium transition-all text-center ${
                   filterMode === 'all_groups'
-                    ? 'bg-white text-[#2B332E] shadow-2xs font-semibold'
-                    : 'text-[#6E7C75] hover:text-[#2B332E]'
+                    ? isDarkMode
+                      ? 'bg-emerald-900/60 text-emerald-100 shadow-2xs font-semibold'
+                      : 'bg-white text-[#2B332E] shadow-2xs font-semibold'
+                    : isDarkMode
+                      ? 'text-emerald-400 hover:text-emerald-200'
+                      : 'text-[#6E7C75] hover:text-[#2B332E]'
                 }`}
               >
                 全部已建分组 ({allGroups.length})
@@ -6261,8 +6443,12 @@ function FriendGroupPickerModal({
                 onClick={() => setFilterMode('create_group')}
                 className={`flex-1 sm:flex-initial whitespace-nowrap px-3 py-1.5 rounded-lg text-xs font-medium transition-all text-center ${
                   filterMode === 'create_group'
-                    ? 'bg-white text-[#2B332E] shadow-2xs font-semibold'
-                    : 'text-[#6E7C75] hover:text-[#2B332E]'
+                    ? isDarkMode
+                      ? 'bg-emerald-900/60 text-emerald-100 shadow-2xs font-semibold'
+                      : 'bg-white text-[#2B332E] shadow-2xs font-semibold'
+                    : isDarkMode
+                      ? 'text-emerald-400 hover:text-emerald-200'
+                      : 'text-[#6E7C75] hover:text-[#2B332E]'
                 }`}
               >
                 + 新建分组
@@ -6277,18 +6463,26 @@ function FriendGroupPickerModal({
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   placeholder="搜索分组或成员..."
-                  className="w-full pl-7 pr-2.5 py-1.5 bg-white/80 border border-[#5B7B6D]/15 rounded-xl text-xs focus:outline-none focus:border-[#5B7B6D] transition-colors"
+                  className={`w-full pl-7 pr-2.5 py-1.5 rounded-xl text-xs focus:outline-none transition-colors ${
+                    isDarkMode
+                      ? 'bg-white/10 border border-emerald-500/20 text-emerald-100 placeholder:text-emerald-400/50 focus:border-emerald-400'
+                      : 'bg-white/80 border border-[#5B7B6D]/15 text-[#2B332E] focus:border-[#5B7B6D]'
+                  }`}
                 />
-                <Search className="w-3.5 h-3.5 text-[#6E7C75] absolute left-2 top-2.5" />
+                <Search className={`w-3.5 h-3.5 absolute left-2 top-2.5 ${isDarkMode ? 'text-emerald-400' : 'text-[#6E7C75]'}`} />
               </div>
             )}
           </div>
 
           {/* Create Group Tab View */}
           {filterMode === 'create_group' ? (
-            <div className="p-4 bg-white rounded-2xl border border-[#5B7B6D]/20 shadow-xs space-y-3.5">
-              <div className="text-xs text-[#2B332E] font-medium font-serif flex items-center gap-1.5">
-                <FolderPlus className="w-4 h-4 text-[#5B7B6D]" /> 自定义新建好友分组：
+            <div className={`p-4 rounded-2xl border shadow-xs space-y-3.5 ${
+              isDarkMode ? 'bg-white/5 border-emerald-500/20' : 'bg-white border-[#5B7B6D]/20'
+            }`}>
+              <div className={`text-xs font-medium font-serif flex items-center gap-1.5 ${
+                isDarkMode ? 'text-emerald-200' : 'text-[#2B332E]'
+              }`}>
+                <FolderPlus className={`w-4 h-4 ${isDarkMode ? 'text-emerald-400' : 'text-[#5B7B6D]'}`} /> 自定义新建好友分组：
               </div>
               <form onSubmit={handleCreateSubmit} className="flex gap-2">
                 <input
@@ -6296,19 +6490,25 @@ function FriendGroupPickerModal({
                   value={newGroupNameInput}
                   onChange={(e) => setNewGroupNameInput(e.target.value)}
                   placeholder="例如: 高中密友、摄影伙伴、工作搭子"
-                  className="flex-1 p-2.5 bg-[#FAF8F5] border border-[#5B7B6D]/20 rounded-xl text-xs focus:outline-none focus:border-[#E88765]"
+                  className={`flex-1 p-2.5 rounded-xl text-xs focus:outline-none transition-colors ${
+                    isDarkMode
+                      ? 'bg-black/30 border border-emerald-500/25 text-emerald-100 placeholder:text-emerald-400/50 focus:border-emerald-400'
+                      : 'bg-[#FAF8F5] border border-[#5B7B6D]/20 text-[#2B332E] focus:border-[#E88765]'
+                  }`}
                 />
                 <button
                   type="submit"
                   disabled={!newGroupNameInput.trim()}
-                  className="px-4 py-2.5 bg-[#5B7B6D] text-white rounded-xl text-xs font-bold active:bg-[#3E564B] active:scale-95 transition-all disabled:opacity-40 select-none touch-manipulation min-h-[44px]"
+                  className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold active:scale-95 transition-all disabled:opacity-40 select-none touch-manipulation min-h-[44px]"
                 >
                   创建并筛选
                 </button>
               </form>
 
               <div>
-                <span className="text-[10px] text-[#6E7C75] block mb-1.5">推荐快捷灵感：</span>
+                <span className={`text-[10px] block mb-1.5 ${isDarkMode ? 'text-emerald-400/80' : 'text-[#6E7C75]'}`}>
+                  推荐快捷灵感：
+                </span>
                 <div className="flex flex-wrap gap-1.5">
                   {presetSuggestions.map(sug => (
                     <button
@@ -6319,7 +6519,11 @@ function FriendGroupPickerModal({
                         setFilterMode('all_groups');
                         onSelectGroup(sug);
                       }}
-                      className="text-[10px] px-2.5 py-1 rounded-lg bg-[#FAF8F5] border border-[#5B7B6D]/15 text-[#6E7C75] hover:border-[#5B7B6D] hover:text-[#2B332E] transition-all"
+                      className={`text-[10px] px-2.5 py-1 rounded-lg border transition-all ${
+                        isDarkMode
+                          ? 'bg-white/5 border-emerald-500/20 text-emerald-300 hover:border-emerald-400 hover:text-emerald-100'
+                          : 'bg-[#FAF8F5] border-[#5B7B6D]/15 text-[#6E7C75] hover:border-[#5B7B6D] hover:text-[#2B332E]'
+                      }`}
                     >
                       + {sug}
                     </button>
@@ -6342,8 +6546,12 @@ function FriendGroupPickerModal({
                     onClick={() => onSelectGroup(grpName)}
                     className={`p-3 rounded-2xl border transition-all cursor-pointer relative overflow-hidden group active:scale-[0.98] ${
                       isCurrentSelected
-                        ? 'bg-[#FDF0EB] border-[#E88765] shadow-sm ring-2 ring-[#E88765]/25'
-                        : 'bg-white hover:bg-[#FAF8F5] border-[#5B7B6D]/15 hover:border-[#5B7B6D]/30'
+                        ? isDarkMode
+                          ? 'bg-emerald-900/40 border-emerald-500 shadow-sm ring-2 ring-emerald-500/30'
+                          : 'bg-[#FDF0EB] border-[#E88765] shadow-sm ring-2 ring-[#E88765]/25'
+                        : isDarkMode
+                          ? 'bg-white/5 border-emerald-500/15 hover:border-emerald-500/30 hover:bg-white/10'
+                          : 'bg-white hover:bg-[#FAF8F5] border-[#5B7B6D]/15 hover:border-[#5B7B6D]/30'
                     }`}
                   >
                     <div className="flex justify-between items-start">
@@ -6351,14 +6559,18 @@ function FriendGroupPickerModal({
                         <div
                           className={`w-7 h-7 rounded-xl flex items-center justify-center text-xs ${
                             isCurrentSelected
-                              ? 'bg-[#E88765] text-white'
-                              : 'bg-[#FAF8F5] text-[#5B7B6D] border border-[#5B7B6D]/15'
+                              ? 'bg-emerald-500 text-white'
+                              : isDarkMode
+                                ? 'bg-white/10 text-emerald-300 border border-emerald-500/20'
+                                : 'bg-[#FAF8F5] text-[#5B7B6D] border border-[#5B7B6D]/15'
                           }`}
                         >
                           <FolderOpen className="w-3.5 h-3.5" />
                         </div>
                         <span className={`text-sm font-bold font-serif ${
-                          isCurrentSelected ? 'text-[#E88765]' : 'text-[#2B332E]'
+                          isCurrentSelected
+                            ? isDarkMode ? 'text-emerald-300' : 'text-[#E88765]'
+                            : isDarkMode ? 'text-emerald-100' : 'text-[#2B332E]'
                         }`}>
                           {grpName}
                         </span>
@@ -6372,18 +6584,20 @@ function FriendGroupPickerModal({
                               e.stopPropagation();
                               setGroupToDelete(grpName);
                             }}
-                            className="p-1 text-[#6E7C75]/40 hover:text-red-500 rounded-lg hover:bg-red-50 transition-all opacity-60 hover:opacity-100"
+                            className="p-1 text-red-400/60 hover:text-red-400 rounded-lg hover:bg-red-500/10 transition-all opacity-60 hover:opacity-100"
                             title={`删除「${grpName}」分组`}
                           >
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
                         )}
                         {isCurrentSelected ? (
-                          <div className="w-5 h-5 rounded-full bg-[#E88765] text-white flex items-center justify-center shadow-2xs">
+                          <div className="w-5 h-5 rounded-full bg-emerald-500 text-white flex items-center justify-center shadow-2xs">
                             <Check className="w-3 h-3" />
                           </div>
                         ) : (
-                          <span className="text-[10px] font-bold font-mono text-[#5B7B6D] bg-[#F2EFE9] px-2 py-0.5 rounded-full">
+                          <span className={`text-[10px] font-bold font-mono px-2 py-0.5 rounded-full ${
+                            isDarkMode ? 'text-emerald-300 bg-emerald-950/60' : 'text-[#5B7B6D] bg-[#F2EFE9]'
+                          }`}>
                             {count} 人
                           </span>
                         )}
@@ -6391,24 +6605,34 @@ function FriendGroupPickerModal({
                     </div>
 
                     {/* Member Avatars Overlapping Stack & Names Preview */}
-                    <div className="flex items-center justify-between gap-2 mt-2.5 pt-2 border-t border-[#5B7B6D]/10">
+                    <div className={`flex items-center justify-between gap-2 mt-2.5 pt-2 border-t ${
+                      isDarkMode ? 'border-emerald-500/15' : 'border-[#5B7B6D]/10'
+                    }`}>
                       <div className="flex items-center">
                         {members.slice(0, 3).map((m) => (
                           <img
                             key={m.id}
                             src={m.avatar}
                             alt={m.name}
-                            className="w-5 h-5 rounded-full object-cover border-2 border-white shadow-2xs -ml-1.5 first:ml-0"
+                            className={`w-5 h-5 rounded-full object-cover border-2 shadow-2xs -ml-1.5 first:ml-0 ${
+                              isDarkMode ? 'border-[#151D18]' : 'border-white'
+                            }`}
                           />
                         ))}
                         {members.length > 3 && (
-                          <span className="w-5 h-5 rounded-full bg-[#F2EFE9] border border-white text-[9px] font-bold text-[#6E7C75] flex items-center justify-center -ml-1.5">
+                          <span className={`w-5 h-5 rounded-full border text-[9px] font-bold flex items-center justify-center -ml-1.5 ${
+                            isDarkMode
+                              ? 'bg-emerald-900 border-[#151D18] text-emerald-300'
+                              : 'bg-[#F2EFE9] border-white text-[#6E7C75]'
+                          }`}>
                             +{members.length - 3}
                           </span>
                         )}
                       </div>
 
-                      <div className="text-[10px] text-[#6E7C75] truncate max-w-[150px] font-serif">
+                      <div className={`text-[10px] truncate max-w-[150px] font-serif ${
+                        isDarkMode ? 'text-emerald-400/70' : 'text-[#6E7C75]'
+                      }`}>
                         {members.length > 0
                           ? members.map(m => m.name).join('、')
                           : '暂无成员归类'}
@@ -6416,10 +6640,14 @@ function FriendGroupPickerModal({
                     </div>
 
                     {/* Density Meter Bar */}
-                    <div className="mt-2.5 w-full bg-black/5 h-1 rounded-full overflow-hidden">
+                    <div className="mt-2.5 w-full bg-black/10 h-1 rounded-full overflow-hidden">
                       <div
                         className={`h-full rounded-full transition-all duration-300 ${
-                          isCurrentSelected ? 'bg-[#E88765]' : 'bg-[#5B7B6D]/60 group-hover:bg-[#5B7B6D]'
+                          isCurrentSelected
+                            ? 'bg-emerald-500'
+                            : isDarkMode
+                              ? 'bg-emerald-500/40 group-hover:bg-emerald-400'
+                              : 'bg-[#5B7B6D]/60 group-hover:bg-[#5B7B6D]'
                         }`}
                         style={{ width: `${densityPercent}%` }}
                       />
@@ -6429,7 +6657,11 @@ function FriendGroupPickerModal({
               })}
 
               {displayedGroups.length === 0 && (
-                <div className="col-span-full py-8 text-center bg-white rounded-2xl border border-dashed border-[#5B7B6D]/20 text-xs text-[#6E7C75] font-serif">
+                <div className={`col-span-full py-8 text-center rounded-2xl border border-dashed text-xs font-serif ${
+                  isDarkMode
+                    ? 'bg-white/5 border-emerald-500/20 text-emerald-400/60'
+                    : 'bg-white border-[#5B7B6D]/20 text-[#6E7C75]'
+                }`}>
                   未找到与搜索匹配的分组
                 </div>
               )}

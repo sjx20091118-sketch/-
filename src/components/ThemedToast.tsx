@@ -22,18 +22,21 @@ export const ThemedToast: React.FC<ThemedToastProps> = ({ toast, theme, isDarkMo
   const text = typeof toast === 'string' ? toast : toast.message;
   const type = typeof toast === 'string' ? 'literary' : toast.type || 'literary';
 
+  const accentTone = isDarkMode ? '#52B788' : (theme?.accent || '#E88765');
+  const primaryTone = isDarkMode ? '#52B788' : (theme?.primary || '#5B7B6D');
+
   // Determine icon based on message keywords or custom type
   const renderIcon = () => {
     if (text.includes('复制') || text.includes('保存') || text.includes('成功') || text.includes('录入') || text.includes('更新')) {
-      return <CheckCircle2 className="w-3.5 h-3.5" style={{ color: isDarkMode ? (theme?.accent || '#E88765') : (theme?.primary || '#5B7B6D') }} />;
+      return <CheckCircle2 className="w-3.5 h-3.5" style={{ color: primaryTone }} />;
     }
     if (text.includes('色调') || text.includes('主题') || text.includes('画') || text.includes('光')) {
-      return <Compass className="w-3.5 h-3.5" style={{ color: theme?.accent || '#E88765' }} />;
+      return <Compass className="w-3.5 h-3.5" style={{ color: accentTone }} />;
     }
     if (text.includes('朋友') || text.includes('印记') || text.includes('信笺') || text.includes('陪伴')) {
-      return <Heart className="w-3.5 h-3.5" style={{ color: theme?.accent || '#E88765' }} />;
+      return <Heart className="w-3.5 h-3.5" style={{ color: accentTone }} />;
     }
-    return <Feather className="w-3.5 h-3.5" style={{ color: isDarkMode ? (theme?.accent || '#E88765') : (theme?.primary || '#5B7B6D') }} />;
+    return <Feather className="w-3.5 h-3.5" style={{ color: primaryTone }} />;
   };
 
   return (
@@ -51,12 +54,12 @@ export const ThemedToast: React.FC<ThemedToastProps> = ({ toast, theme, isDarkMo
           }}
           className="relative group overflow-hidden"
         >
-          {/* Glass Paper Capsule Container */}
+          {/* Glass Paper Capsule Container (No heavy bottom shadow) */}
           <div
-            className="flex items-center gap-2.5 px-4 py-2.5 rounded-full shadow-[0_12px_32px_-4px_rgba(0,0,0,0.22)] backdrop-blur-xl transition-all duration-300 border"
+            className="flex items-center gap-2.5 px-4 py-2.5 rounded-full shadow-none backdrop-blur-xl transition-all duration-300 border"
             style={{
-              backgroundColor: isDarkMode ? 'rgba(22, 28, 25, 0.92)' : 'rgba(255, 253, 250, 0.94)',
-              borderColor: isDarkMode ? 'rgba(255, 255, 255, 0.15)' : 'rgba(91, 123, 109, 0.16)'
+              backgroundColor: isDarkMode ? 'rgba(18, 24, 21, 0.94)' : 'rgba(255, 253, 250, 0.95)',
+              borderColor: isDarkMode ? 'rgba(82, 183, 136, 0.25)' : 'rgba(91, 123, 109, 0.18)'
             }}
           >
             {/* Ambient subtle light shimmer */}

@@ -26,6 +26,7 @@ interface TimeAiCompanionProps {
   theme: HealingTheme;
   showToast: (msg: string) => void;
   onPlayTts?: (text: string) => void;
+  isDarkMode?: boolean;
 }
 
 const INSPIRATION_CHIPS = [
@@ -67,7 +68,8 @@ export const TimeAiCompanion: React.FC<TimeAiCompanionProps> = ({
   isLoading,
   theme,
   showToast,
-  onPlayTts
+  onPlayTts,
+  isDarkMode = false
 }) => {
   const [isMenuOpen, setIsMenuOpen] = useState<boolean>(false);
   const chatContainerRef = useRef<HTMLDivElement>(null);
@@ -123,16 +125,24 @@ export const TimeAiCompanion: React.FC<TimeAiCompanionProps> = ({
 
   return (
     <div
-      className="relative rounded-[26px] border border-[#5B7B6D]/15 overflow-hidden flex flex-col transition-all duration-300 paper-texture"
+      className={`relative rounded-[26px] border overflow-hidden flex flex-col transition-all duration-300 ${
+        isDarkMode
+          ? 'bg-[#151D19]/90 border-white/12 shadow-[0_8px_32px_rgba(0,0,0,0.35)] text-[#FAF8F5]'
+          : 'bg-[#FAF8F5]/90 border-[#5B7B6D]/15 shadow-[0_8px_30px_rgba(0,0,0,0.03)] text-[#2B332E] paper-texture'
+      }`}
       style={{
-        backgroundColor: 'rgba(250, 248, 245, 0.88)',
-        backdropFilter: 'blur(12px)',
-        WebkitBackdropFilter: 'blur(12px)',
-        boxShadow: '0 8px 30px rgba(0, 0, 0, 0.03), 0 1px 3px rgba(0, 0, 0, 0.02)'
+        backdropFilter: 'blur(16px)',
+        WebkitBackdropFilter: 'blur(16px)'
       }}
     >
       {/* 1. Ambient Header */}
-      <div className="px-5 py-3.5 border-b border-[#5B7B6D]/10 bg-white/60 backdrop-blur-md flex items-center justify-between relative z-20">
+      <div
+        className={`px-5 py-3.5 border-b flex items-center justify-between relative z-20 backdrop-blur-md transition-colors ${
+          isDarkMode
+            ? 'bg-[#1A231F]/80 border-white/10'
+            : 'bg-white/60 border-[#5B7B6D]/10'
+        }`}
+      >
         {/* Left: Time Guardian Icon + Title + Breathing Glow Dot */}
         <div className="flex items-center gap-3 min-w-0">
           <div
@@ -146,7 +156,11 @@ export const TimeAiCompanion: React.FC<TimeAiCompanionProps> = ({
 
           <div className="min-w-0">
             <div className="flex items-center gap-2">
-              <h3 className="text-sm font-bold text-[#2B332E] font-serif tracking-wide">
+              <h3
+                className={`text-sm font-bold font-serif tracking-wide ${
+                  isDarkMode ? 'text-[#FAF8F5]' : 'text-[#2B332E]'
+                }`}
+              >
                 拾年 · 慢言
               </h3>
               {/* Breathing Glow Dot */}
@@ -161,7 +175,11 @@ export const TimeAiCompanion: React.FC<TimeAiCompanionProps> = ({
                 />
               </span>
             </div>
-            <p className="text-[10.5px] text-[#6E7C75] font-serif leading-tight truncate">
+            <p
+              className={`text-[10.5px] font-serif leading-tight truncate ${
+                isDarkMode ? 'text-[#A0B0A7]' : 'text-[#6E7C75]'
+              }`}
+            >
               轻声漫谈，重温记忆深处的微光与私语
             </p>
           </div>
@@ -172,7 +190,11 @@ export const TimeAiCompanion: React.FC<TimeAiCompanionProps> = ({
           <button
             type="button"
             onClick={() => setIsMenuOpen((prev) => !prev)}
-            className="w-8 h-8 rounded-xl bg-white/80 hover:bg-white border border-[#5B7B6D]/15 text-[#5B7B6D] hover:text-[#2B332E] flex items-center justify-center transition-all shadow-2xs active:scale-95 cursor-pointer"
+            className={`w-8 h-8 rounded-xl border flex items-center justify-center transition-all shadow-2xs active:scale-95 cursor-pointer ${
+              isDarkMode
+                ? 'bg-[#222B26] hover:bg-[#2A3630] border-white/15 text-[#C2CDC7] hover:text-[#FAF8F5]'
+                : 'bg-white/80 hover:bg-white border-[#5B7B6D]/15 text-[#5B7B6D] hover:text-[#2B332E]'
+            }`}
             title="更多操作"
           >
             <MoreHorizontal className="w-4 h-4" />
@@ -186,11 +208,19 @@ export const TimeAiCompanion: React.FC<TimeAiCompanionProps> = ({
                 animate={{ opacity: 1, y: 0, scale: 1 }}
                 exit={{ opacity: 0, y: -4, scale: 0.96 }}
                 transition={{ duration: 0.15 }}
-                className="absolute right-0 top-10 w-48 bg-white/95 backdrop-blur-xl border border-[#5B7B6D]/20 rounded-2xl shadow-xl p-1.5 z-30 font-sans text-xs space-y-1 paper-texture"
+                className={`absolute right-0 top-10 w-48 border rounded-2xl shadow-xl p-1.5 z-30 font-sans text-xs space-y-1 backdrop-blur-xl ${
+                  isDarkMode
+                    ? 'bg-[#18201C]/95 border-white/15 text-[#FAF8F5]'
+                    : 'bg-white/95 border-[#5B7B6D]/20 text-[#2B332E] paper-texture'
+                }`}
               >
-                <div className="px-2.5 py-1.5 text-[10px] text-[#6E7C75] font-mono border-b border-[#5B7B6D]/10 flex items-center justify-between">
+                <div
+                  className={`px-2.5 py-1.5 text-[10px] font-mono border-b flex items-center justify-between ${
+                    isDarkMode ? 'text-[#A0B0A7] border-white/10' : 'text-[#6E7C75] border-[#5B7B6D]/10'
+                  }`}
+                >
                   <span>对谈引擎</span>
-                  <span className="font-bold text-[#5B7B6D]">
+                  <span className="font-bold" style={{ color: isDarkMode ? theme.accent : theme.primary }}>
                     {aiEngine === 'deepseek' ? 'DeepSeek-V3' : '标准模型'}
                   </span>
                 </div>
@@ -201,10 +231,12 @@ export const TimeAiCompanion: React.FC<TimeAiCompanionProps> = ({
                     onToggleEngine();
                     setIsMenuOpen(false);
                   }}
-                  className="w-full px-2.5 py-2 rounded-xl text-left text-[#2B332E] hover:bg-[#FAF8F5] flex items-center justify-between transition-colors"
+                  className={`w-full px-2.5 py-2 rounded-xl text-left flex items-center justify-between transition-colors ${
+                    isDarkMode ? 'text-[#FAF8F5] hover:bg-white/10' : 'text-[#2B332E] hover:bg-[#FAF8F5]'
+                  }`}
                 >
                   <span className="flex items-center gap-2">
-                    <RotateCcw className="w-3.5 h-3.5 text-[#5B7B6D]" />
+                    <RotateCcw className="w-3.5 h-3.5" style={{ color: isDarkMode ? theme.accent : theme.primary }} />
                     <span>切换模型引擎</span>
                   </span>
                 </button>
@@ -212,9 +244,11 @@ export const TimeAiCompanion: React.FC<TimeAiCompanionProps> = ({
                 <button
                   type="button"
                   onClick={handleCopyChat}
-                  className="w-full px-2.5 py-2 rounded-xl text-left text-[#2B332E] hover:bg-[#FAF8F5] flex items-center gap-2 transition-colors"
+                  className={`w-full px-2.5 py-2 rounded-xl text-left flex items-center gap-2 transition-colors ${
+                    isDarkMode ? 'text-[#FAF8F5] hover:bg-white/10' : 'text-[#2B332E] hover:bg-[#FAF8F5]'
+                  }`}
                 >
-                  <Copy className="w-3.5 h-3.5 text-[#5B7B6D]" />
+                  <Copy className="w-3.5 h-3.5" style={{ color: isDarkMode ? theme.accent : theme.primary }} />
                   <span>复制对谈内容</span>
                 </button>
 
@@ -225,7 +259,7 @@ export const TimeAiCompanion: React.FC<TimeAiCompanionProps> = ({
                     setIsMenuOpen(false);
                     showToast('已清空对谈，重置慢言');
                   }}
-                  className="w-full px-2.5 py-2 rounded-xl text-left text-red-600 hover:bg-red-50 flex items-center gap-2 transition-colors"
+                  className={`w-full px-2.5 py-2 rounded-xl text-left text-red-500 hover:bg-red-500/10 flex items-center gap-2 transition-colors`}
                 >
                   <Trash2 className="w-3.5 h-3.5" />
                   <span>清空对话记录</span>
@@ -260,10 +294,13 @@ export const TimeAiCompanion: React.FC<TimeAiCompanionProps> = ({
                 /* AI Message: Literary Essay Styled Section */
                 <div className="max-w-[95%] sm:max-w-[90%] space-y-2">
                   <div
-                    className="p-4 rounded-2xl border text-xs font-serif text-[#2B332E] tracking-wide leading-[1.8] relative shadow-2xs"
+                    className={`p-4 rounded-2xl border text-xs font-serif tracking-wide leading-[1.8] relative shadow-2xs ${
+                      isDarkMode
+                        ? 'bg-[#1C2621]/90 text-[#FAF8F5] border-white/10'
+                        : 'bg-white/85 text-[#2B332E]'
+                    }`}
                     style={{
-                      backgroundColor: 'rgba(255, 255, 255, 0.85)',
-                      borderColor: `${theme.primary}20`,
+                      borderColor: `${theme.primary}30`,
                       borderLeftWidth: '3px',
                       borderLeftColor: theme.primary
                     }}
@@ -274,8 +311,12 @@ export const TimeAiCompanion: React.FC<TimeAiCompanionProps> = ({
 
                     {/* Action Bar (Audio Read) */}
                     {onPlayTts && (
-                      <div className="mt-2 pt-2 border-t border-[#5B7B6D]/10 flex items-center justify-between text-[10.5px] text-[#6E7C75]">
-                        <span className="flex items-center gap-1 font-mono text-[#5B7B6D]">
+                      <div
+                        className={`mt-2 pt-2 border-t flex items-center justify-between text-[10.5px] ${
+                          isDarkMode ? 'border-white/10 text-[#A0B0A7]' : 'border-[#5B7B6D]/10 text-[#6E7C75]'
+                        }`}
+                      >
+                        <span className="flex items-center gap-1 font-mono" style={{ color: isDarkMode ? theme.accent : theme.primary }}>
                           <Feather className="w-3 h-3 text-[#E88765]" />
                           <span>拾年慢言 · 笺语</span>
                         </span>
@@ -300,7 +341,9 @@ export const TimeAiCompanion: React.FC<TimeAiCompanionProps> = ({
         {isLoading && (
           <div className="flex justify-start animate-fadeIn">
             <div
-              className="px-4 py-3 rounded-2xl border bg-white/90 text-xs text-[#6E7C75] flex items-center gap-2 font-serif shadow-2xs"
+              className={`px-4 py-3 rounded-2xl border text-xs flex items-center gap-2 font-serif shadow-2xs ${
+                isDarkMode ? 'bg-[#1C2621]/90 text-[#A0B0A7] border-white/10' : 'bg-white/90 text-[#6E7C75]'
+              }`}
               style={{ borderColor: `${theme.primary}20` }}
             >
               <Hourglass className="w-3.5 h-3.5 text-[#E88765] animate-spin" style={{ animationDuration: '3s' }} />
@@ -310,23 +353,23 @@ export const TimeAiCompanion: React.FC<TimeAiCompanionProps> = ({
         )}
       </div>
 
-      {/* 3. Poetic Inspiration Chips (Floating Pill Tags with 1px Highlight Border) */}
-      <div className="px-3.5 py-2 border-t border-[#5B7B6D]/10 bg-white/40 flex items-center gap-2 overflow-x-auto custom-scrollbar select-none">
+      {/* 3. Poetic Inspiration Chips (Floating Pill Tags) */}
+      <div
+        className={`px-3.5 py-2 border-t flex items-center gap-2 overflow-x-auto custom-scrollbar select-none transition-colors ${
+          isDarkMode ? 'border-white/10 bg-[#121815]/60' : 'border-[#5B7B6D]/10 bg-white/40'
+        }`}
+      >
         {INSPIRATION_CHIPS.map((chip, idx) => (
           <button
             key={idx}
             type="button"
             onClick={() => onSendMessage(chip.prompt)}
             disabled={isLoading}
-            className="shrink-0 px-3 py-1.5 rounded-full text-[11px] font-serif transition-all shadow-2xs flex items-center gap-1.5 cursor-pointer active:scale-95 whitespace-nowrap"
-            style={{
-              backgroundColor: 'rgba(255, 255, 255, 0.85)',
-              backdropFilter: 'blur(8px)',
-              WebkitBackdropFilter: 'blur(8px)',
-              border: '1px solid rgba(255, 255, 255, 0.95)',
-              color: '#2B332E',
-              boxShadow: '0 2px 8px rgba(0, 0, 0, 0.02)'
-            }}
+            className={`shrink-0 px-3 py-1.5 rounded-full text-[11px] font-serif transition-all shadow-2xs flex items-center gap-1.5 cursor-pointer active:scale-95 whitespace-nowrap border ${
+              isDarkMode
+                ? 'bg-[#1E2823]/90 hover:bg-[#25322C] border-white/12 text-[#FAF8F5]'
+                : 'bg-white/85 hover:bg-white border-white/95 text-[#2B332E]'
+            }`}
           >
             <span className="text-xs">{chip.icon}</span>
             <span className="hover:text-[#E88765] transition-colors">{chip.label}</span>
@@ -335,12 +378,17 @@ export const TimeAiCompanion: React.FC<TimeAiCompanionProps> = ({
       </div>
 
       {/* 4. Minimalist Note Input Bar */}
-      <div className="p-3 bg-white/80 border-t border-[#5B7B6D]/15">
+      <div
+        className={`p-3 border-t transition-colors ${
+          isDarkMode ? 'bg-[#18201C]/90 border-white/10' : 'bg-white/80 border-[#5B7B6D]/15'
+        }`}
+      >
         <div
-          className="rounded-2xl border flex items-center p-1.5 pl-3.5 gap-2 transition-all shadow-inner"
+          className={`rounded-2xl border flex items-center p-1.5 pl-3.5 gap-2 transition-all shadow-inner ${
+            isDarkMode ? 'bg-[#121815]/80 border-white/15' : 'bg-[#FAF8F5]/95'
+          }`}
           style={{
-            backgroundColor: 'rgba(250, 248, 245, 0.95)',
-            borderColor: `${theme.primary}25`
+            borderColor: isDarkMode ? 'rgba(255, 255, 255, 0.15)' : `${theme.primary}25`
           }}
         >
           <input
@@ -350,7 +398,11 @@ export const TimeAiCompanion: React.FC<TimeAiCompanionProps> = ({
             onKeyDown={handleKeyDown}
             disabled={isLoading}
             placeholder="向时光提问，或写下你想念的瞬间…"
-            className="flex-1 min-w-0 bg-transparent text-xs text-[#2B332E] placeholder-[#6E7C75]/70 focus:outline-none font-serif tracking-wide"
+            className={`flex-1 min-w-0 bg-transparent text-xs focus:outline-none font-serif tracking-wide ${
+              isDarkMode
+                ? 'text-[#FAF8F5] placeholder-[#A0B0A7]/60'
+                : 'text-[#2B332E] placeholder-[#6E7C75]/70'
+            }`}
           />
 
           <button
