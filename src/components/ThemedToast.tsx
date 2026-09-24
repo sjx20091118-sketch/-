@@ -1,6 +1,6 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Feather, CheckCircle2, Info, Sparkles, Heart } from 'lucide-react';
+import { Feather, CheckCircle2, Info, Compass, Heart } from 'lucide-react';
 import { HealingTheme } from '../types';
 
 export interface ToastConfig {
@@ -13,9 +13,10 @@ export interface ToastConfig {
 interface ThemedToastProps {
   toast: string | ToastConfig | null;
   theme?: HealingTheme;
+  isDarkMode?: boolean;
 }
 
-export const ThemedToast: React.FC<ThemedToastProps> = ({ toast, theme }) => {
+export const ThemedToast: React.FC<ThemedToastProps> = ({ toast, theme, isDarkMode }) => {
   if (!toast) return null;
 
   const text = typeof toast === 'string' ? toast : toast.message;
@@ -24,15 +25,15 @@ export const ThemedToast: React.FC<ThemedToastProps> = ({ toast, theme }) => {
   // Determine icon based on message keywords or custom type
   const renderIcon = () => {
     if (text.includes('复制') || text.includes('保存') || text.includes('成功') || text.includes('录入') || text.includes('更新')) {
-      return <CheckCircle2 className="w-3.5 h-3.5 text-[#5B7B6D]" style={{ color: theme?.primary }} />;
+      return <CheckCircle2 className="w-3.5 h-3.5" style={{ color: isDarkMode ? (theme?.accent || '#E88765') : (theme?.primary || '#5B7B6D') }} />;
     }
     if (text.includes('色调') || text.includes('主题') || text.includes('画') || text.includes('光')) {
-      return <Sparkles className="w-3.5 h-3.5 text-[#E88765]" style={{ color: theme?.accent }} />;
+      return <Compass className="w-3.5 h-3.5" style={{ color: theme?.accent || '#E88765' }} />;
     }
     if (text.includes('朋友') || text.includes('印记') || text.includes('信笺') || text.includes('陪伴')) {
-      return <Heart className="w-3.5 h-3.5 text-[#E88765]" style={{ color: theme?.accent }} />;
+      return <Heart className="w-3.5 h-3.5" style={{ color: theme?.accent || '#E88765' }} />;
     }
-    return <Feather className="w-3.5 h-3.5 text-[#5B7B6D]" style={{ color: theme?.primary }} />;
+    return <Feather className="w-3.5 h-3.5" style={{ color: isDarkMode ? (theme?.accent || '#E88765') : (theme?.primary || '#5B7B6D') }} />;
   };
 
   return (
@@ -52,25 +53,28 @@ export const ThemedToast: React.FC<ThemedToastProps> = ({ toast, theme }) => {
         >
           {/* Glass Paper Capsule Container */}
           <div
-            className="flex items-center gap-2.5 px-4 py-2.5 rounded-full shadow-[0_12px_32px_-4px_rgba(43,51,46,0.12),0_2px_8px_rgba(0,0,0,0.04)] backdrop-blur-xl border border-white/80 transition-all duration-300"
+            className="flex items-center gap-2.5 px-4 py-2.5 rounded-full shadow-[0_12px_32px_-4px_rgba(0,0,0,0.22)] backdrop-blur-xl transition-all duration-300 border"
             style={{
-              backgroundColor: 'rgba(255, 253, 250, 0.94)',
-              borderColor: 'rgba(91, 123, 109, 0.16)'
+              backgroundColor: isDarkMode ? 'rgba(22, 28, 25, 0.92)' : 'rgba(255, 253, 250, 0.94)',
+              borderColor: isDarkMode ? 'rgba(255, 255, 255, 0.15)' : 'rgba(91, 123, 109, 0.16)'
             }}
           >
             {/* Ambient subtle light shimmer */}
             <div 
-              className="absolute inset-0 rounded-full pointer-events-none opacity-40 bg-gradient-to-r from-transparent via-white/70 to-transparent" 
+              className="absolute inset-0 rounded-full pointer-events-none opacity-40" 
               style={{
-                maskImage: 'linear-gradient(to right, transparent, white, transparent)'
+                background: isDarkMode
+                  ? 'linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.12), transparent)'
+                  : 'linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.7), transparent)'
               }}
             />
 
             {/* Left Accent Icon Badge */}
             <div 
-              className="w-5 h-5 rounded-full flex items-center justify-center shrink-0 shadow-2xs border border-white/90"
+              className="w-5 h-5 rounded-full flex items-center justify-center shrink-0 shadow-2xs border"
               style={{
-                backgroundColor: theme?.accentLight || '#FDF0EB',
+                backgroundColor: isDarkMode ? `${theme?.primary || '#5B7B6D'}35` : (theme?.accentLight || '#FDF0EB'),
+                borderColor: isDarkMode ? 'rgba(255, 255, 255, 0.2)' : 'rgba(255, 255, 255, 0.9)'
               }}
             >
               {renderIcon()}
@@ -78,14 +82,17 @@ export const ThemedToast: React.FC<ThemedToastProps> = ({ toast, theme }) => {
 
             {/* Literary Toast Typography */}
             <div className="min-w-0 pr-1">
-              <span className="text-xs text-[#2B332E] font-serif font-medium tracking-wide leading-tight whitespace-nowrap block drop-shadow-2xs">
+              <span
+                className="text-xs font-serif font-medium tracking-wide leading-tight whitespace-nowrap block drop-shadow-2xs"
+                style={{ color: isDarkMode ? '#FAF8F5' : '#2B332E' }}
+              >
                 {text}
               </span>
             </div>
 
             {/* Delicate end ornament dot */}
             <div 
-              className="w-1.5 h-1.5 rounded-full opacity-60 shrink-0 animate-pulse"
+              className="w-1.5 h-1.5 rounded-full opacity-75 shrink-0 animate-pulse"
               style={{ backgroundColor: theme?.accent || '#E88765' }}
             />
           </div>

@@ -3,7 +3,8 @@ import { motion, AnimatePresence } from 'motion/react';
 import {
   Lock,
   LockOpen,
-  Sparkles,
+  Wand2,
+  Cpu,
   Download,
   Upload,
   Volume2,
@@ -21,11 +22,12 @@ import {
   CalendarRange,
   Compass,
   ChevronDown,
+  ChevronLeft,
   Trash2,
+  Share2,
   Edit3,
   Bot,
   Send,
-  Wand2,
   Landmark,
   ChevronRight,
   KeyRound,
@@ -53,7 +55,10 @@ import {
   Feather,
   Flame,
   Hourglass,
-  Camera
+  Camera,
+  SlidersHorizontal,
+  Sun,
+  Moon
 } from 'lucide-react';
 import { AppData, Person, Story, Artifact, Letter, ChatMessage, TimelineItem } from './types';
 import { INITIAL_SEED } from './data/initialData';
@@ -62,11 +67,13 @@ import { LocalMediaUploader } from './components/LocalMediaUploader';
 import { TimelineVideoCard } from './components/TimelineVideoCard';
 import { ChronoGalleryTimeline } from './components/ChronoGalleryTimeline';
 import { VinylMusicPlayer } from './components/VinylMusicPlayer';
-import { MemoirCardStudioModal } from './components/MemoirCardStudioModal';
+import { MemoirCardStudioModal, UniversalShareSource } from './components/MemoirCardStudioModal';
+import { FullscreenZenClock } from './components/FullscreenZenClock';
 import { isVideoMedia } from './utils/mediaStorage';
 import { ThemedDatePickerModal } from './components/ThemedDatePickerModal';
 import { PersonAlbum } from './components/PersonAlbum';
 import { PersonArtifactsShelf } from './components/PersonArtifactsShelf';
+import { PersonStoriesShelf } from './components/PersonStoriesShelf';
 import { SealingWaxRitual } from './components/SealingWaxRitual';
 import { sound } from './utils/soundEngine';
 import { TimeAiCompanion } from './components/TimeAiCompanion';
@@ -402,6 +409,10 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<TabType>('home');
   const [selectedYear, setSelectedYear] = useState<string>('all');
   const [isYearPickerOpen, setIsYearPickerOpen] = useState<boolean>(false);
+  const [isTopNavMenuOpen, setIsTopNavMenuOpen] = useState<boolean>(false);
+  const [isDarkMode, setIsDarkMode] = useState<boolean>(() => localStorage.getItem('shinian_dark_mode') === 'true');
+  const [isFullscreenClockOpen, setIsFullscreenClockOpen] = useState<boolean>(false);
+  const [topNavSubView, setTopNavSubView] = useState<'main' | 'theme' | 'settings' | 'backup' | 'voice' | 'security' | 'ai'>('main');
   const [themeId, setThemeId] = useState<string>(() => {
     const saved = localStorage.getItem('shinian_theme_id');
     if (saved === 'grass-cream' || saved === 'autumn-amber' || saved === 'sunlit-apricot') return 'breeze-sage';
@@ -417,21 +428,77 @@ export default function App() {
   const [selectedArtifact, setSelectedArtifact] = useState<Artifact | null>(null);
   const [selectedLetter, setSelectedLetter] = useState<Letter | null>(null);
   const [showSplash, setShowSplash] = useState<boolean>(true);
-  const [shareMemoirItem, setShareMemoirItem] = useState<TimelineItem | null>(null);
+  const [shareMemoirItem, setShareMemoirItem] = useState<UniversalShareSource | TimelineItem | null>(null);
   const [isShareModalOpen, setIsShareModalOpen] = useState<boolean>(false);
 
-  // Auto-dismiss splash screen after 2.5 seconds
+  // Auto-dismiss splash screen after 1.8 seconds
   useEffect(() => {
     if (!showSplash) return;
     const timer = setTimeout(() => {
       setShowSplash(false);
-    }, 2600);
+    }, 1800);
     return () => clearTimeout(timer);
   }, [showSplash]);
+
+  // Custom UI Notifications & Dialogs
+  const [toast, setToast] = useState<string | null>(null);
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const showToast = useCallback((msg: string, duration = 1500) => {
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    setToast(msg);
+    toastTimerRef.current = setTimeout(() => {
+      setToast(null);
+    }, duration);
+  }, []);
 
   const currentTheme = useMemo(() => {
     return HEALING_THEMES.find(t => t.id === themeId) || HEALING_THEMES[0];
   }, [themeId]);
+
+  const contextualAction = useMemo(() => {
+    if (activeTab === 'home') {
+      return {
+        isDayNight: true,
+        label: isDarkMode ? '暗夜' : '明亮',
+        onClick: () => {
+          const next = !isDarkMode;
+          setIsDarkMode(next);
+          localStorage.setItem('shinian_dark_mode', String(next));
+          sound.playWaterDrop(next ? 640 : 880);
+          showToast(next ? '已开启暗夜冥想模式 🌙' : '已开启晨曦明亮模式 ☀️');
+        }
+      };
+    }
+    if (activeTab === 'timeline') {
+      return { label: '定格瞬间', onClick: () => setActiveModal('addTimeline') };
+    }
+    if (activeTab === 'people') {
+      if (!selectedPerson) {
+        return { label: '添加人物', onClick: () => setActiveModal('addPerson') };
+      }
+      return null;
+    }
+    if (activeTab === 'stories') {
+      if (!readerStory) {
+        return { label: '新增章节', onClick: () => setActiveModal('addStory') };
+      }
+      return null;
+    }
+    if (activeTab === 'artifacts') {
+      if (!selectedArtifact) {
+        return { label: '收藏旧物', onClick: () => setActiveModal('addArtifact') };
+      }
+      return null;
+    }
+    if (activeTab === 'letters') {
+      if (!selectedLetter) {
+        return { label: '封存信件', onClick: () => setActiveModal('addLetter') };
+      }
+      return null;
+    }
+    return null;
+  }, [activeTab, selectedPerson, readerStory, selectedArtifact, selectedLetter, isDarkMode, showToast]);
 
   // Sync current theme CSS variables globally across the document and all UI
   useEffect(() => {
@@ -483,18 +550,6 @@ export default function App() {
     window.addEventListener('resize', updateSafeArea);
     return () => window.removeEventListener('resize', updateSafeArea);
   }, [currentTheme]);
-
-  // Custom UI Notifications & Dialogs
-  const [toast, setToast] = useState<string | null>(null);
-  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const showToast = (msg: string, duration = 1500) => {
-    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
-    setToast(msg);
-    toastTimerRef.current = setTimeout(() => {
-      setToast(null);
-    }, duration);
-  };
 
   const handleCopyText = (text: string, label = '内容') => {
     if (!text) return;
@@ -713,6 +768,12 @@ export default function App() {
 
     isGroupPickerOpen,
     closeGroupPicker: () => setIsGroupPickerOpen(false),
+
+    isTopNavMenuOpen,
+    closeTopNavMenu: () => setIsTopNavMenuOpen(false),
+
+    isFullscreenClockOpen,
+    closeFullscreenClock: () => setIsFullscreenClockOpen(false),
 
     isThemePickerOpen,
     closeThemePicker: () => setIsThemePickerOpen(false),
@@ -1547,193 +1608,849 @@ export default function App() {
   }
 
   return (
-    <div className="h-full w-full flex items-center justify-center p-0 sm:p-4 text-[#2B332E] bg-[#FAF8F5] overflow-hidden">
-      <div id="root-card" className="w-full max-w-md h-full sm:h-[880px] bg-[#FAF8F5] sm:rounded-3xl shadow-2xl overflow-hidden flex flex-col relative sm:border sm:border-[#E88765]/20 paper-texture select-none">
+    <div className={`h-full w-full flex items-center justify-center p-0 sm:p-4 overflow-hidden transition-colors duration-500 ${
+      isDarkMode ? 'bg-[#0D110F] text-[#FAF8F5]' : 'bg-[#FAF8F5] text-[#2B332E]'
+    }`}>
+      <div
+        id="root-card"
+        className={`w-full max-w-md h-full sm:h-[880px] sm:rounded-3xl shadow-2xl overflow-hidden flex flex-col relative sm:border select-none transition-colors duration-500 paper-texture ${
+          isDarkMode
+            ? 'dark-zen-theme bg-[#121614] text-[#FAF8F5] sm:border-[#5B7B6D]/25'
+            : 'bg-[#FAF8F5] text-[#2B332E] sm:border-[#E88765]/20'
+        }`}
+      >
+        {/* Background Ambient Radial Glow (from Fullscreen Zen Clock Aesthetics) */}
+        <div className="absolute inset-0 pointer-events-none overflow-hidden z-0">
+          <div
+            className={`absolute -top-32 -left-32 w-96 h-96 rounded-full filter transition-all duration-700 ${
+              isDarkMode ? 'opacity-10 blur-[100px]' : 'opacity-25 blur-3xl'
+            }`}
+            style={{ backgroundColor: currentTheme.primary }}
+          />
+          <div
+            className={`absolute -bottom-32 -right-32 w-96 h-96 rounded-full filter transition-all duration-700 ${
+              isDarkMode ? 'opacity-08 blur-[100px]' : 'opacity-20 blur-3xl'
+            }`}
+            style={{ backgroundColor: currentTheme.accent }}
+          />
+        </div>
 
-        {/* Refined Seamless Apple Translucent Frosted Glass Header */}
-        <header className="px-4 pt-[max(var(--safe-area-top,20px),env(safe-area-inset-top,20px),1.25rem)] pb-2.5 bg-[#FAF8F5]/88 backdrop-blur-xl border-b border-[#5B7B6D]/12 text-[#2B332E] flex items-center justify-between z-20 relative transition-colors shrink-0 select-none shadow-[0_1px_8px_rgba(91,123,109,0.04)]">
-          {/* Left: Original Refined Calligraphy Typography + Palette Pill */}
-          <div className="flex flex-col">
-            <div className="flex items-center gap-1.5">
-              <h1 className="text-lg font-bold tracking-widest font-serif text-[#5B7B6D] leading-none">
-                拾年
-              </h1>
-              <button
-                onClick={() => setIsThemePickerOpen(prev => !prev)}
-                title="切换时光治愈雅致配色"
-                className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-white/80 hover:bg-white text-[#5B7B6D] hover:text-[#E88765] transition-all border border-[#5B7B6D]/15 text-[11px] font-sans font-medium shadow-2xs active:scale-95 ml-1"
-              >
-                <Palette className="w-3 h-3 text-[#E88765]" />
-                <span className="hidden xs:inline text-[10px]">{currentTheme.name}</span>
-              </button>
-            </div>
-            <p className="text-[10px] text-[#6E7C75] font-serif tracking-wider mt-1 leading-none">
+        {/* Apple Dynamic Liquid Glass Floating Dual Capsules Top Navigation (Seamless, No Screen Dividing Line) */}
+        <div className="absolute top-[max(var(--safe-area-top,16px),env(safe-area-inset-top,16px),1rem)] left-3.5 right-3.5 sm:left-4 sm:right-4 z-30 pointer-events-none select-none flex items-center justify-between">
+          {/* Left Capsule: Refined Calligraphy Typography with Subtle Dividing Line */}
+          <motion.div
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.98 }}
+            className="apple-liquid-glass rounded-full px-3.5 py-1.5 pointer-events-auto flex items-center gap-2.5 shadow-[0_4px_20px_rgba(0,0,0,0.06)] border border-white/80 transition-all cursor-default"
+          >
+            <span
+              className="text-base font-bold tracking-widest font-serif leading-none select-none transition-colors duration-300"
+              style={{
+                fontFamily: '"Noto Serif SC", "Ma Shan Zheng", Georgia, serif',
+                color: isDarkMode ? (currentTheme.accent) : currentTheme.primaryDark
+              }}
+            >
+              拾年
+            </span>
+            <div 
+              className="w-[1px] h-3 transition-colors duration-300" 
+              style={{ backgroundColor: isDarkMode ? `${currentTheme.primary}70` : `${currentTheme.primary}40` }}
+            />
+            <span 
+              className="text-[10px] sm:text-[11px] font-serif tracking-wider leading-none whitespace-nowrap opacity-90 select-none transition-colors duration-300"
+              style={{ color: isDarkMode ? '#C2CDC7' : '#6E7C75' }}
+            >
               岁华清照 · 拾年归处
-            </p>
-          </div>
+            </span>
+          </motion.div>
 
-          {/* Healing Palette Theme Picker Popup */}
-          {isThemePickerOpen && (
-            <div className="absolute top-full left-4 mt-2 w-64 p-3 bg-white/95 backdrop-blur-xl rounded-2xl shadow-xl border border-[#5B7B6D]/20 z-50 animate-fadeIn font-sans">
-              <div className="flex items-center justify-between pb-2 mb-2 border-b border-[#F2EFE9]">
-                <div>
-                  <h4 className="text-xs font-bold text-[#2B332E]">选择时光色调</h4>
-                  <p className="text-[10px] text-[#6E7C75]">小众清新 · 治愈系配色</p>
-                </div>
-                <button
-                  onClick={() => setIsThemePickerOpen(false)}
-                  className="p-1 text-[#6E7C75]/60 hover:text-[#2B332E] rounded-md"
-                >
-                  <X className="w-3.5 h-3.5" />
-                </button>
-              </div>
-
-              <div className="space-y-1.5">
-                {HEALING_THEMES.map(th => {
-                  const isSelected = th.id === currentTheme.id;
-                  return (
-                    <button
-                      key={th.id}
-                      onClick={() => handleSelectTheme(th.id)}
-                      className={`w-full p-2 rounded-xl flex items-center justify-between border transition-all text-left ${
-                        isSelected
-                          ? 'border-[#5B7B6D] bg-[#F2EFE9]/70 shadow-2xs font-semibold'
-                          : 'border-transparent hover:bg-[#FAF8F5] hover:border-[#5B7B6D]/15'
-                      }`}
-                    >
-                      <div className="flex items-center gap-2.5">
-                        <div className="flex items-center -space-x-1">
-                          <div
-                            className="w-4 h-4 rounded-full border border-white shadow-2xs"
-                            style={{ backgroundColor: th.primary }}
-                          />
-                          <div
-                            className="w-4 h-4 rounded-full border border-white shadow-2xs"
-                            style={{ backgroundColor: th.accent }}
-                          />
-                        </div>
-                        <div>
-                          <div className="text-xs text-[#2B332E] flex items-center gap-1">
-                            <span>{th.name}</span>
-                            <span className="text-[9px] text-[#6E7C75]/70 font-mono">({th.enName})</span>
-                          </div>
-                          <div className="text-[9px] text-[#6E7C75] font-serif leading-tight mt-0.5">
-                            {th.quote}
-                          </div>
-                        </div>
-                      </div>
-                      {isSelected && (
-                        <Check className="w-3.5 h-3.5 text-[#5B7B6D]" />
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
-          {/* Right: Dimension Filter & Space Controls - Apple Pill Capsules */}
-          <div className="flex items-center gap-1.5 shrink-0">
-            {activeTab === 'people' ? (
-              /* Silky Animated iOS Friend Group Trigger Capsule */
-              <button
-                onClick={() => setIsGroupPickerOpen(true)}
-                className={`px-3 py-1.5 rounded-full border flex items-center gap-1.5 transition-all text-xs font-sans font-medium shadow-2xs active:scale-95 shrink-0 ${
-                  selectedPersonGroup === 'all'
-                    ? 'bg-white/80 text-[#5B7B6D] border-[#5B7B6D]/20 hover:bg-white backdrop-blur-md'
-                    : 'bg-[#FDF0EB] text-[#E88765] border-[#E88765]/35 hover:bg-[#FBE6DC]'
+          {/* Right Action Area: Dynamic Module Action / Day-Night Capsule + Chevron Down Trigger */}
+          <div className="flex items-center gap-2 pointer-events-auto">
+            {/* Dynamic Module Action Capsule or Day/Night Mode Switch (Zero-text Pure Round Icon Capsule) */}
+            {contextualAction && (
+              <motion.button
+                whileHover={{ scale: 1.06 }}
+                whileTap={{ scale: 0.92 }}
+                onClick={() => {
+                  contextualAction.onClick();
+                }}
+                title={contextualAction.isDayNight ? (isDarkMode ? '切换至晨曦明亮模式' : '切换至暗夜冥想模式') : undefined}
+                className={`apple-liquid-glass flex items-center justify-center transition-all border border-white/80 shadow-[0_4px_20px_rgba(0,0,0,0.06)] active:scale-95 cursor-pointer ${
+                  contextualAction.isDayNight
+                    ? 'w-8.5 h-8.5 sm:w-9 sm:h-9 rounded-full'
+                    : 'px-3 sm:px-3.5 py-1.5 rounded-full gap-1.5 text-xs font-serif font-semibold'
                 }`}
-                title="点击选择好友分组"
+                style={{ color: currentTheme.primaryDark }}
               >
-                {selectedPersonGroup === 'all' ? (
-                  <>
-                    <Users className="w-3.5 h-3.5 text-[#5B7B6D] shrink-0" />
-                    <span className="font-semibold whitespace-nowrap">全部好友</span>
-                  </>
+                {contextualAction.isDayNight ? (
+                  isDarkMode ? (
+                    <Moon className="w-4 h-4 text-indigo-400 drop-shadow-xs" />
+                  ) : (
+                    <Sun className="w-4 h-4 text-amber-500 animate-spin-slow drop-shadow-xs" />
+                  )
                 ) : (
                   <>
-                    <FolderOpen className="w-3.5 h-3.5 text-[#E88765] shrink-0" />
-                    <span className="font-bold whitespace-nowrap truncate max-w-[70px]">{selectedPersonGroup}</span>
-                    <span
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setSelectedPersonGroup('all');
-                        showToast('已切换至全部好友');
-                      }}
-                      className="p-0.5 rounded-full hover:bg-black/10 transition-colors ml-0.5"
-                      title="返回全部好友"
-                    >
-                      <X className="w-3 h-3" />
-                    </span>
+                    <Plus className="w-3.5 h-3.5" style={{ color: currentTheme.primary }} />
+                    <span>{contextualAction.label}</span>
                   </>
                 )}
-                <ChevronDown className="w-3 h-3 opacity-60 ml-0.5 shrink-0" />
-              </button>
-            ) : (
-              /* Silky Animated iOS Year Trigger Capsule */
-              <button
-                onClick={() => setIsYearPickerOpen(true)}
-                className={`px-3 py-1.5 rounded-full border flex items-center gap-1.5 transition-all text-xs font-sans font-medium shadow-2xs active:scale-95 shrink-0 ${
-                  selectedYear === 'all'
-                    ? 'bg-white/80 text-[#5B7B6D] border-[#5B7B6D]/20 hover:bg-white backdrop-blur-md'
-                    : 'bg-[#FDF0EB] text-[#E88765] border-[#E88765]/35 hover:bg-[#FBE6DC]'
-                }`}
-                title="点击选择回溯年份或全景时光"
-              >
-                {selectedYear === 'all' ? (
-                  <>
-                    <Compass className="w-3.5 h-3.5 text-[#5B7B6D] shrink-0" />
-                    <span className="font-semibold whitespace-nowrap">全景时光</span>
-                  </>
-                ) : (
-                  <>
-                    <Calendar className="w-3.5 h-3.5 text-[#E88765] shrink-0" />
-                    <span className="font-bold whitespace-nowrap">{selectedYear} 年</span>
-                    <span
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setSelectedYear('all');
-                        showToast('已切换至全景时光');
-                      }}
-                      className="p-0.5 rounded-full hover:bg-black/10 transition-colors ml-0.5"
-                      title="返回全景时光"
-                    >
-                      <X className="w-3 h-3" />
-                    </span>
-                  </>
-                )}
-                <ChevronDown className="w-3 h-3 opacity-60 ml-0.5 shrink-0" />
-              </button>
+              </motion.button>
             )}
 
-            <button
-              onClick={() => setActiveModal('backup')}
-              title="空间设置与数据管理"
-              className="w-8 h-8 rounded-full bg-white/80 hover:bg-white border border-[#5B7B6D]/15 text-[#5B7B6D] hover:text-[#2B332E] transition-all shadow-2xs flex items-center justify-center shrink-0 active:scale-95 backdrop-blur-md"
-            >
-              <Settings className="w-3.5 h-3.5" />
-            </button>
+            {/* Chevron Down Capsule Trigger */}
+            <div className="relative">
+              <button
+                onClick={() => {
+                  if (isTopNavMenuOpen) {
+                    setIsTopNavMenuOpen(false);
+                  } else {
+                    setTopNavSubView('main');
+                    setIsTopNavMenuOpen(true);
+                  }
+                }}
+                className="apple-liquid-glass w-8.5 h-8.5 sm:w-9 sm:h-9 rounded-full flex items-center justify-center text-[#2B332E] hover:text-[#5B7B6D] transition-all border border-white/80 shadow-[0_4px_20px_rgba(0,0,0,0.06)] active:scale-95 cursor-pointer"
+                title="展开时光功能导航"
+              >
+                <ChevronDown
+                  className={`w-4 h-4 text-[#5B7B6D] transition-transform duration-300 ${
+                    isTopNavMenuOpen ? 'rotate-180 text-[#E88765]' : ''
+                  }`}
+                />
+              </button>
 
-            <button
-              onClick={() => {
-                setIsLocked(true);
-                localStorage.setItem('shinian_is_locked', 'true');
-                showToast('已锁定私人空间');
-              }}
-              title="锁定私人空间"
-              className="w-8 h-8 rounded-full bg-white/80 hover:bg-white border border-[#5B7B6D]/15 text-[#5B7B6D] hover:text-[#2B332E] transition-all shadow-2xs flex items-center justify-center shrink-0 active:scale-95 backdrop-blur-md"
-            >
-              <Lock className="w-3.5 h-3.5" />
-            </button>
+              {/* Cascading Popups System */}
+              <AnimatePresence mode="wait">
+                {isTopNavMenuOpen && (
+                  <>
+                    {/* Invisible Backdrop to dismiss on outer click */}
+                    <div
+                      className="fixed inset-0 z-40"
+                      onClick={() => setIsTopNavMenuOpen(false)}
+                    />
+
+                    {/* Level 1: Primary Quick Actions Capsule Menu */}
+                    {topNavSubView === 'main' && (
+                      <motion.div
+                        key="main-menu"
+                        initial={{ opacity: 0, scale: 0.92, y: -6 }}
+                        animate={{ opacity: 1, scale: 1, y: 0 }}
+                        exit={{ opacity: 0, scale: 0.94, y: -6 }}
+                        transition={{ duration: 0.22, ease: [0.25, 1, 0.5, 1] }}
+                        className="absolute top-full right-0 mt-2 w-52 p-2 apple-liquid-glass rounded-3xl shadow-2xl border border-white/85 z-50 font-sans space-y-1"
+                      >
+                        {/* Item 1: 全景时光 or 好友分组 depending on active tab */}
+                        {activeTab === 'people' ? (
+                          <button
+                            onClick={() => {
+                              sound.playWaterDrop(880);
+                              setIsTopNavMenuOpen(false);
+                              setTimeout(() => setIsGroupPickerOpen(true), 120);
+                            }}
+                            className="w-full px-3 py-2 rounded-2xl flex items-center justify-between hover:bg-white/80 active:bg-white transition-all text-left text-xs text-[#2B332E] group"
+                          >
+                            <div className="flex items-center gap-2.5">
+                              <div
+                                className="w-6 h-6 rounded-xl flex items-center justify-center group-hover:scale-105 transition-transform"
+                                style={{ backgroundColor: `${currentTheme.primary}18`, color: currentTheme.primaryDark }}
+                              >
+                                <Users className="w-3.5 h-3.5" />
+                              </div>
+                              <span className="font-serif font-medium">好友分组</span>
+                            </div>
+                            <span className="text-[10px] text-[#6E7C75] px-1.5 py-0.5 rounded-md bg-black/5 font-sans truncate max-w-[64px]">
+                              {selectedPersonGroup === 'all' ? '全部' : selectedPersonGroup}
+                            </span>
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => {
+                              sound.playWaterDrop(880);
+                              setIsTopNavMenuOpen(false);
+                              setTimeout(() => setIsYearPickerOpen(true), 120);
+                            }}
+                            className="w-full px-3 py-2 rounded-2xl flex items-center justify-between hover:bg-white/80 active:bg-white transition-all text-left text-xs text-[#2B332E] group"
+                          >
+                            <div className="flex items-center gap-2.5">
+                              <div
+                                className="w-6 h-6 rounded-xl flex items-center justify-center group-hover:scale-105 transition-transform"
+                                style={{ backgroundColor: `${currentTheme.primary}18`, color: currentTheme.primaryDark }}
+                              >
+                                <Compass className="w-3.5 h-3.5" />
+                              </div>
+                              <span className="font-serif font-medium">全景时光</span>
+                            </div>
+                            <span className="text-[10px] text-[#6E7C75] px-1.5 py-0.5 rounded-md bg-black/5 font-sans">
+                              {selectedYear === 'all' ? '全景' : `${selectedYear}年`}
+                            </span>
+                          </button>
+                        )}
+
+                        {/* Item 2: 调色 (Cascades into Level 2 Theme Palette) */}
+                        <button
+                          onClick={() => {
+                            sound.playWaterDrop(880);
+                            setTopNavSubView('theme');
+                          }}
+                          className="w-full px-3 py-2 rounded-2xl flex items-center justify-between hover:bg-white/80 active:bg-white transition-all text-left text-xs text-[#2B332E] group"
+                        >
+                          <div className="flex items-center gap-2.5">
+                            <div
+                              className="w-6 h-6 rounded-xl flex items-center justify-center group-hover:scale-105 transition-transform"
+                              style={{ backgroundColor: `${currentTheme.primary}18`, color: currentTheme.primaryDark }}
+                            >
+                              <Palette className="w-3.5 h-3.5" />
+                            </div>
+                            <span className="font-serif font-medium">调色</span>
+                          </div>
+                          <div className="flex items-center gap-1.5">
+                            <div
+                              className="w-2.5 h-2.5 rounded-full border border-white shadow-2xs"
+                              style={{ backgroundColor: currentTheme.primary }}
+                            />
+                            <span className="text-[10px] text-[#6E7C75] font-serif">{currentTheme.name}</span>
+                            <ChevronRight className="w-3 h-3 text-[#6E7C75]/60 group-hover:text-[#2B332E] transition-colors" />
+                          </div>
+                        </button>
+
+                        {/* Item 3: 设置 (Cascades into Level 2 Settings Menu) */}
+                        <button
+                          onClick={() => {
+                            sound.playWaterDrop(880);
+                            setTopNavSubView('settings');
+                          }}
+                          className="w-full px-3 py-2 rounded-2xl flex items-center justify-between hover:bg-white/80 active:bg-white transition-all text-left text-xs text-[#2B332E] group"
+                        >
+                          <div className="flex items-center gap-2.5">
+                            <div
+                              className="w-6 h-6 rounded-xl flex items-center justify-center group-hover:scale-105 transition-transform"
+                              style={{ backgroundColor: `${currentTheme.primary}18`, color: currentTheme.primaryDark }}
+                            >
+                              <Settings className="w-3.5 h-3.5" />
+                            </div>
+                            <span className="font-serif font-medium">设置</span>
+                          </div>
+                          <ChevronRight className="w-3 h-3 text-[#6E7C75]/60 group-hover:text-[#2B332E] transition-colors" />
+                        </button>
+
+                        {/* Item 4: 全屏时钟 */}
+                        <button
+                          onClick={() => {
+                            sound.playWaterDrop(880);
+                            setIsTopNavMenuOpen(false);
+                            setTimeout(() => setIsFullscreenClockOpen(true), 120);
+                          }}
+                          className="w-full px-3 py-2 rounded-2xl flex items-center justify-between hover:bg-white/80 active:bg-white transition-all text-left text-xs text-[#2B332E] group"
+                        >
+                          <div className="flex items-center gap-2.5">
+                            <div
+                              className="w-6 h-6 rounded-xl flex items-center justify-center group-hover:scale-105 transition-transform"
+                              style={{ backgroundColor: `${currentTheme.primary}18`, color: currentTheme.primaryDark }}
+                            >
+                              <Clock className="w-3.5 h-3.5" />
+                            </div>
+                            <span className="font-serif font-medium">全屏时钟</span>
+                          </div>
+                        </button>
+
+                        {/* Item 5: 锁定空间 */}
+                        <button
+                          onClick={() => {
+                            sound.playWaterDrop(880);
+                            setIsTopNavMenuOpen(false);
+                            setIsLocked(true);
+                            localStorage.setItem('shinian_is_locked', 'true');
+                            showToast('已锁定私人空间');
+                          }}
+                          className="w-full px-3 py-2 rounded-2xl flex items-center justify-between hover:bg-white/80 active:bg-white transition-all text-left text-xs text-[#2B332E] group"
+                        >
+                          <div className="flex items-center gap-2.5">
+                            <div
+                              className="w-6 h-6 rounded-xl flex items-center justify-center group-hover:scale-105 transition-transform"
+                              style={{ backgroundColor: `${currentTheme.primary}18`, color: currentTheme.primaryDark }}
+                            >
+                              <Lock className="w-3.5 h-3.5" />
+                            </div>
+                            <span className="font-serif font-medium">锁定空间</span>
+                          </div>
+                        </button>
+                      </motion.div>
+                    )}
+
+                    {/* Level 2: Healing Palette Theme Picker Card */}
+                    {topNavSubView === 'theme' && (
+                      <motion.div
+                        key="theme-menu"
+                        initial={{ opacity: 0, scale: 0.92, y: -6 }}
+                        animate={{ opacity: 1, scale: 1, y: 0 }}
+                        exit={{ opacity: 0, scale: 0.94, y: -6 }}
+                        transition={{ duration: 0.22, ease: [0.25, 1, 0.5, 1] }}
+                        className="absolute top-full right-0 mt-2 w-64 p-3.5 apple-liquid-glass rounded-3xl shadow-2xl border border-white/85 z-50 font-sans"
+                      >
+                        {/* Header with Back Button */}
+                        <div className="flex items-center justify-between pb-2.5 mb-2 border-b border-black/5">
+                          <button
+                            onClick={() => {
+                              sound.playWaterDrop(760);
+                              setTopNavSubView('main');
+                            }}
+                            className="flex items-center gap-1 text-xs hover:underline font-serif font-semibold active:scale-95 transition-all"
+                            style={{ color: currentTheme.primaryDark }}
+                          >
+                            <ChevronLeft className="w-4 h-4" />
+                            <span>返回</span>
+                          </button>
+                          <h4 className="text-xs font-bold text-[#2B332E] font-serif">时光色调</h4>
+                          <button
+                            onClick={() => setIsTopNavMenuOpen(false)}
+                            className="p-1 text-[#6E7C75]/60 hover:text-[#2B332E] rounded-full hover:bg-black/5"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+
+                        {/* Theme Options */}
+                        <div className="space-y-1.5">
+                          {HEALING_THEMES.map(th => {
+                            const isSelected = th.id === currentTheme.id;
+                            return (
+                              <button
+                                key={th.id}
+                                onClick={() => {
+                                  handleSelectTheme(th.id);
+                                  setIsTopNavMenuOpen(false);
+                                }}
+                                className={`w-full p-2 rounded-2xl flex items-center justify-between border transition-all text-left ${
+                                  isSelected
+                                    ? 'border-[#5B7B6D] bg-white/85 shadow-xs font-semibold'
+                                    : 'border-transparent hover:bg-white/55 hover:border-white/60'
+                                }`}
+                              >
+                                <div className="flex items-center gap-2.5">
+                                  <div className="flex items-center -space-x-1">
+                                    <div
+                                      className="w-4 h-4 rounded-full border border-white shadow-2xs"
+                                      style={{ backgroundColor: th.primary }}
+                                    />
+                                    <div
+                                      className="w-4 h-4 rounded-full border border-white shadow-2xs"
+                                      style={{ backgroundColor: th.accent }}
+                                    />
+                                  </div>
+                                  <div>
+                                    <div className="text-xs text-[#2B332E] flex items-center gap-1 font-serif">
+                                      <span>{th.name}</span>
+                                      <span className="text-[9px] text-[#6E7C75]/70 font-mono">({th.enName})</span>
+                                    </div>
+                                    <div className="text-[9px] text-[#6E7C75] font-serif leading-tight mt-0.5">
+                                      {th.quote}
+                                    </div>
+                                  </div>
+                                </div>
+                                {isSelected && (
+                                  <Check className="w-3.5 h-3.5 text-[#5B7B6D] shrink-0" />
+                                )}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </motion.div>
+                    )}
+
+                    {/* Level 2: Settings Sub-Options Menu */}
+                    {topNavSubView === 'settings' && (
+                      <motion.div
+                        key="settings-menu"
+                        initial={{ opacity: 0, scale: 0.92, y: -6 }}
+                        animate={{ opacity: 1, scale: 1, y: 0 }}
+                        exit={{ opacity: 0, scale: 0.94, y: -6 }}
+                        transition={{ duration: 0.22, ease: [0.25, 1, 0.5, 1] }}
+                        className="absolute top-full right-0 mt-2 w-64 p-3.5 apple-liquid-glass rounded-3xl shadow-2xl border border-white/85 z-50 font-sans"
+                      >
+                        {/* Header with Back Button */}
+                        <div className="flex items-center justify-between pb-2.5 mb-2 border-b border-black/5">
+                          <button
+                            onClick={() => {
+                              sound.playWaterDrop(760);
+                              setTopNavSubView('main');
+                            }}
+                            className="flex items-center gap-1 text-xs hover:underline font-serif font-semibold active:scale-95 transition-all"
+                            style={{ color: currentTheme.primaryDark }}
+                          >
+                            <ChevronLeft className="w-4 h-4" />
+                            <span>返回</span>
+                          </button>
+                          <h4 className="text-xs font-bold text-[#2B332E] font-serif">偏好与设置</h4>
+                          <button
+                            onClick={() => setIsTopNavMenuOpen(false)}
+                            className="p-1 text-[#6E7C75]/60 hover:text-[#2B332E] rounded-full hover:bg-black/5"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+
+                        {/* Settings Sub-Items */}
+                        <div className="space-y-1.5">
+                          {/* Sub 1: 离线档案备份与恢复 */}
+                          <button
+                            onClick={() => {
+                              sound.playWaterDrop(880);
+                              setTopNavSubView('backup');
+                            }}
+                            className="w-full p-2.5 rounded-2xl flex items-center justify-between hover:bg-white/80 active:bg-white transition-all text-left group border border-transparent hover:border-white/60"
+                          >
+                            <div className="flex items-center gap-2.5 min-w-0">
+                              <div
+                                className="w-7 h-7 rounded-xl flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform"
+                                style={{ backgroundColor: `${currentTheme.primary}18`, color: currentTheme.primaryDark }}
+                              >
+                                <Database className="w-4 h-4" />
+                              </div>
+                              <div className="min-w-0">
+                                <div className="text-xs font-serif font-medium text-[#2B332E] truncate">离线档案备份</div>
+                                <div className="text-[10px] text-[#6E7C75] truncate">JSON 导入导出全量备份</div>
+                              </div>
+                            </div>
+                            <ChevronRight className="w-3.5 h-3.5 text-[#6E7C75]/60 group-hover:text-[#2B332E] shrink-0 ml-1" />
+                          </button>
+
+                          {/* Sub 2: 朗读者音色 */}
+                          <button
+                            onClick={() => {
+                              sound.playWaterDrop(880);
+                              setTopNavSubView('voice');
+                            }}
+                            className="w-full p-2.5 rounded-2xl flex items-center justify-between hover:bg-white/80 active:bg-white transition-all text-left group border border-transparent hover:border-white/60"
+                          >
+                            <div className="flex items-center gap-2.5 min-w-0">
+                              <div
+                                className="w-7 h-7 rounded-xl flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform"
+                                style={{ backgroundColor: `${currentTheme.primary}18`, color: currentTheme.primaryDark }}
+                              >
+                                <Headphones className="w-4 h-4" />
+                              </div>
+                              <div className="min-w-0">
+                                <div className="text-xs font-serif font-medium text-[#2B332E] truncate">朗读者音色</div>
+                                <div className="text-[10px] text-[#6E7C75] truncate">
+                                  {TTS_VOICES.find(v => v.id === ttsSelectedVoice)?.name || '素问'} · 情感朗诵
+                                </div>
+                              </div>
+                            </div>
+                            <ChevronRight className="w-3.5 h-3.5 text-[#6E7C75]/60 group-hover:text-[#2B332E] shrink-0 ml-1" />
+                          </button>
+
+                          {/* Sub 3: 空间安全口令 */}
+                          <button
+                            onClick={() => {
+                              sound.playWaterDrop(880);
+                              setTopNavSubView('security');
+                            }}
+                            className="w-full p-2.5 rounded-2xl flex items-center justify-between hover:bg-white/80 active:bg-white transition-all text-left group border border-transparent hover:border-white/60"
+                          >
+                            <div className="flex items-center gap-2.5 min-w-0">
+                              <div
+                                className="w-7 h-7 rounded-xl flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform"
+                                style={{ backgroundColor: `${currentTheme.primary}18`, color: currentTheme.primaryDark }}
+                              >
+                                <ShieldCheck className="w-4 h-4" />
+                              </div>
+                              <div className="min-w-0">
+                                <div className="text-xs font-serif font-medium text-[#2B332E] truncate">空间访问口令</div>
+                                <div className="text-[10px] text-[#6E7C75] truncate">修改 4 位锁屏加密口令</div>
+                              </div>
+                            </div>
+                            <ChevronRight className="w-3.5 h-3.5 text-[#6E7C75]/60 group-hover:text-[#2B332E] shrink-0 ml-1" />
+                          </button>
+
+                          {/* Sub 4: AI 智能引擎 */}
+                          <button
+                            onClick={() => {
+                              sound.playWaterDrop(880);
+                              setTopNavSubView('ai');
+                            }}
+                            className="w-full p-2.5 rounded-2xl flex items-center justify-between hover:bg-white/80 active:bg-white transition-all text-left group border border-transparent hover:border-white/60"
+                          >
+                            <div className="flex items-center gap-2.5 min-w-0">
+                              <div
+                                className="w-7 h-7 rounded-xl flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform"
+                                style={{ backgroundColor: `${currentTheme.primary}18`, color: currentTheme.primaryDark }}
+                              >
+                                <Cpu className="w-4 h-4" />
+                              </div>
+                              <div className="min-w-0">
+                                <div className="text-xs font-serif font-medium text-[#2B332E] truncate">AI 智能引擎</div>
+                                <div className="text-[10px] text-[#6E7C75] truncate">
+                                  {aiEngine === 'deepseek' ? 'DeepSeek 引擎' : '标准 AI 模型'}
+                                </div>
+                              </div>
+                            </div>
+                            <ChevronRight className="w-3.5 h-3.5 text-[#6E7C75]/60 group-hover:text-[#2B332E] shrink-0 ml-1" />
+                          </button>
+                        </div>
+                      </motion.div>
+                    )}
+
+                    {/* Level 3: 离线档案备份与恢复 Sub-Card */}
+                    {topNavSubView === 'backup' && (
+                      <motion.div
+                        key="backup-card"
+                        initial={{ opacity: 0, scale: 0.92, y: -6 }}
+                        animate={{ opacity: 1, scale: 1, y: 0 }}
+                        exit={{ opacity: 0, scale: 0.94, y: -6 }}
+                        transition={{ duration: 0.22, ease: [0.25, 1, 0.5, 1] }}
+                        className="absolute top-full right-0 mt-2 w-72 p-4 apple-liquid-glass rounded-3xl shadow-2xl border border-white/85 z-50 font-sans space-y-3"
+                      >
+                        {/* Header */}
+                        <div className="flex items-center justify-between pb-2 border-b border-black/5">
+                          <button
+                            onClick={() => {
+                              sound.playWaterDrop(760);
+                              setTopNavSubView('settings');
+                            }}
+                            className="flex items-center gap-1 text-xs hover:underline font-serif font-semibold active:scale-95 transition-all"
+                            style={{ color: currentTheme.primaryDark }}
+                          >
+                            <ChevronLeft className="w-4 h-4" />
+                            <span>返回设置</span>
+                          </button>
+                          <h4 className="text-xs font-bold text-[#2B332E] font-serif">离线档案备份</h4>
+                          <button
+                            onClick={() => setIsTopNavMenuOpen(false)}
+                            className="p-1 text-[#6E7C75]/60 hover:text-[#2B332E] rounded-full hover:bg-black/5"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+
+                        {/* Summary Badge */}
+                        <div className="p-2.5 rounded-2xl bg-white/70 border border-[#5B7B6D]/15 flex items-center justify-between text-[11px]">
+                          <span className="text-[#6E7C75] font-serif">时光记忆存档</span>
+                          <span className="font-bold text-[#2B332E] font-mono">
+                            共 {data.timeline.length + data.people.length + data.stories.length + data.artifacts.length + data.letters.length} 项
+                          </span>
+                        </div>
+
+                        {/* Export Action */}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            handleExport();
+                            setIsTopNavMenuOpen(false);
+                          }}
+                          className="w-full py-2.5 px-3 bg-[#5B7B6D] hover:bg-[#3E564B] text-white font-serif font-bold text-xs rounded-2xl shadow-xs transition-all flex items-center justify-center gap-1.5 active:scale-95"
+                          style={{ backgroundColor: currentTheme.primary }}
+                        >
+                          <Download className="w-3.5 h-3.5" />
+                          <span>导出离线备份包 (.json)</span>
+                        </button>
+
+                        {/* Import Dropzone */}
+                        <div className="p-3 bg-white/80 rounded-2xl border border-dashed border-[#5B7B6D]/25 text-center relative hover:border-[#5B7B6D]/50 transition-colors cursor-pointer">
+                          <input
+                            type="file"
+                            accept=".json"
+                            onChange={(e) => {
+                              handleImport(e);
+                              setIsTopNavMenuOpen(false);
+                            }}
+                            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                          />
+                          <Upload className="w-5 h-5 mx-auto mb-1 text-[#5B7B6D]" />
+                          <div className="text-xs font-bold text-[#2B332E] font-serif">导入恢复备份数据</div>
+                          <div className="text-[9px] text-[#6E7C75] mt-0.5">点击选择或拖入 JSON 文件</div>
+                        </div>
+                      </motion.div>
+                    )}
+
+                    {/* Level 3: 朗读者音色选择 Sub-Card */}
+                    {topNavSubView === 'voice' && (
+                      <motion.div
+                        key="voice-card"
+                        initial={{ opacity: 0, scale: 0.92, y: -6 }}
+                        animate={{ opacity: 1, scale: 1, y: 0 }}
+                        exit={{ opacity: 0, scale: 0.94, y: -6 }}
+                        transition={{ duration: 0.22, ease: [0.25, 1, 0.5, 1] }}
+                        className="absolute top-full right-0 mt-2 w-72 max-h-[78vh] flex flex-col p-3.5 apple-liquid-glass rounded-3xl shadow-2xl border border-white/85 z-50 font-sans"
+                      >
+                        {/* Header */}
+                        <div className="flex items-center justify-between pb-2 border-b border-black/5 shrink-0">
+                          <button
+                            onClick={() => {
+                              sound.playWaterDrop(760);
+                              setTopNavSubView('settings');
+                            }}
+                            className="flex items-center gap-1 text-xs hover:underline font-serif font-semibold active:scale-95 transition-all"
+                            style={{ color: currentTheme.primaryDark }}
+                          >
+                            <ChevronLeft className="w-4 h-4" />
+                            <span>返回设置</span>
+                          </button>
+                          <h4 className="text-xs font-bold text-[#2B332E] font-serif">朗读者音色</h4>
+                          <button
+                            onClick={() => setIsTopNavMenuOpen(false)}
+                            className="p-1 text-[#6E7C75]/60 hover:text-[#2B332E] rounded-full hover:bg-black/5"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+
+                        {/* Gender Filter Tabs */}
+                        <div className="flex gap-1 my-2 bg-black/5 p-1 rounded-xl shrink-0">
+                          {(['all', '女声', '男声'] as const).map(g => (
+                            <button
+                              key={g}
+                              onClick={() => setVoiceFilterGender(g)}
+                              className={`flex-1 py-1 rounded-lg text-[11px] font-serif font-medium transition-all ${
+                                voiceFilterGender === g
+                                  ? 'bg-white text-[#2B332E] shadow-2xs font-bold'
+                                  : 'text-[#6E7C75] hover:text-[#2B332E]'
+                              }`}
+                            >
+                              {g === 'all' ? '全部' : g}
+                            </button>
+                          ))}
+                        </div>
+
+                        {/* Scrollable Voice Cards */}
+                        <div className="space-y-1.5 overflow-y-auto flex-1 pr-0.5 custom-scrollbar">
+                          {TTS_VOICES
+                            .filter(v => voiceFilterGender === 'all' || v.gender === voiceFilterGender)
+                            .map(v => {
+                              const isSelected = ttsSelectedVoice === v.id;
+                              const isPreviewing = previewingVoiceId === v.id;
+
+                              return (
+                                <div
+                                  key={v.id}
+                                  onClick={() => {
+                                    setTtsSelectedVoice(v.id);
+                                    localStorage.setItem('shinian_tts_voice', v.id);
+                                    showToast(`已选用朗诵音色：${v.name}`);
+                                  }}
+                                  className={`p-2.5 rounded-2xl border transition-all text-left cursor-pointer ${
+                                    isSelected
+                                      ? 'bg-white/90 border-[#5B7B6D] shadow-xs'
+                                      : 'bg-white/50 border-transparent hover:bg-white/70'
+                                  }`}
+                                >
+                                  <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-1.5 min-w-0">
+                                      <span className="font-serif font-bold text-xs text-[#2B332E] truncate">{v.name}</span>
+                                      <span className="text-[9px] px-1.5 py-0.2 rounded-md bg-black/5 text-[#6E7C75] font-sans shrink-0">
+                                        {v.gender}
+                                      </span>
+                                    </div>
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handlePreviewVoice(v);
+                                      }}
+                                      disabled={isTtsGenerating}
+                                      className="text-[10px] px-2 py-0.5 rounded-lg bg-black/5 hover:bg-[#5B7B6D] hover:text-white transition-colors flex items-center gap-1 shrink-0"
+                                    >
+                                      <Play className="w-2.5 h-2.5" />
+                                      <span>{isPreviewing ? '播放中' : '试听'}</span>
+                                    </button>
+                                  </div>
+                                  <p className="text-[10px] text-[#6E7C75] font-serif line-clamp-1 mt-1 leading-tight">
+                                    {v.character}
+                                  </p>
+                                </div>
+                              );
+                            })}
+                        </div>
+                      </motion.div>
+                    )}
+
+                    {/* Level 3: 空间访问口令 Sub-Card */}
+                    {topNavSubView === 'security' && (
+                      <motion.div
+                        key="security-card"
+                        initial={{ opacity: 0, scale: 0.92, y: -6 }}
+                        animate={{ opacity: 1, scale: 1, y: 0 }}
+                        exit={{ opacity: 0, scale: 0.94, y: -6 }}
+                        transition={{ duration: 0.22, ease: [0.25, 1, 0.5, 1] }}
+                        className="absolute top-full right-0 mt-2 w-72 p-4 apple-liquid-glass rounded-3xl shadow-2xl border border-white/85 z-50 font-sans space-y-3"
+                      >
+                        {/* Header */}
+                        <div className="flex items-center justify-between pb-2 border-b border-black/5">
+                          <button
+                            onClick={() => {
+                              sound.playWaterDrop(760);
+                              setTopNavSubView('settings');
+                            }}
+                            className="flex items-center gap-1 text-xs hover:underline font-serif font-semibold active:scale-95 transition-all"
+                            style={{ color: currentTheme.primaryDark }}
+                          >
+                            <ChevronLeft className="w-4 h-4" />
+                            <span>返回设置</span>
+                          </button>
+                          <h4 className="text-xs font-bold text-[#2B332E] font-serif">修改访问口令</h4>
+                          <button
+                            onClick={() => setIsTopNavMenuOpen(false)}
+                            className="p-1 text-[#6E7C75]/60 hover:text-[#2B332E] rounded-full hover:bg-black/5"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+
+                        <form onSubmit={(e) => {
+                          handleChangePassword(e);
+                          setIsTopNavMenuOpen(false);
+                        }} className="space-y-2.5 text-xs">
+                          <div>
+                            <label className="text-[10px] text-[#6E7C75] block mb-1 font-serif">当前原口令：</label>
+                            <input
+                              type="password"
+                              required
+                              value={oldPinInput}
+                              onChange={(e) => setOldPinInput(e.target.value)}
+                              placeholder="默认 1234"
+                              className="w-full p-2 rounded-xl border border-[#5B7B6D]/20 bg-white/90 focus:outline-none font-mono text-xs"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="text-[10px] text-[#6E7C75] block mb-1 font-serif">设置新口令：</label>
+                            <input
+                              type="password"
+                              required
+                              value={newPinInput}
+                              onChange={(e) => setNewPinInput(e.target.value)}
+                              placeholder="至少 4 位"
+                              className="w-full p-2 rounded-xl border border-[#5B7B6D]/20 bg-white/90 focus:outline-none font-mono text-xs"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="text-[10px] text-[#6E7C75] block mb-1 font-serif">确认新口令：</label>
+                            <input
+                              type="password"
+                              required
+                              value={confirmPinInput}
+                              onChange={(e) => setConfirmPinInput(e.target.value)}
+                              placeholder="再次输入"
+                              className="w-full p-2 rounded-xl border border-[#5B7B6D]/20 bg-white/90 focus:outline-none font-mono text-xs"
+                            />
+                          </div>
+
+                          <button
+                            type="submit"
+                            className="w-full py-2 bg-[#5B7B6D] text-white font-serif font-bold rounded-xl shadow-xs transition-all active:scale-95"
+                            style={{ backgroundColor: currentTheme.primary }}
+                          >
+                            保存新口令
+                          </button>
+                        </form>
+                      </motion.div>
+                    )}
+
+                    {/* Level 3: AI 智能引擎 Sub-Card */}
+                    {topNavSubView === 'ai' && (
+                      <motion.div
+                        key="ai-card"
+                        initial={{ opacity: 0, scale: 0.92, y: -6 }}
+                        animate={{ opacity: 1, scale: 1, y: 0 }}
+                        exit={{ opacity: 0, scale: 0.94, y: -6 }}
+                        transition={{ duration: 0.22, ease: [0.25, 1, 0.5, 1] }}
+                        className="absolute top-full right-0 mt-2 w-72 p-4 apple-liquid-glass rounded-3xl shadow-2xl border border-white/85 z-50 font-sans space-y-3"
+                      >
+                        {/* Header */}
+                        <div className="flex items-center justify-between pb-2 border-b border-black/5">
+                          <button
+                            onClick={() => {
+                              sound.playWaterDrop(760);
+                              setTopNavSubView('settings');
+                            }}
+                            className="flex items-center gap-1 text-xs hover:underline font-serif font-semibold active:scale-95 transition-all"
+                            style={{ color: currentTheme.primaryDark }}
+                          >
+                            <ChevronLeft className="w-4 h-4" />
+                            <span>返回设置</span>
+                          </button>
+                          <h4 className="text-xs font-bold text-[#2B332E] font-serif">AI 智能引擎</h4>
+                          <button
+                            onClick={() => setIsTopNavMenuOpen(false)}
+                            className="p-1 text-[#6E7C75]/60 hover:text-[#2B332E] rounded-full hover:bg-black/5"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+
+                        {/* Radios */}
+                        <div className="space-y-1.5">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setAiEngine('gemini');
+                              localStorage.setItem('shinian_ai_engine', 'gemini');
+                              showToast('已切换为标准 AI 模型');
+                            }}
+                            className={`w-full p-2.5 rounded-2xl border text-left transition-all ${
+                              aiEngine === 'gemini'
+                                ? 'bg-white/90 border-[#5B7B6D] shadow-xs'
+                                : 'bg-white/50 border-transparent hover:bg-white/70'
+                            }`}
+                          >
+                            <div className="flex items-center justify-between">
+                              <span className="font-serif font-bold text-xs text-[#2B332E]">⚡ 标准模型</span>
+                              {aiEngine === 'gemini' && <Check className="w-3.5 h-3.5 text-[#5B7B6D]" />}
+                            </div>
+                            <p className="text-[10px] text-[#6E7C75] font-serif mt-0.5">内置快速响应，支持回忆对谈与识图</p>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setAiEngine('deepseek');
+                              localStorage.setItem('shinian_ai_engine', 'deepseek');
+                              showToast('已切换为 DeepSeek 引擎');
+                            }}
+                            className={`w-full p-2.5 rounded-2xl border text-left transition-all ${
+                              aiEngine === 'deepseek'
+                                ? 'bg-white/90 border-[#5B7B6D] shadow-xs'
+                                : 'bg-white/50 border-transparent hover:bg-white/70'
+                            }`}
+                          >
+                            <div className="flex items-center justify-between">
+                              <span className="font-serif font-bold text-xs text-[#2B332E]">🐉 DeepSeek 引擎</span>
+                              {aiEngine === 'deepseek' && <Check className="w-3.5 h-3.5 text-[#5B7B6D]" />}
+                            </div>
+                            <p className="text-[10px] text-[#6E7C75] font-serif mt-0.5">DeepSeek-V3 深度文本推理</p>
+                          </button>
+                        </div>
+
+                        {/* DeepSeek API Key Input */}
+                        {aiEngine === 'deepseek' && (
+                          <div className="p-2.5 rounded-2xl bg-white/90 border border-[#5B7B6D]/20 space-y-1">
+                            <label className="text-[10px] text-[#2B332E] font-bold block">DeepSeek API Key：</label>
+                            <input
+                              type="password"
+                              value={deepSeekKey}
+                              onChange={(e) => {
+                                setDeepSeekKey(e.target.value);
+                                localStorage.setItem('shinian_deepseek_key', e.target.value);
+                              }}
+                              placeholder="sk-..."
+                              className="w-full p-2 rounded-xl border border-[#5B7B6D]/20 bg-[#FAF8F5] focus:outline-none font-mono text-[10px]"
+                            />
+                          </div>
+                        )}
+                      </motion.div>
+                    )}
+                  </>
+                )}
+              </AnimatePresence>
+            </div>
           </div>
-        </header>
+        </div>
 
         {/* Refactored Literary Paper Themed Toast Notification */}
-        <ThemedToast toast={toast} theme={currentTheme} />
+        <ThemedToast toast={toast} theme={currentTheme} isDarkMode={isDarkMode} />
 
-        {/* Audio Player Bar */}
+        {/* Floating Audio Player Bar */}
         {audioPlayingUrl && (
-          <div className="bg-[#FAF6EC] border-b border-[#E88765]/30 px-3.5 py-2 flex items-center justify-between text-xs text-[#2B332E] animate-fadeIn z-20 shadow-xs">
+          <div className="absolute top-[68px] sm:top-[72px] left-3.5 right-3.5 sm:left-4 sm:right-4 apple-liquid-glass rounded-2xl px-3.5 py-2 flex items-center justify-between text-xs text-[#2B332E] animate-fadeIn z-25 shadow-md border border-white/80">
             <div className="flex items-center gap-2 min-w-0 mr-2">
               <div className="w-7 h-7 rounded-full bg-[#FDF0EB] border border-[#E88765]/30 flex items-center justify-center text-[#E88765] shrink-0">
                 <Volume2 className="w-3.5 h-3.5 animate-pulse" />
@@ -1777,7 +2494,7 @@ export default function App() {
         )}
 
         {/* Main Content Area: Flows seamlessly underneath the floating Apple Liquid Glass dock */}
-        <main ref={mainContentRef} id="main-content-scroll" className="flex-1 overflow-y-auto custom-scrollbar p-4 pb-28 sm:pb-32 space-y-4 overscroll-contain">
+        <main ref={mainContentRef} id="main-content-scroll" className="flex-1 overflow-y-auto custom-scrollbar p-4 pt-16 sm:pt-20 pb-28 sm:pb-32 space-y-4 overscroll-contain">
 
           {/* Home Tab */}
           {activeTab === 'home' && (
@@ -1841,19 +2558,35 @@ export default function App() {
                       {todayHighlight.content}
                     </p>
 
-                    {/* Classic Polaroid Styled Photo Frame */}
-                    {todayHighlight.image && (
-                      <div className="p-2 bg-[#FAF8F5] border border-[#5B7B6D]/15 rounded-2xl mb-3.5 shadow-xs transition-transform duration-300 group-hover:scale-[1.01]">
-                        <div className="h-44 sm:h-48 w-full rounded-xl overflow-hidden relative">
-                          <img
-                            src={todayHighlight.image}
-                            alt="cover"
-                            className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
-                          />
-                          <div className="absolute inset-0 bg-gradient-to-t from-black/25 via-transparent to-transparent pointer-events-none" />
+                    {/* Classic Polaroid Styled Media Frame (Photo or Video) */}
+                    {(todayHighlight.image || todayHighlight.video) && (() => {
+                      const isVideo = Boolean(todayHighlight.video || (todayHighlight.image && isVideoMedia(todayHighlight.image)));
+                      const videoSrc = todayHighlight.video || (isVideo ? todayHighlight.image : undefined);
+
+                      return (
+                        <div className="p-2 bg-[#FAF8F5] border border-[#5B7B6D]/15 rounded-2xl mb-3.5 shadow-xs transition-transform duration-300 group-hover:scale-[1.01]">
+                          {isVideo && videoSrc ? (
+                            <div className="rounded-xl overflow-hidden border border-black/10 shadow-sm">
+                              <TimelineVideoCard
+                                videoUrl={videoSrc}
+                                poster={todayHighlight.videoPoster}
+                                title={todayHighlight.title}
+                                date={todayHighlight.date}
+                              />
+                            </div>
+                          ) : todayHighlight.image ? (
+                            <div className="h-44 sm:h-48 w-full rounded-xl overflow-hidden relative">
+                              <img
+                                src={todayHighlight.image}
+                                alt={todayHighlight.title || 'cover'}
+                                className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
+                              />
+                              <div className="absolute inset-0 bg-gradient-to-t from-black/25 via-transparent to-transparent pointer-events-none" />
+                            </div>
+                          ) : null}
                         </div>
-                      </div>
-                    )}
+                      );
+                    })()}
 
                     {/* Card Footer Actions & Location */}
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 text-[11px] text-[#6E7C75] border-t border-[#F2EFE9] pt-3">
@@ -2036,19 +2769,6 @@ export default function App() {
               transition={{ duration: 0.28, ease: [0.25, 0.1, 0.25, 1] }}
               className="space-y-4"
             >
-              <div className="flex justify-between items-center mb-1">
-                <h2 className="text-lg font-bold text-[#2B332E] tracking-wider font-serif">
-                  拾人册 ({selectedPersonGroup === 'all' ? data.people.length : filteredPeople.length})
-                </h2>
-                <button
-                  type="button"
-                  onClick={() => setActiveModal('addPerson')}
-                  className="flex items-center gap-1 text-xs px-3 py-1.5 bg-[#5B7B6D] text-white rounded-xl shadow-sm hover:bg-[#3E564B] font-medium transition-all active:scale-95 whitespace-nowrap"
-                >
-                  <Plus className="w-3.5 h-3.5" /> 添加人物
-                </button>
-              </div>
-
               {/* Group Filter Status Banner */}
               {selectedPersonGroup !== 'all' && (
                 <div className="p-3 bg-[#E88765]/10 rounded-2xl border border-[#E88765]/25 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 text-xs text-[#E88765] font-sans shadow-2xs">
@@ -2122,7 +2842,7 @@ export default function App() {
                       viewport={{ once: true, margin: '-20px' }}
                       transition={{ duration: 0.35, delay: Math.min(idx * 0.03, 0.2), ease: 'easeOut' }}
                       onClick={() => setSelectedPerson(person)}
-                      className="bg-[#FFFDF9] hover:bg-white rounded-3xl p-4.5 border border-[#E3DACD] hover:border-[#5B7B6D]/45 shadow-2xs hover:shadow-md transition-all duration-300 cursor-pointer group relative overflow-hidden flex flex-col justify-between"
+                      className="bg-white hover:bg-white rounded-3xl p-4.5 border border-[#5B7B6D]/20 hover:border-[#5B7B6D]/50 shadow-2xs hover:shadow-md transition-all duration-300 cursor-pointer group relative overflow-hidden flex flex-col justify-between"
                     >
                       {/* Decorative corner accent stamp */}
                       <div className="absolute top-0 right-0 w-16 h-16 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-[#E88765]/10 via-transparent to-transparent pointer-events-none" />
@@ -2164,17 +2884,31 @@ export default function App() {
                             </div>
                           </div>
 
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              requestDelete('people', person.id, person.name);
-                            }}
-                            title="删除人物"
-                            className="p-1.5 text-[#6E7C75]/30 hover:text-red-500 rounded-xl hover:bg-red-50 transition-all opacity-70 group-hover:opacity-100 shrink-0 active:scale-90"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
+                          <div className="flex items-center gap-1">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                requestDelete('people', person.id, person.name);
+                              }}
+                              title="删除人物"
+                              className="p-1.5 text-[#6E7C75]/30 hover:text-red-500 rounded-xl hover:bg-red-50 transition-all opacity-70 group-hover:opacity-100 shrink-0 active:scale-90"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setShareMemoirItem({ type: 'person', data: person });
+                                setIsShareModalOpen(true);
+                              }}
+                              title="生成知交肖像画报分享"
+                              className="p-1.5 text-[#5B7B6D] hover:text-[#E88765] rounded-xl hover:bg-[#5B7B6D]/10 transition-all opacity-70 group-hover:opacity-100 shrink-0 active:scale-90"
+                            >
+                              <Share2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
                         </div>
 
                         {/* Middle: Poetic Memoir Snippet */}
@@ -2216,7 +2950,7 @@ export default function App() {
           )}
 
           {/* Selected Person Detailed Archive View - Curated Japanese Indie Profile Journal */}
-          {activeTab === 'people' && selectedPerson && (
+          {activeTab === 'people' && selectedPerson && !readerStory && (
             <motion.div
               initial={{ opacity: 0, y: 22 }}
               animate={{ opacity: 1, y: 0 }}
@@ -2254,8 +2988,20 @@ export default function App() {
                       requestDelete('people', selectedPerson.id, selectedPerson.name);
                     }}
                     className="text-xs text-red-500 hover:text-red-700 flex items-center gap-1 font-medium bg-red-50/80 px-2.5 py-1.5 rounded-xl border border-red-200/70 hover:bg-red-100 transition-all"
+                    title="删除人物"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShareMemoirItem({ type: 'person', data: selectedPerson });
+                      setIsShareModalOpen(true);
+                    }}
+                    className="text-xs text-[#5B7B6D] hover:text-[#3E564B] flex items-center gap-1 font-medium bg-white px-3 py-1.5 rounded-xl border border-[#5B7B6D]/20 shadow-2xs hover:bg-[#FAF8F5] transition-all"
+                    title="生成人物肖像画报"
+                  >
+                    <Share2 className="w-3.5 h-3.5 text-[#E88765]" /> 分享
                   </button>
                 </div>
               </div>
@@ -2415,7 +3161,7 @@ export default function App() {
                 showToast={showToast}
               />
 
-              {/* 专属信物陈列柜 (直接从拾物阁拣选并陈列) */}
+              {/* 专属信物陈列柜 (直接从拾物阁拣选并陈列，点击直接唤起拾物阁同款大卡片弹窗) */}
               <PersonArtifactsShelf
                 personName={selectedPerson.name}
                 boundArtifactIds={selectedPerson.artifactIds || []}
@@ -2423,126 +3169,23 @@ export default function App() {
                 onUpdateBoundArtifacts={(newIds) => {
                   handleUpdatePerson({ artifactIds: newIds });
                 }}
+                onSelectArtifact={(art) => setSelectedArtifact(art)}
                 showToast={showToast}
               />
 
-              {/* Yearly Memories & Impressions Section - Clean Journal Stream */}
-              <div className="bg-white p-5 sm:p-6 rounded-3xl border border-[#D9CFC1] shadow-2xs space-y-4">
-                <div className="flex justify-between items-center">
-                  <h3 className="font-bold text-[#2B332E] text-sm flex items-center gap-2 font-serif">
-                    <Feather className="w-4 h-4 text-[#E88765]" />
-                    <span>岁月印记与故事轨迹</span>
-                  </h3>
-                  <span className="text-[11px] text-[#6E7C75] font-sans">共 {selectedPerson.impressions?.length || 0} 则记录</span>
-                </div>
-
-                {/* Form to append new memory impression */}
-                <form onSubmit={handleAddImpression} className="p-3.5 bg-[#FAF8F5] rounded-2xl border border-[#5B7B6D]/15 space-y-2.5 text-xs font-sans">
-                  <span className="font-bold text-[#5B7B6D] text-xs block">记录一段新回忆 / 印象切片：</span>
-                  <div className="flex flex-col sm:flex-row gap-2">
-                    <div className="flex gap-1.5 w-full sm:w-44 shrink-0">
-                      <input
-                        type="text"
-                        value={newImpressionYear}
-                        onChange={(e) => setNewImpressionYear(e.target.value)}
-                        placeholder="年份/日期 (如 2026.8.6)"
-                        className="flex-1 p-2.5 rounded-xl border border-[#5B7B6D]/20 bg-white focus:outline-none focus:border-[#5B7B6D] font-mono text-xs"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setDatePickerConfig({
-                            isOpen: true,
-                            title: '选择印记切片日期',
-                            value: new Date().toISOString().slice(0, 10),
-                            mode: 'full',
-                            onConfirm: (val) => {
-                              const parts = val.split('-');
-                              if (parts.length === 3) {
-                                setNewImpressionYear(`${parts[0]}.${parseInt(parts[1], 10)}.${parseInt(parts[2], 10)}`);
-                              } else {
-                                setNewImpressionYear(val);
-                              }
-                            }
-                          });
-                        }}
-                        className="p-2.5 rounded-xl border border-[#5B7B6D]/20 bg-white hover:bg-[#F2EFE9] text-[#5B7B6D] shadow-2xs shrink-0 flex items-center justify-center transition-colors cursor-pointer"
-                        title="弹窗选择日期"
-                      >
-                        <Calendar className="w-4 h-4" />
-                      </button>
-                    </div>
-                    <div className="flex gap-2 flex-1 min-w-0">
-                      <input
-                        type="text"
-                        value={newImpressionText}
-                        onChange={(e) => setNewImpressionText(e.target.value)}
-                        placeholder="记录这个阶段的心情、感动细节或共同经历..."
-                        className="flex-1 min-w-0 p-2.5 rounded-xl border border-[#5B7B6D]/20 bg-white focus:outline-none focus:border-[#5B7B6D] text-xs font-serif"
-                      />
-                      <button
-                        type="submit"
-                        className="px-4 py-2.5 bg-[#5B7B6D] hover:bg-[#3E564B] text-white font-bold rounded-xl transition-all shadow-xs shrink-0 whitespace-nowrap active:scale-95 cursor-pointer"
-                      >
-                        记录
-                      </button>
-                    </div>
-                  </div>
-                </form>
-
-                {/* Impressions Stream */}
-                <div className="space-y-3 pt-1">
-                  {selectedPerson.impressions?.map((imp, idx) => {
-                    return (
-                      <div key={imp.id || idx} className="p-4 bg-[#FAF7F2] rounded-2xl border border-[#5B7B6D]/10 text-xs text-[#2B332E] space-y-2.5 shadow-2xs hover:border-[#5B7B6D]/30 transition-all">
-                        <div className="flex justify-between items-center text-[11px] font-sans">
-                          <span className="font-bold text-[#E88765] bg-white px-2.5 py-0.5 rounded-lg border border-[#E88765]/20 font-mono">
-                            {formatImpressionDate(imp.year)}
-                          </span>
-                          <div className="flex items-center gap-1.5">
-                            <button 
-                              type="button"
-                              onClick={() => handlePlayTts(imp.text)} 
-                              className="text-[#5B7B6D] hover:text-[#E88765] flex items-center gap-1 font-medium bg-white px-2.5 py-1 rounded-lg border border-[#5B7B6D]/15 transition-all shadow-2xs cursor-pointer active:scale-95"
-                              title="朗诵印象"
-                            >
-                              <Volume2 className="w-3 h-3" /> 朗诵
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setEditingImpression(imp);
-                                setEditImpressionYear(formatImpressionDate(imp.year) || '');
-                                setEditImpressionText(imp.text || '');
-                              }}
-                              className="text-[#6E7C75] hover:text-[#5B7B6D] flex items-center gap-1 font-medium bg-white px-2.5 py-1 rounded-lg border border-[#5B7B6D]/15 transition-all shadow-2xs cursor-pointer active:scale-95"
-                              title="编辑此切片"
-                            >
-                              <Edit3 className="w-3 h-3 text-[#5B7B6D]" /> 编辑
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setConfirmDialog({
-                                  name: `${formatImpressionDate(imp.year)}时光切片: “${imp.text.slice(0, 16)}${imp.text.length > 16 ? '...' : ''}”`,
-                                  onConfirm: () => handleDeleteImpression(imp.id)
-                                });
-                              }}
-                              className="text-[#6E7C75]/60 hover:text-red-500 flex items-center p-1 rounded-lg hover:bg-red-50 transition-all cursor-pointer active:scale-95"
-                              title="删除此切片"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
-                        </div>
-                        <p className="leading-relaxed font-serif text-[#3E4A42] text-xs whitespace-pre-line break-words">
-                          {imp.text}
-                        </p>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
+              {/* 关联拾忆篇章 (从拾忆篇中拣选文章，点击卡片直接进入长卷阅读模式) */}
+              <PersonStoriesShelf
+                personName={selectedPerson.name}
+                boundStoryIds={selectedPerson.storyIds || []}
+                allStories={data.stories || []}
+                onUpdateBoundStories={(newIds) => {
+                  handleUpdatePerson({ storyIds: newIds });
+                }}
+                onReadStory={(story) => {
+                  setReaderStory(story);
+                }}
+                showToast={showToast}
+              />
             </motion.div>
           )}
 
@@ -2555,18 +3198,6 @@ export default function App() {
               transition={{ duration: 0.28, ease: [0.25, 0.1, 0.25, 1] }}
               className="space-y-4"
             >
-              <div className="flex justify-between items-center mb-1">
-                <h2 className="text-lg font-bold text-[#2B332E] tracking-wider font-serif">
-                  拾忆篇 ({data.stories.filter(story => selectedYear === 'all' || getYearFromDate(story.date) === selectedYear).length})
-                </h2>
-                <button
-                  onClick={() => setActiveModal('addStory')}
-                  className="flex items-center gap-1 text-xs px-3 py-1.5 bg-[#5B7B6D] text-white rounded-xl shadow-sm hover:bg-[#3E564B] font-medium"
-                >
-                  <Plus className="w-3.5 h-3.5" /> 新增章节
-                </button>
-              </div>
-
               {/* Year Filter Status Banner */}
               {selectedYear !== 'all' && (
                 <div className="p-3 bg-[#5B7B6D]/10 rounded-2xl border border-[#5B7B6D]/20 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 text-xs text-[#5B7B6D] font-sans shadow-2xs">
@@ -2664,6 +3295,18 @@ export default function App() {
                           >
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setShareMemoirItem({ type: 'story', data: story });
+                              setIsShareModalOpen(true);
+                            }}
+                            className="p-1.5 text-[#5B7B6D] hover:text-[#E88765] rounded-lg hover:bg-[#5B7B6D]/10 transition-all opacity-80 group-hover:opacity-100"
+                            title="生成诗意长卷海报分享"
+                          >
+                            <Share2 className="w-3.5 h-3.5" />
+                          </button>
                           <BookOpen className="w-4 h-4 text-[#5B7B6D] ml-1" />
                         </div>
                       </div>
@@ -2673,61 +3316,78 @@ export default function App() {
             </motion.div>
           )}
 
-          {/* Reading Mode View */}
-          {activeTab === 'stories' && readerStory && (
+          {/* Reading Mode View: Universal immersive reader scroll with paper texture */}
+          {readerStory && (
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -20 }}
               transition={{ duration: 0.28, ease: 'easeOut' }}
-              className="bg-white p-6 rounded-2xl border border-[#5B7B6D]/20 shadow-md space-y-4 min-h-[500px] flex flex-col justify-between"
+              className="bg-white p-6 sm:p-8 rounded-3xl border border-[#5B7B6D]/20 shadow-md space-y-5 min-h-[520px] flex flex-col justify-between paper-texture"
             >
-              <div>
-                <div className="flex justify-between items-center mb-4 flex-wrap gap-2">
+              <div className="space-y-4">
+                <div className="flex justify-between items-center pb-3 border-b border-[#5B7B6D]/15 flex-wrap gap-2">
                   <button
+                    type="button"
                     onClick={() => setReaderStory(null)}
-                    className="text-xs text-[#6E7C75] hover:text-[#5B7B6D] font-medium"
+                    className="text-xs text-[#526058] hover:text-[#5B7B6D] font-serif font-medium bg-[#FAF8F5] px-3 py-1.5 rounded-xl border border-[#5B7B6D]/15 hover:border-[#5B7B6D]/35 transition-all shadow-2xs cursor-pointer active:scale-95"
                   >
-                    ← 退出阅读
+                    <span>
+                      {selectedPerson && activeTab === 'people'
+                        ? `← 返回【${selectedPerson.name}】人物手账`
+                        : '← 退出阅读'}
+                    </span>
                   </button>
                   <div className="flex items-center gap-2">
                     <button
+                      type="button"
                       onClick={() => {
                         setEditingStory(readerStory);
                         setEditStoryDate(readerStory.date || new Date().toISOString().slice(0, 10));
                       }}
-                      className="text-[11px] px-2.5 py-1 text-[#5B7B6D] bg-[#5B7B6D]/10 hover:bg-[#5B7B6D]/20 rounded-full font-sans transition-all flex items-center gap-1 active:scale-95"
+                      className="text-[11px] px-3 py-1.5 text-[#5B7B6D] bg-[#5B7B6D]/10 hover:bg-[#5B7B6D]/20 rounded-xl font-sans transition-all flex items-center gap-1 active:scale-95 cursor-pointer font-medium"
                       title="编辑当前文章"
                     >
                       <Edit3 className="w-3 h-3 text-[#5B7B6D]" />
                       <span>编辑篇章</span>
                     </button>
                     <button
-                      onClick={() => setIsVoicePickerModalOpen(true)}
-                      className="text-[11px] px-2.5 py-1 text-[#6E7C75] bg-stone-100 hover:bg-stone-200 rounded-full font-sans transition-all flex items-center gap-1"
-                      title="更换朗读音色"
+                      type="button"
+                      onClick={() => {
+                        setShareMemoirItem({ type: 'story', data: readerStory });
+                        setIsShareModalOpen(true);
+                      }}
+                      className="text-[11px] px-3 py-1.5 text-[#5B7B6D] bg-[#FAF8F5] hover:bg-[#5B7B6D]/10 rounded-xl font-sans transition-all flex items-center gap-1 border border-[#5B7B6D]/20 active:scale-95 cursor-pointer font-medium"
+                      title="生成文章精美长图分享"
                     >
-                      <Headphones className="w-3 h-3 text-[#5B7B6D]" />
-                      <span>{TTS_VOICES.find(v => v.id === ttsSelectedVoice)?.name.split(' ')[0] || '选音色'}</span>
+                      <Share2 className="w-3 h-3 text-[#E88765]" />
+                      <span>分享</span>
                     </button>
                     <button
+                      type="button"
                       onClick={() => handlePlayTts(`${readerStory.title}。${readerStory.content}`)}
                       disabled={isTtsGenerating}
-                      className="flex items-center gap-1 text-xs px-3 py-1 bg-[#FDF0EB] text-[#E88765] rounded-full border border-[#E88765]/30 font-medium hover:bg-[#E88765] hover:text-white transition-all font-sans active:scale-95"
+                      className="flex items-center gap-1 text-xs px-3.5 py-1.5 bg-[#FDF0EB] text-[#E88765] rounded-xl border border-[#E88765]/30 font-medium hover:bg-[#E88765] hover:text-white transition-all font-sans active:scale-95 cursor-pointer disabled:opacity-50"
                     >
                       <Volume2 className={`w-3.5 h-3.5 ${isTtsGenerating ? 'animate-bounce' : ''}`} />
                       <span>{isTtsGenerating ? 'AI 语音合成中...' : '朗读'}</span>
                     </button>
                   </div>
                 </div>
-                <span className="text-xs font-bold text-[#E88765] tracking-widest uppercase font-sans">{readerStory.chapter}</span>
-                <h2 className="text-2xl font-bold text-[#2B332E] mb-4 font-serif">{readerStory.title}</h2>
-                <div className="text-sm text-[#2B332E] leading-loose whitespace-pre-line font-serif">
+                <div className="space-y-2 pt-1">
+                  <span className="text-xs font-mono font-bold text-[#E88765] tracking-widest px-2.5 py-0.5 rounded-full bg-[#FAF8F5] border border-[#E88765]/20 uppercase inline-block">
+                    {readerStory.chapter}
+                  </span>
+                  <h2 className="text-2xl sm:text-3xl font-bold text-[#2B332E] font-serif leading-tight">
+                    {readerStory.title}
+                  </h2>
+                </div>
+                <div className="text-sm sm:text-base text-[#2B332E] leading-loose whitespace-pre-line font-serif pt-3 border-t border-[#5B7B6D]/10">
                   {readerStory.content}
                 </div>
               </div>
-              <div className="text-center text-[10px] text-[#6E7C75]/50 border-t border-[#5B7B6D]/10 pt-4 font-sans">
-                《拾年》电子书阅读模式 · {readerStory.date}
+              <div className="text-center text-[11px] text-[#6E7C75]/60 border-t border-[#5B7B6D]/10 pt-4 font-serif">
+                《拾年》时光长卷阅读模式 · {readerStory.date}
               </div>
             </motion.div>
           )}
@@ -2741,18 +3401,6 @@ export default function App() {
               transition={{ duration: 0.28, ease: [0.25, 0.1, 0.25, 1] }}
               className="space-y-4"
             >
-              <div className="flex justify-between items-center mb-1">
-                <h2 className="text-lg font-bold text-[#2B332E] tracking-wider font-serif">
-                  拾物阁 ({data.artifacts.filter(item => selectedYear === 'all' || getYearFromDate(item.date) === selectedYear).length})
-                </h2>
-                <button
-                  onClick={() => setActiveModal('addArtifact')}
-                  className="flex items-center gap-1 text-xs px-3 py-1.5 bg-[#5B7B6D] text-white rounded-xl shadow-sm hover:bg-[#3E564B] font-medium"
-                >
-                  <Plus className="w-3.5 h-3.5" /> 收藏新物
-                </button>
-              </div>
-
               {/* Year Filter Status Banner */}
               {selectedYear !== 'all' && (
                 <div className="p-3 bg-[#5B7B6D]/10 rounded-2xl border border-[#5B7B6D]/20 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 text-xs text-[#5B7B6D] font-sans shadow-2xs">
@@ -2840,15 +3488,29 @@ export default function App() {
                           >
                             <Volume2 className="w-3 h-3" /> 听旧物
                           </button>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              requestDelete('artifacts', item.id, item.name);
-                            }}
-                            className="text-[#6E7C75]/40 hover:text-red-500 p-1"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                requestDelete('artifacts', item.id, item.name);
+                              }}
+                              className="text-[#6E7C75]/40 hover:text-red-500 p-1"
+                              title="删除旧物"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setShareMemoirItem({ type: 'artifact', data: item });
+                                setIsShareModalOpen(true);
+                              }}
+                              className="text-[#5B7B6D] hover:text-[#E88765] p-1 flex items-center gap-0.5 text-xs font-sans"
+                              title="生成旧物珍藏海报"
+                            >
+                              <Share2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
                         </div>
                       </motion.div>
                     ))}
@@ -3564,7 +4226,7 @@ export default function App() {
                         disabled={isAiGenImageLoading}
                         className="text-[11px] text-[#E88765] hover:text-[#D46C49] flex items-center gap-1 font-medium transition-colors"
                       >
-                        <Sparkles className="w-3 h-3" />
+                        <Wand2 className="w-3 h-3" />
                         {isAiGenImageLoading ? '绘图中...' : '🎨 AI 生成旧物画'}
                       </button>
                     }
@@ -3653,390 +4315,6 @@ export default function App() {
                   <textarea name="content" required rows={4} placeholder="写给未来的话语..." className="w-full p-3 rounded-xl border border-[#5B7B6D]/20 bg-white focus:outline-none focus:border-[#5B7B6D]" />
                   <button type="submit" className="w-full py-3 bg-[#5B7B6D] text-white font-bold rounded-xl shadow-sm hover:bg-[#3E564B] transition-all">封存胶囊</button>
                 </form>
-              )}
-
-              {/* Modal: Backup, Password, and Gemini Settings */}
-              {activeModal === 'backup' && (
-                <div className="space-y-4 text-xs font-sans">
-                  {/* Paper & Ink Micro-Haptic Audio Settings */}
-                  <div className="p-3.5 bg-white rounded-2xl border border-[#5B7B6D]/15 space-y-2.5">
-                    <div className="flex justify-between items-center">
-                      <h4 className="font-bold text-[#2B332E] flex items-center gap-1.5 text-xs font-serif">
-                        {isSoundMuted ? <VolumeX className="w-4 h-4 text-[#6E7C75]" /> : <Volume2 className="w-4 h-4 text-[#E88765]" />}
-                        纸墨触觉微音效
-                      </h4>
-                      <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium font-sans ${
-                        !isSoundMuted ? 'bg-[#5B7B6D]/10 text-[#5B7B6D]' : 'bg-stone-100 text-stone-500'
-                      }`}>
-                        {!isSoundMuted ? '已开启' : '已静音'}
-                      </span>
-                    </div>
-                    <p className="text-[11px] text-[#6E7C75] leading-relaxed">
-                      开启后在翻阅时光卡片、切换年代刻度、拆开信笺与封存印章时伴有轻微、空灵温润的纸墨物理触觉轻响。
-                    </p>
-                    <div className="flex items-center justify-between pt-1">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const muted = sound.toggleMute();
-                          setIsSoundMuted(muted);
-                          if (!muted) sound.playWaterDrop();
-                          showToast(muted ? '已静音纸墨音效' : '已开启纸墨物理微音效');
-                        }}
-                        className={`flex-1 py-2 px-3 rounded-xl border text-xs font-medium transition-all flex items-center justify-center gap-1.5 shadow-2xs active:scale-95 ${
-                          !isSoundMuted
-                            ? 'bg-[#F2EFE9] text-[#5B7B6D] border-[#5B7B6D]/20 hover:bg-[#E88765]/10'
-                            : 'bg-white text-[#6E7C75] border-[#5B7B6D]/15 hover:bg-[#FAF8F5]'
-                        }`}
-                      >
-                        {isSoundMuted ? (
-                          <>
-                            <Volume2 className="w-3.5 h-3.5 text-[#5B7B6D]" />
-                            <span>点击开启纸墨音效</span>
-                          </>
-                        ) : (
-                          <>
-                            <VolumeX className="w-3.5 h-3.5 text-[#6E7C75]" />
-                            <span>静音纸墨音效</span>
-                          </>
-                        )}
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Security PIN & Persistent Lock Section */}
-                  <div className="p-3.5 bg-white rounded-2xl border border-[#5B7B6D]/15 space-y-2.5">
-                    <div className="flex justify-between items-center">
-                      <h4 className="font-bold text-[#2B332E] flex items-center gap-1.5 text-xs font-serif">
-                        <ShieldCheck className="w-4 h-4 text-[#E88765]" /> 私人空间安全与锁定
-                      </h4>
-                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#5B7B6D]/10 text-[#5B7B6D] font-medium font-sans">
-                        已启用持久防护
-                      </span>
-                    </div>
-                    <p className="text-[11px] text-[#6E7C75] leading-relaxed">
-                      锁定后即使彻底关闭后台或重启 App，重新打开依旧保持锁定状态，需输入口令方可进入。
-                    </p>
-                    <div className="flex gap-2 pt-1">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setIsLocked(true);
-                          localStorage.setItem('shinian_is_locked', 'true');
-                          setActiveModal(null);
-                          showToast('私人空间已锁定');
-                        }}
-                        className="flex-1 py-2 bg-[#5B7B6D] text-white rounded-xl text-xs font-bold hover:bg-[#3E564B] transition-all flex items-center justify-center gap-1.5 shadow-2xs"
-                      >
-                        <Lock className="w-3.5 h-3.5" /> 即刻锁定空间
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setActiveModal(null);
-                          setIsChangingPin(true);
-                        }}
-                        className="py-2 px-3 bg-[#FAF8F5] text-[#E88765] border border-[#E88765]/30 rounded-xl text-xs font-medium hover:bg-[#FDF0EB] transition-all flex items-center justify-center gap-1"
-                      >
-                        <KeyRound className="w-3.5 h-3.5" /> 修改口令
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Minimalist AI Engine Settings */}
-                  <div className="p-3.5 bg-[#FAF8F5] rounded-2xl border border-[#5B7B6D]/20 space-y-3">
-                    <div className="flex justify-between items-center">
-                      <h4 className="font-bold text-[#2B332E] flex items-center gap-1.5 text-xs font-serif">
-                        <Sparkles className="w-4 h-4 text-[#E88765]" /> AI 智能引擎
-                      </h4>
-                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-white border border-[#5B7B6D]/20 text-[#5B7B6D] font-medium font-sans">
-                        {aiEngine === 'deepseek' ? 'DeepSeek 模式' : '标准模型'}
-                      </span>
-                    </div>
-
-                    {/* Engine Selection Radios */}
-                    <div className="grid grid-cols-2 gap-2">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setAiEngine('gemini');
-                          localStorage.setItem('shinian_ai_engine', 'gemini');
-                          showToast('已切换为标准 AI 模型');
-                        }}
-                        className={`p-2.5 rounded-xl border text-left transition-all ${
-                          aiEngine === 'gemini'
-                            ? 'bg-white border-[#5B7B6D] ring-1 ring-[#5B7B6D]/30 shadow-xs'
-                            : 'bg-white/60 border-[#5B7B6D]/15 hover:bg-white'
-                        }`}
-                      >
-                        <div className="flex items-center justify-between mb-1">
-                          <span className="font-bold text-[11px] text-[#2B332E] flex items-center gap-1">
-                            ⚡ 标准模型
-                          </span>
-                          {aiEngine === 'gemini' && <Check className="w-3.5 h-3.5 text-[#5B7B6D]" />}
-                        </div>
-                        <p className="text-[10px] text-[#6E7C75] leading-relaxed">内置快速响应，支持回忆对谈与识图</p>
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setAiEngine('deepseek');
-                          localStorage.setItem('shinian_ai_engine', 'deepseek');
-                          showToast('已切换为 DeepSeek 引擎');
-                        }}
-                        className={`p-2.5 rounded-xl border text-left transition-all ${
-                          aiEngine === 'deepseek'
-                            ? 'bg-white border-[#E88765] ring-1 ring-[#E88765]/30 shadow-xs'
-                            : 'bg-white/60 border-[#5B7B6D]/15 hover:bg-white'
-                        }`}
-                      >
-                        <div className="flex items-center justify-between mb-1">
-                          <span className="font-bold text-[11px] text-[#2B332E] flex items-center gap-1">
-                            🐉 DeepSeek
-                          </span>
-                          {aiEngine === 'deepseek' && <Check className="w-3.5 h-3.5 text-[#E88765]" />}
-                        </div>
-                        <p className="text-[10px] text-[#6E7C75] leading-relaxed">DeepSeek-V3 深度文本推理</p>
-                      </button>
-                    </div>
-
-                    {/* Conditional DeepSeek API Key Input */}
-                    {aiEngine === 'deepseek' && (
-                      <div className="space-y-1.5 pt-1 animate-fadeIn bg-white p-2.5 rounded-xl border border-[#E88765]/25">
-                        <label className="text-[10px] text-[#2B332E] font-bold flex items-center justify-between">
-                          <span>DeepSeek API Key (sk-...)：</span>
-                          <a
-                            href="https://platform.deepseek.com"
-                            target="_blank"
-                            rel="noreferrer"
-                            className="text-[#E88765] hover:underline"
-                          >
-                            获取 Key &gt;
-                          </a>
-                        </label>
-                        <input
-                          type="password"
-                          value={deepSeekKey}
-                          onChange={(e) => {
-                            setDeepSeekKey(e.target.value);
-                            localStorage.setItem('shinian_deepseek_key', e.target.value);
-                          }}
-                          placeholder="粘贴你的 DeepSeek API Key"
-                          className="w-full p-2 rounded-lg border border-[#E88765]/30 bg-[#FAF8F5] focus:outline-none font-mono text-[11px]"
-                        />
-                      </div>
-                    )}
-                  </div>
-
-                  {/* AI Voice Selection Compact Trigger Card (Optimized for Mobile) */}
-                  {(() => {
-                    const currentVoiceObj = TTS_VOICES.find(v => v.id === ttsSelectedVoice) || TTS_VOICES[0];
-                    return (
-                      <div
-                        onClick={() => setIsVoicePickerModalOpen(true)}
-                        className="p-3.5 bg-white rounded-2xl border border-[#5B7B6D]/15 hover:border-[#5B7B6D]/40 transition-all cursor-pointer flex flex-col xs:flex-row xs:items-center justify-between gap-3 shadow-2xs group"
-                      >
-                        <div className="flex items-center gap-3 min-w-0 flex-1">
-                          <div className="w-10 h-10 rounded-xl bg-[#FAF8F5] border border-[#5B7B6D]/20 flex items-center justify-center shrink-0 group-hover:bg-[#5B7B6D]/10 transition-colors">
-                            <Headphones className="w-5 h-5 text-[#5B7B6D]" />
-                          </div>
-                          <div className="min-w-0 flex-1">
-                            <div className="flex flex-wrap items-center gap-1.5">
-                              <h4 className="font-bold text-[#2B332E] text-xs font-serif whitespace-nowrap">AI 朗诵音色偏好</h4>
-                              <span className={`text-[10px] px-2 py-0.5 rounded-md font-sans font-medium shrink-0 whitespace-nowrap ${
-                                currentVoiceObj.gender === '女声'
-                                  ? 'bg-[#FDF0EB] text-[#E88765]'
-                                  : currentVoiceObj.gender === '男声'
-                                  ? 'bg-[#5B7B6D]/10 text-[#5B7B6D]'
-                                  : 'bg-stone-100 text-stone-600'
-                              }`}>
-                                {currentVoiceObj.gender} · {currentVoiceObj.name}
-                              </span>
-                            </div>
-                            <p className="text-[10px] text-[#6E7C75] truncate mt-0.5 leading-tight">{currentVoiceObj.desc}</p>
-                          </div>
-                        </div>
-
-                        <div className="flex items-center justify-center gap-1 shrink-0 text-[#5B7B6D] text-[11px] font-medium font-sans bg-[#FAF8F5] group-hover:bg-[#5B7B6D] group-hover:text-white px-3 py-1.5 rounded-xl border border-[#5B7B6D]/20 transition-all shadow-2xs self-end xs:self-center">
-                          <span className="whitespace-nowrap">选择音色</span>
-                          <ChevronRight className="w-3.5 h-3.5" />
-                        </div>
-                      </div>
-                    );
-                  })()}
-
-                  {/* Export & Import Full Offline Archive */}
-                  <div className="p-3.5 bg-white rounded-2xl border border-[#5B7B6D]/15 space-y-3">
-                    <div className="flex justify-between items-center">
-                      <h4 className="font-bold text-[#2B332E] flex items-center gap-1.5 text-xs font-serif">
-                        <Database className="w-4 h-4 text-[#5B7B6D]" /> 离线档案备份与恢复
-                      </h4>
-                      <span className="text-[10px] text-[#6E7C75]">纯本地单机存储</span>
-                    </div>
-
-                    {/* Export Card */}
-                    <div className="p-3 bg-[#FAF8F5] rounded-xl border border-[#5B7B6D]/15 space-y-2">
-                      <div className="flex items-center justify-between">
-                        <span className="font-medium text-[#2B332E] text-[11px] flex items-center gap-1">
-                          <Download className="w-3.5 h-3.5 text-[#5B7B6D]" /> 导出全量离线档案
-                        </span>
-                        <span className="text-[10px] text-[#6E7C75]">
-                          共 {data.timeline.length + data.people.length + data.stories.length + data.artifacts.length + data.letters.length} 项记录
-                        </span>
-                      </div>
-                      <p className="text-[#6E7C75] text-[10px]">将全部时间轴、人物档案、故事长篇、旧物及寄年胶囊打包下载保存为标准 JSON 备份包。</p>
-                      <button
-                        type="button"
-                        onClick={handleExport}
-                        className="w-full py-2 bg-[#5B7B6D] text-white font-bold rounded-xl flex items-center justify-center gap-2 hover:bg-[#3E564B] transition-all shadow-xs"
-                      >
-                        <Download className="w-3.5 h-3.5" /> 下载离线档案包 (.json)
-                      </button>
-                    </div>
-
-                    {/* Import Card / Center */}
-                    <div className="p-3 bg-[#FAF8F5] rounded-xl border border-[#5B7B6D]/15 space-y-2.5">
-                      <div className="flex items-center justify-between">
-                        <span className="font-medium text-[#2B332E] text-[11px] flex items-center gap-1">
-                          <Upload className="w-3.5 h-3.5 text-[#E88765]" /> 导入恢复离线档案
-                        </span>
-                        {importPreview && (
-                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 font-medium">
-                            已解析文件
-                          </span>
-                        )}
-                      </div>
-
-                      {!importPreview ? (
-                        <div
-                          onDragOver={(e) => {
-                            e.preventDefault();
-                            setIsDraggingFile(true);
-                          }}
-                          onDragLeave={() => setIsDraggingFile(false)}
-                          onDrop={(e) => {
-                            e.preventDefault();
-                            setIsDraggingFile(false);
-                            const file = e.dataTransfer.files?.[0];
-                            if (file) processBackupFile(file);
-                          }}
-                          className={`p-4 rounded-xl border-2 border-dashed text-center transition-all cursor-pointer relative ${
-                            isDraggingFile
-                              ? 'border-[#E88765] bg-[#FDF0EB]/60'
-                              : 'border-[#5B7B6D]/20 bg-white hover:border-[#5B7B6D]/50'
-                          }`}
-                        >
-                          <input
-                            type="file"
-                            accept=".json"
-                            onChange={handleImport}
-                            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                          />
-                          <FileJson className="w-7 h-7 mx-auto text-[#5B7B6D]/60 mb-1.5" />
-                          <p className="text-[11px] font-bold text-[#2B332E]">点击选择或拖放 JSON 备份文件至此</p>
-                          <p className="text-[10px] text-[#6E7C75] mt-0.5">支持从其他设备或先前导出的《拾年》离线数据包</p>
-                        </div>
-                      ) : (
-                        <div className="p-3 bg-white rounded-xl border border-[#5B7B6D]/20 space-y-3 animate-fadeIn">
-                          <div className="flex items-center justify-between border-b border-[#5B7B6D]/10 pb-2">
-                            <div className="flex items-center gap-2">
-                              <FileJson className="w-4 h-4 text-[#5B7B6D]" />
-                              <span className="font-bold text-[11px] text-[#2B332E] truncate max-w-[180px]">{importPreview.filename}</span>
-                            </div>
-                            <button
-                              type="button"
-                              onClick={() => setImportPreview(null)}
-                              className="text-[10px] text-[#6E7C75] hover:text-[#E88765] underline"
-                            >
-                              重新选择
-                            </button>
-                          </div>
-
-                          {/* Data preview badges */}
-                          <div className="grid grid-cols-3 sm:grid-cols-5 gap-1.5 text-center text-[10px]">
-                            <div className="p-1.5 rounded-lg bg-[#FAF8F5] border border-[#5B7B6D]/10">
-                              <span className="block text-[#6E7C75] text-[9px]">时光轴</span>
-                              <strong className="text-[#5B7B6D] font-bold">{importPreview.timelineCount}</strong>
-                            </div>
-                            <div className="p-1.5 rounded-lg bg-[#FAF8F5] border border-[#5B7B6D]/10">
-                              <span className="block text-[#6E7C75] text-[9px]">拾人册</span>
-                              <strong className="text-[#5B7B6D] font-bold">{importPreview.peopleCount}</strong>
-                            </div>
-                            <div className="p-1.5 rounded-lg bg-[#FAF8F5] border border-[#5B7B6D]/10">
-                              <span className="block text-[#6E7C75] text-[9px]">故事篇</span>
-                              <strong className="text-[#5B7B6D] font-bold">{importPreview.storiesCount}</strong>
-                            </div>
-                            <div className="p-1.5 rounded-lg bg-[#FAF8F5] border border-[#5B7B6D]/10">
-                              <span className="block text-[#6E7C75] text-[9px]">旧物阁</span>
-                              <strong className="text-[#5B7B6D] font-bold">{importPreview.artifactsCount}</strong>
-                            </div>
-                            <div className="p-1.5 rounded-lg bg-[#FAF8F5] border border-[#5B7B6D]/10">
-                              <span className="block text-[#6E7C75] text-[9px]">寄年胶囊</span>
-                              <strong className="text-[#5B7B6D] font-bold">{importPreview.lettersCount}</strong>
-                            </div>
-                          </div>
-
-                          {/* Import Mode Selector */}
-                          <div className="space-y-1.5">
-                            <label className="text-[10px] text-[#2B332E] font-bold block">选择恢复导入方式：</label>
-                            <div className="grid grid-cols-2 gap-2">
-                              <button
-                                type="button"
-                                onClick={() => setImportMode('merge')}
-                                className={`p-2 rounded-xl border text-left transition-all ${
-                                  importMode === 'merge'
-                                    ? 'bg-[#FAF8F5] border-[#5B7B6D] ring-1 ring-[#5B7B6D]/30'
-                                    : 'bg-white border-stone-200'
-                                }`}
-                              >
-                                <div className="flex items-center justify-between mb-0.5">
-                                  <span className="font-bold text-[10px] text-[#2B332E]">增量合并 (推荐)</span>
-                                  {importMode === 'merge' && <Check className="w-3 h-3 text-[#5B7B6D]" />}
-                                </div>
-                                <p className="text-[9px] text-[#6E7C75]">保留现有数据，仅合入不重复的新增记录</p>
-                              </button>
-
-                              <button
-                                type="button"
-                                onClick={() => setImportMode('overwrite')}
-                                className={`p-2 rounded-xl border text-left transition-all ${
-                                  importMode === 'overwrite'
-                                    ? 'bg-[#FDF0EB] border-[#E88765] ring-1 ring-[#E88765]/30'
-                                    : 'bg-white border-stone-200'
-                                }`}
-                              >
-                                <div className="flex items-center justify-between mb-0.5">
-                                  <span className="font-bold text-[10px] text-[#E88765]">全量覆盖还原</span>
-                                  {importMode === 'overwrite' && <Check className="w-3 h-3 text-[#E88765]" />}
-                                </div>
-                                <p className="text-[9px] text-[#6E7C75]">清空当前记录，完全以该备份为准</p>
-                              </button>
-                            </div>
-                          </div>
-
-                          <div className="flex gap-2 pt-1">
-                            <button
-                              type="button"
-                              onClick={() => setImportPreview(null)}
-                              className="flex-1 py-2 rounded-xl border border-stone-200 text-[#6E7C75] hover:bg-stone-50 text-[11px]"
-                            >
-                              取消
-                            </button>
-                            <button
-                              type="button"
-                              onClick={handleConfirmImport}
-                              className="flex-2 py-2 bg-[#E88765] text-white font-bold rounded-xl hover:bg-[#E88765]/90 transition-all text-[11px] shadow-xs flex items-center justify-center gap-1.5"
-                            >
-                              <CheckCircle2 className="w-3.5 h-3.5" />
-                              确认恢复档案
-                            </button>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
               )}
 
             </div>
@@ -4391,6 +4669,16 @@ export default function App() {
                     title="删除旧物"
                   >
                     <Trash2 className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={() => {
+                      setShareMemoirItem({ type: 'artifact', data: selectedArtifact });
+                      setIsShareModalOpen(true);
+                    }}
+                    className="p-1.5 text-[#5B7B6D] hover:text-[#E88765] rounded-lg hover:bg-[#5B7B6D]/10 transition-all"
+                    title="生成旧物海报分享"
+                  >
+                    <Share2 className="w-4 h-4" />
                   </button>
                   <button onClick={() => setSelectedArtifact(null)} className="p-1 text-[#6E7C75] hover:text-[#2B332E]">
                     <X className="w-5 h-5" />
@@ -5152,7 +5440,7 @@ export default function App() {
 
         {/* 记忆卡片艺术工坊（拍立得 / 电影票根高清海报生成与多端分享） */}
         <MemoirCardStudioModal
-          item={shareMemoirItem}
+          source={shareMemoirItem}
           isOpen={isShareModalOpen}
           onClose={() => {
             setIsShareModalOpen(false);
@@ -5164,6 +5452,13 @@ export default function App() {
         {/* 常驻灵动黑胶唱机（全网任意搜歌播放 + 复古复调大唱盘） */}
         <VinylMusicPlayer
           onShowToast={(msg) => showToast(msg)}
+        />
+
+        {/* 全屏时光禅意时钟 */}
+        <FullscreenZenClock
+          isOpen={isFullscreenClockOpen}
+          onClose={() => setIsFullscreenClockOpen(false)}
+          theme={currentTheme}
         />
 
       </div>
@@ -5184,150 +5479,67 @@ function SplashScreen({ theme, onDismiss }: SplashScreenProps) {
       animate={{ opacity: 1 }}
       exit={{
         opacity: 0,
-        scale: 1.015,
-        transition: { duration: 0.7, ease: [0.22, 1, 0.36, 1] }
+        scale: 1.02,
+        transition: { duration: 0.6, ease: [0.22, 1, 0.36, 1] }
       }}
       style={{ willChange: 'opacity, transform' }}
-      className="fixed inset-0 z-[9999] w-screen h-screen flex flex-col items-center justify-between p-6 sm:p-8 pt-[max(1.5rem,env(safe-area-inset-top))] pb-[max(1.5rem,env(safe-area-inset-bottom))] bg-[#FAF8F5] overflow-hidden select-none cursor-pointer transform-gpu"
+      className="fixed inset-0 z-[9999] w-screen h-screen flex flex-col items-center justify-center p-6 bg-[#FAF8F5] overflow-hidden select-none cursor-pointer transform-gpu"
       onClick={onDismiss}
     >
-      {/* Background Ambient Fluid Glows (Hardware Accelerated) */}
+      {/* Background Ambient Fluid Glows (100% Identical to Fullscreen Zen Clock) */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        {/* Ambient Top Left Glow */}
         <div
-          className="absolute -top-20 -left-20 w-80 h-80 rounded-full opacity-35 transform-gpu transition-colors duration-700"
-          style={{
-            background: `radial-gradient(circle, ${theme.primary} 0%, rgba(250, 248, 245, 0) 70%)`
-          }}
+          className="absolute -top-32 -left-32 w-[30rem] h-[30rem] rounded-full opacity-35 filter blur-3xl transition-colors duration-700"
+          style={{ backgroundColor: theme.primary }}
         />
-        {/* Ambient Bottom Right Glow */}
         <div
-          className="absolute -bottom-20 -right-20 w-96 h-96 rounded-full opacity-30 transform-gpu transition-colors duration-700"
-          style={{
-            background: `radial-gradient(circle, ${theme.accent} 0%, rgba(250, 248, 245, 0) 70%)`
-          }}
+          className="absolute -bottom-32 -right-32 w-[30rem] h-[30rem] rounded-full opacity-25 filter blur-3xl transition-colors duration-700"
+          style={{ backgroundColor: theme.accent }}
         />
-        {/* Subtle Paper Texture */}
-        <div className="absolute inset-0 paper-texture opacity-40" />
+        <div className="absolute inset-0 paper-texture opacity-30" />
       </div>
 
-      {/* Top Header: Pure Minimalist Glass Badge */}
-      <div className="w-full flex items-center justify-center relative z-10 pt-1 shrink-0">
+      {/* Center Display: Pure Minimalist Logo & Typography */}
+      <div className="relative z-10 flex flex-col items-center justify-center text-center space-y-6">
+        {/* Artistic Calligraphy Logo */}
         <motion.div
-          initial={{ opacity: 0, y: -6 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.4, delay: 0.05 }}
-          className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-white/70 border border-[#5B7B6D]/15 shadow-2xs"
+          initial={{ opacity: 0, scale: 0.92, y: 8 }}
+          animate={{ opacity: 1, scale: 1, y: 0 }}
+          transition={{ duration: 0.7, ease: [0.22, 1, 0.36, 1] }}
+          className="relative"
         >
-          <span
-            className="w-1.5 h-1.5 rounded-full animate-ping"
-            style={{ backgroundColor: theme.primary, animationDuration: '3s' }}
-          />
-          <span className="text-[10px] text-[#526058] tracking-[0.3em] font-serif uppercase pl-[0.3em]">
-            MEMOIRE · 拾年
-          </span>
-        </motion.div>
-      </div>
-
-      {/* Center Hero: Floating Dynamic Frosted Glass Card (Zero-Reflow Flexbox with my-auto) */}
-      <div className="flex flex-col items-center justify-center relative z-10 my-auto w-full max-w-sm px-3 shrink-0">
-        <motion.div
-          initial={{ opacity: 0, scale: 0.95 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{
-            duration: 0.6,
-            delay: 0.08,
-            ease: [0.22, 1, 0.36, 1]
-          }}
-          className="w-full bg-white/80 border border-white/90 shadow-xl rounded-[32px] p-7 sm:p-9 relative overflow-hidden flex flex-col items-center text-center transition-all transform-gpu"
-        >
-          {/* Top Lens Inner Glow */}
-          <div className="absolute inset-x-0 top-0 h-1/2 bg-gradient-to-b from-white/50 to-transparent pointer-events-none rounded-t-[32px]" />
-
-          {/* Chrono Index Label */}
-          <div className="flex items-center gap-2.5 mb-5 relative z-10">
-            <div className="w-6 h-[0.5px] bg-[#5B7B6D]/30" />
-            <span className="text-[9px] sm:text-[10px] tracking-[0.45em] text-[#6E7C75] uppercase font-sans font-medium pl-[0.45em]">
-              THE DECADE CHRONICLE
-            </span>
-            <div className="w-6 h-[0.5px] bg-[#5B7B6D]/30" />
-          </div>
-
-          {/* Main Title: 拾 年 */}
-          <motion.div
-            initial={{ opacity: 0, y: 4 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5, delay: 0.15, ease: [0.22, 1, 0.36, 1] }}
-            className="relative mb-4 z-10"
-          >
-            <div
-              className="absolute inset-0 blur-lg opacity-20 -z-10 scale-125"
-              style={{ backgroundColor: theme.primary }}
-            />
-
-            <h1
-              className="text-6xl sm:text-7xl font-bold font-serif text-[#2B332E] select-none drop-shadow-2xs tracking-[0.32em] pl-[0.32em]"
-              style={{
-                fontFamily: '"Noto Serif SC", "Ma Shan Zheng", Georgia, serif'
-              }}
-            >
-              拾年
-            </h1>
-          </motion.div>
-
-          {/* Minimalist Seal Ornament Line */}
-          <motion.div
-            initial={{ scaleX: 0, opacity: 0 }}
-            animate={{ scaleX: 1, opacity: 1 }}
-            transition={{ duration: 0.45, delay: 0.25, ease: 'easeOut' }}
-            className="flex items-center justify-center gap-2 mb-5 w-full relative z-10"
-          >
-            <div className="h-[0.5px] w-10 bg-gradient-to-r from-transparent to-[#5B7B6D]/35" />
-            <div
-              className="w-1.5 h-1.5 rotate-45 border"
-              style={{ borderColor: theme.accent, backgroundColor: `${theme.accent}35` }}
-            />
-            <div className="h-[0.5px] w-10 bg-gradient-to-l from-transparent to-[#5B7B6D]/35" />
-          </motion.div>
-
-          {/* Poetic Subtitles */}
-          <motion.div
-            initial={{ opacity: 0, y: 4 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5, delay: 0.3, ease: [0.22, 1, 0.36, 1] }}
-            className="space-y-2 relative z-10"
-          >
-            <p
-              className="text-base sm:text-lg font-bold font-serif tracking-[0.25em] pl-[0.25em] select-none"
-              style={{ color: theme.primaryDark }}
-            >
-              岁华清照 · 拾年归处
-            </p>
-
-            <p className="text-[11px] sm:text-xs text-[#6E7C75] font-serif tracking-[0.2em] pl-[0.2em] opacity-90 leading-relaxed">
-              拾起十载光阴 · 藏于温润心隅
-            </p>
-          </motion.div>
-        </motion.div>
-      </div>
-
-      {/* Bottom Footer: Hardware-Accelerated Progress Track */}
-      <div className="w-full flex flex-col items-center gap-3 relative z-10 pb-1 shrink-0">
-        <div className="w-36 h-1.5 bg-white/70 border border-[#5B7B6D]/20 rounded-full p-[1px] shadow-2xs overflow-hidden">
           <div
-            className="h-full rounded-full splash-progress-bar shadow-xs"
-            style={{
-              backgroundColor: theme.primary
-            }}
+            className="absolute inset-0 blur-2xl opacity-30 -z-10 scale-150"
+            style={{ backgroundColor: theme.primary }}
           />
-        </div>
+          <h1
+            className="text-7xl sm:text-8xl md:text-9xl font-bold font-serif tracking-[0.35em] pl-[0.35em] drop-shadow-sm select-none"
+            style={{
+              fontFamily: '"Noto Serif SC", "Ma Shan Zheng", Georgia, serif',
+              color: theme.primaryDark
+            }}
+          >
+            拾年
+          </h1>
+        </motion.div>
 
-        <p className="text-[10px] text-[#6E7C75]/70 font-serif tracking-widest">
-          轻触开启时光
-        </p>
-
-        {/* iOS Home Indicator Bar */}
-        <div className="w-32 h-1 bg-black/15 rounded-full mt-0.5" />
+        {/* Poetic Subtitles */}
+        <motion.div
+          initial={{ opacity: 0, y: 6 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.6, delay: 0.2, ease: [0.22, 1, 0.36, 1] }}
+          className="space-y-2"
+        >
+          <p
+            className="text-base sm:text-lg font-serif font-bold tracking-[0.3em] pl-[0.3em] select-none"
+            style={{ color: theme.primaryDark }}
+          >
+            岁华清照 · 拾年归处
+          </p>
+          <p className="text-xs text-[#6E7C75] font-serif tracking-[0.2em] pl-[0.2em] opacity-80 select-none">
+            愿岁月不负所期 · 拾光长卷
+          </p>
+        </motion.div>
       </div>
     </motion.div>
   );

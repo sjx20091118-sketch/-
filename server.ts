@@ -466,7 +466,7 @@ app.post('/api/ai/tts', async (req, res) => {
   }
 });
 
-// ==================== Free Music Streaming API ====================
+// ==================== 全网音乐核心解析与播放引擎 (Music Core Engine) ====================
 
 function cleanSongText(str: string): string {
   if (!str) return '';
@@ -481,6 +481,22 @@ function cleanSongText(str: string): string {
     .trim();
 }
 
+const VERIFIED_TRACK_RID_MAP: Record<string, string> = {
+  mitsuha: '413296884',
+  sparkle: '14815413',
+  sunnyday: '51685512',
+  wind: '26445261',
+  qilixiang: '493628806',
+  dandelion: '544168841',
+  summerwind: '198345447',
+  lemon: '180732768',
+  daytime: '90557740',
+  always_with_me: '3282245',
+  river_flows: '642055',
+  summer_joe: '714777',
+};
+
+// 全网多源聚合搜索
 app.get('/api/music/search', async (req, res) => {
   try {
     const q = String(req.query.q || '').trim();
@@ -488,88 +504,209 @@ app.get('/api/music/search', async (req, res) => {
       return res.json({ songs: [] });
     }
 
-    const searchUrl = `http://search.kuwo.cn/r.s?client=kt&all=${encodeURIComponent(q)}&pn=0&rn=18&vipver=1&ft=music&encoding=utf8&rformat=json&mobi=1`;
+    const searchUrl = `http://search.kuwo.cn/r.s?client=kt&all=${encodeURIComponent(q)}&pn=0&rn=20&vipver=1&ft=music&encoding=utf8&rformat=json&mobi=1`;
     const response = await fetch(searchUrl, {
+      signal: AbortSignal.timeout(5000),
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
       },
     });
 
-    if (!response.ok) {
-      return res.json({ songs: [] });
-    }
-
-    const rawText = await response.text();
-    let data: any = {};
-    try {
-      data = JSON.parse(rawText);
-    } catch {
-      // Sometimes Kuwo returns relaxed JSON without quotes on keys
+    let songs: any[] = [];
+    if (response.ok) {
+      const rawText = await response.text();
+      let data: any = {};
       try {
-        const fixed = rawText.replace(/'/g, '"');
-        data = JSON.parse(fixed);
+        data = JSON.parse(rawText);
       } catch {
-        data = {};
+        try {
+          const fixed = rawText.replace(/'/g, '"');
+          data = JSON.parse(fixed);
+        } catch {
+          data = {};
+        }
       }
+
+      const abslist = data.abslist || [];
+      songs = abslist.map((item: any) => {
+        const id = item.DC_TARGETID || (item.MUSICRID ? String(item.MUSICRID).replace(/^MUSIC_/, '') : '');
+        const durationSec = parseInt(item.DURATION || '0', 10);
+        const minutes = Math.floor(durationSec / 60);
+        const seconds = durationSec % 60;
+        const durationFormatted = `${minutes}:${seconds < 10 ? '0' : ''}${seconds}`;
+
+        let directCover = '';
+        if (item.web_albumpic_short) {
+          directCover = `https://img4.kuwo.cn/star/albumcover/${item.web_albumpic_short.replace(/^\d+\//, '300/')}`;
+        } else if (item.web_artistpic_short) {
+          directCover = `https://img4.kuwo.cn/star/starheads/${item.web_artistpic_short.replace(/^\d+\//, '300/')}`;
+        } else if (item.MVPIC) {
+          directCover = item.MVPIC.replace(/^http:/, 'https:');
+        }
+
+        return {
+          id,
+          title: cleanSongText(item.SONGNAME || '未知曲目'),
+          artist: cleanSongText(item.ARTIST || '未知歌手'),
+          album: cleanSongText(item.ALBUM || '拾光单曲'),
+          duration: durationSec,
+          durationFormatted,
+          cover: directCover || 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=500&auto=format&fit=crop&q=80',
+        };
+      }).filter((s: any) => Boolean(s.id));
     }
-
-    const abslist = data.abslist || [];
-    const songs = abslist.map((item: any) => {
-      const id = item.DC_TARGETID || (item.MUSICRID ? String(item.MUSICRID).replace(/^MUSIC_/, '') : '');
-      const durationSec = parseInt(item.DURATION || '0', 10);
-      const minutes = Math.floor(durationSec / 60);
-      const seconds = durationSec % 60;
-      const durationFormatted = `${minutes}:${seconds < 10 ? '0' : ''}${seconds}`;
-
-      return {
-        id,
-        title: cleanSongText(item.SONGNAME || '未知曲目'),
-        artist: cleanSongText(item.ARTIST || '未知歌手'),
-        album: cleanSongText(item.ALBUM || '拾光单曲'),
-        duration: durationSec,
-        durationFormatted,
-        cover: id ? `http://artistpicserver.kuwo.cn/pic.web?corp=kuwo&type=rid_pic&pictype=url&size=500&rid=${id}` : '',
-      };
-    }).filter((s: any) => Boolean(s.id));
 
     return res.json({ songs });
   } catch (err: any) {
-    console.error('Error in /api/music/search:', err);
+    console.warn('Warning in /api/music/search:', err?.message || err);
     return res.status(500).json({ error: err.message || '音乐检索失败' });
   }
 });
 
+// 全网音源动态解析管道
 app.get('/api/music/play-url', async (req, res) => {
   try {
-    const id = String(req.query.id || '').trim();
-    if (!id) {
-      return res.status(400).json({ error: 'Missing song ID' });
+    let id = String(req.query.id || '').trim();
+    const title = String(req.query.title || '').trim();
+    const artist = String(req.query.artist || '').trim();
+
+    if (!id && !title) {
+      return res.status(400).json({ error: 'Missing song ID or title' });
     }
 
-    const antiUrl = `http://antiserver.kuwo.cn/anti.s?type=convert_url&rid=${id}&format=mp3&response=url`;
-    const response = await fetch(antiUrl, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-      },
-    });
-
-    if (!response.ok) {
-      return res.status(502).json({ error: '获取播放直链失败' });
+    // 1. 如果传入的是 curated_* 标识，转换为验证过的 RID
+    if (id.startsWith('curated_')) {
+      const key = id.replace('curated_', '').toLowerCase();
+      if (VERIFIED_TRACK_RID_MAP[key]) {
+        id = VERIFIED_TRACK_RID_MAP[key];
+      }
     }
 
-    const playUrl = (await response.text()).trim();
-    if (!playUrl || !playUrl.startsWith('http')) {
-      return res.status(404).json({ error: '暂无可播音频直链' });
+    const lowerTitle = title.toLowerCase();
+    if (!id || id.startsWith('curated_')) {
+      if (lowerTitle.includes('三叶') || lowerTitle.includes('mitsuha')) {
+        id = VERIFIED_TRACK_RID_MAP['mitsuha'];
+      } else if (lowerTitle.includes('sparkle') || lowerTitle.includes('火花')) {
+        id = VERIFIED_TRACK_RID_MAP['sparkle'];
+      } else if (lowerTitle === '晴天' && (artist.includes('周') || !artist)) {
+        id = VERIFIED_TRACK_RID_MAP['sunnyday'];
+      } else if (lowerTitle.includes('起风了')) {
+        id = VERIFIED_TRACK_RID_MAP['wind'];
+      } else if (lowerTitle.includes('七里香')) {
+        id = VERIFIED_TRACK_RID_MAP['qilixiang'];
+      } else if (lowerTitle.includes('蒲公英的约定')) {
+        id = VERIFIED_TRACK_RID_MAP['dandelion'];
+      } else if (lowerTitle.includes('夏天的风')) {
+        id = VERIFIED_TRACK_RID_MAP['summerwind'];
+      } else if (lowerTitle.includes('lemon')) {
+        id = VERIFIED_TRACK_RID_MAP['lemon'];
+      } else if (lowerTitle.includes('幻昼')) {
+        id = VERIFIED_TRACK_RID_MAP['daytime'];
+      } else if (lowerTitle.includes('always with me') || lowerTitle.includes('千与千寻')) {
+        id = VERIFIED_TRACK_RID_MAP['always_with_me'];
+      } else if (lowerTitle.includes('river flows')) {
+        id = VERIFIED_TRACK_RID_MAP['river_flows'];
+      } else if (lowerTitle.includes('summer') && (artist.includes('久石') || !artist)) {
+        id = VERIFIED_TRACK_RID_MAP['summer_joe'];
+      }
     }
 
-    return res.json({ id, url: playUrl });
+    // 2. 主力解析：Kuwo convert_url3 JSON 纯净音频流
+    if (id && /^\d+$/.test(id)) {
+      try {
+        const kuwoV3Url = `http://antiserver.kuwo.cn/anti.s?type=convert_url3&rid=${id}&format=mp3`;
+        const v3Res = await fetch(kuwoV3Url, {
+          signal: AbortSignal.timeout(4000),
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          },
+        });
+        if (v3Res.ok) {
+          const v3Data = await v3Res.json();
+          if (v3Data && v3Data.url && typeof v3Data.url === 'string' && v3Data.url.startsWith('http')) {
+            return res.json({ id, url: v3Data.url });
+          }
+        }
+      } catch (e) {
+        // Fallback
+      }
+
+      // 3. 备用解析：Kuwo convert_url 文本转换
+      try {
+        const antiUrl = `http://antiserver.kuwo.cn/anti.s?type=convert_url&rid=${id}&format=mp3&response=url`;
+        const response = await fetch(antiUrl, {
+          signal: AbortSignal.timeout(4000),
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          },
+        });
+        if (response.ok) {
+          const playUrl = (await response.text()).trim();
+          if (playUrl && playUrl.startsWith('http')) {
+            return res.json({ id, url: playUrl });
+          }
+        }
+      } catch (e) {
+        // Fallback
+      }
+    }
+
+    // 4. 网易云与 Meting 解析
+    if (id && (id.startsWith('ne_') || id.startsWith('netease_'))) {
+      const neteaseId = id.replace(/^ne_|^netease_/, '');
+      const directUrl = `https://music.163.com/song/media/outer/url?id=${neteaseId}.mp3`;
+      return res.json({ id, url: directUrl });
+    }
+
+    // 5. 动态标题搜索匹配补全
+    if (title) {
+      try {
+        const searchKeyword = `${title} ${artist}`.trim();
+        const searchUrl = `http://search.kuwo.cn/r.s?all=${encodeURIComponent(searchKeyword)}&ft=music&itemset=web_2013&client=kt&pn=0&rn=5&rformat=json&encoding=utf8`;
+        const searchRes = await fetch(searchUrl, {
+          signal: AbortSignal.timeout(4000),
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          },
+        });
+        if (searchRes.ok) {
+          const raw = await searchRes.text();
+          let searchData: any = {};
+          try {
+            searchData = JSON.parse(raw);
+          } catch {
+            try {
+              searchData = JSON.parse(raw.replace(/'/g, '"'));
+            } catch {}
+          }
+          const list = searchData?.abslist || [];
+          for (const item of list) {
+            const fallbackRid = item.DC_TARGETID || (item.MUSICRID ? String(item.MUSICRID).replace(/^MUSIC_/, '') : '');
+            if (fallbackRid && fallbackRid !== id) {
+              const fbUrl = `http://antiserver.kuwo.cn/anti.s?type=convert_url3&rid=${fallbackRid}&format=mp3`;
+              const fbRes = await fetch(fbUrl, { signal: AbortSignal.timeout(3000) });
+              if (fbRes.ok) {
+                const fbData = await fbRes.json();
+                if (fbData?.url && fbData.url.startsWith('http')) {
+                  return res.json({ id: fallbackRid, url: fbData.url });
+                }
+              }
+            }
+          }
+        }
+      } catch (e) {
+        // Fallback
+      }
+    }
+
+    return res.status(404).json({ error: '暂无可播音频直链' });
   } catch (err: any) {
-    console.error('Error in /api/music/play-url:', err);
+    console.warn('Warning in /api/music/play-url:', err?.message || err);
     return res.status(500).json({ error: err.message || '获取播放地址失败' });
   }
 });
 
-// Proxy stream for cross-origin or HTTP compatibility
+// Proxy stream for cross-origin or HTTP compatibility with Byte-Range seeking support
 app.get('/api/music/stream', async (req, res) => {
   try {
     const url = String(req.query.url || '').trim();
@@ -577,19 +714,42 @@ app.get('/api/music/stream', async (req, res) => {
       return res.status(400).send('Invalid audio URL');
     }
 
+    const requestHeaders: Record<string, string> = {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      'Referer': 'http://www.kuwo.cn/',
+    };
+
+    if (req.headers.range) {
+      requestHeaders['Range'] = String(req.headers.range);
+    }
+
     const audioRes = await fetch(url, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-      },
+      signal: AbortSignal.timeout(8000),
+      headers: requestHeaders,
     });
 
     if (!audioRes.ok || !audioRes.body) {
-      return res.status(502).send('Failed to fetch audio stream');
+      return res.status(audioRes.status || 502).send('Failed to fetch audio stream');
     }
 
-    res.setHeader('Content-Type', 'audio/mpeg');
+    if (audioRes.status === 206) {
+      res.status(206);
+    }
+
+    const contentType = audioRes.headers.get('content-type') || 'audio/mpeg';
+    const contentRange = audioRes.headers.get('content-range');
+    const contentLength = audioRes.headers.get('content-length');
+
+    res.setHeader('Content-Type', contentType);
     res.setHeader('Accept-Ranges', 'bytes');
     res.setHeader('Cache-Control', 'public, max-age=86400');
+
+    if (contentRange) {
+      res.setHeader('Content-Range', contentRange);
+    }
+    if (contentLength) {
+      res.setHeader('Content-Length', contentLength);
+    }
 
     // @ts-ignore
     const nodeStream = audioRes.body;
@@ -599,9 +759,56 @@ app.get('/api/music/stream', async (req, res) => {
     }
     res.end();
   } catch (err: any) {
-    console.error('Error in /api/music/stream:', err);
+    console.warn('Warning in /api/music/stream:', err?.message || err);
     if (!res.headersSent) {
       res.status(500).send('Stream error');
+    }
+  }
+});
+
+// Proxy cover image for cross-origin and Mixed Content HTTPS compatibility
+const DEFAULT_FALLBACK_COVER = 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=500&auto=format&fit=crop&q=80';
+
+app.get('/api/music/cover', async (req, res) => {
+  try {
+    const directUrl = String(req.query.url || '').trim();
+
+    // If direct URL is provided, stream or redirect to it
+    if (directUrl && directUrl.startsWith('http')) {
+      // If already secure HTTPS Kuwo CDN or Unsplash, redirect directly
+      if (directUrl.startsWith('https://img4.kuwo.cn/') || directUrl.startsWith('https://images.unsplash.com/')) {
+        return res.redirect(directUrl);
+      }
+
+      const imgRes = await fetch(directUrl, {
+        signal: AbortSignal.timeout(3000),
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'Referer': 'http://www.kuwo.cn/',
+        },
+      });
+
+      if (imgRes.ok && imgRes.body) {
+        const contentType = imgRes.headers.get('content-type') || 'image/jpeg';
+        res.setHeader('Content-Type', contentType);
+        res.setHeader('Cache-Control', 'public, max-age=604800, immutable');
+
+        // @ts-ignore
+        const nodeStream = imgRes.body;
+        // @ts-ignore
+        for await (const chunk of nodeStream) {
+          res.write(chunk);
+        }
+        return res.end();
+      }
+    }
+
+    // Default fallback image redirect
+    return res.redirect(DEFAULT_FALLBACK_COVER);
+  } catch (err: any) {
+    console.warn('Warning in /api/music/cover fallback:', err?.message || err);
+    if (!res.headersSent) {
+      res.redirect(DEFAULT_FALLBACK_COVER);
     }
   }
 });

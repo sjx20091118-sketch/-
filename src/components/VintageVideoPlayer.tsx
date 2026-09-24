@@ -1,4 +1,4 @@
-import React, { useRef, useState, useEffect } from 'react';
+import React, { useRef, useState, useEffect, useId } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { Play, Pause, Volume2, VolumeX, Maximize2, X, RotateCcw, Film } from 'lucide-react';
@@ -25,7 +25,10 @@ export const VintageVideoPlayer: React.FC<VintageVideoPlayerProps> = ({
   showFullscreenButton = true,
   onOpenFullscreen
 }) => {
+  const instanceId = useId();
   const videoRef = useRef<HTMLVideoElement>(null);
+  const modalVideoRef = useRef<HTMLVideoElement>(null);
+
   const [isPlaying, setIsPlaying] = useState(false);
   const [isMuted, setIsMuted] = useState(true);
   const [currentTime, setCurrentTime] = useState(0);
@@ -34,16 +37,43 @@ export const VintageVideoPlayer: React.FC<VintageVideoPlayerProps> = ({
   const [isFullscreenModalOpen, setIsFullscreenModalOpen] = useState(false);
   const [playbackRate, setPlaybackRate] = useState<number>(1);
 
+  // 全局排他播放协调：确保同一时间全站仅有一个视频发出声音或播放，杜绝多视频重叠音频
+  useEffect(() => {
+    const handleGlobalVideoPlay = (e: Event) => {
+      const customEvent = e as CustomEvent<{ id: string }>;
+      if (customEvent.detail?.id !== instanceId) {
+        if (videoRef.current && !videoRef.current.paused) {
+          videoRef.current.pause();
+        }
+        setIsPlaying(false);
+      }
+    };
+
+    window.addEventListener('time-gallery:video-play', handleGlobalVideoPlay);
+    return () => {
+      window.removeEventListener('time-gallery:video-play', handleGlobalVideoPlay);
+    };
+  }, [instanceId]);
+
+  const notifyVideoPlaying = () => {
+    window.dispatchEvent(
+      new CustomEvent('time-gallery:video-play', {
+        detail: { id: instanceId }
+      })
+    );
+  };
+
   // 处理视口停留自动播放
   useEffect(() => {
     const video = videoRef.current;
-    if (!video) return;
+    if (!video || isFullscreenModalOpen) return;
 
     if (autoPlayMuted) {
       video.muted = true;
       setIsMuted(true);
       video.play().then(() => {
         setIsPlaying(true);
+        notifyVideoPlaying();
       }).catch(() => {
         // 浏览器受策略限制暂缓起播
       });
@@ -51,61 +81,85 @@ export const VintageVideoPlayer: React.FC<VintageVideoPlayerProps> = ({
       video.pause();
       setIsPlaying(false);
     }
-  }, [autoPlayMuted]);
+  }, [autoPlayMuted, isFullscreenModalOpen]);
 
+  // 控制播放 / 暂停
   const handleTogglePlay = (e?: React.MouseEvent) => {
     e?.stopPropagation();
-    const video = videoRef.current;
-    if (!video) return;
+    const activeVideo = isFullscreenModalOpen ? modalVideoRef.current : videoRef.current;
+    if (!activeVideo) return;
 
-    if (video.paused) {
-      video.play();
-      setIsPlaying(true);
+    if (activeVideo.paused) {
+      notifyVideoPlaying();
+      activeVideo.play().then(() => {
+        setIsPlaying(true);
+      }).catch(() => {});
     } else {
-      video.pause();
+      activeVideo.pause();
       setIsPlaying(false);
     }
   };
 
+  // 控制静音 / 声音
   const handleToggleMute = (e: React.MouseEvent) => {
     e.stopPropagation();
-    const video = videoRef.current;
-    if (!video) return;
+    const nextMuted = !isMuted;
+    setIsMuted(nextMuted);
 
-    video.muted = !video.muted;
-    setIsMuted(video.muted);
-  };
-
-  const handleTimeUpdate = () => {
     if (videoRef.current) {
-      setCurrentTime(videoRef.current.currentTime);
-      if (!duration && videoRef.current.duration) {
-        setDuration(videoRef.current.duration);
-      }
+      videoRef.current.muted = nextMuted;
+    }
+    if (modalVideoRef.current) {
+      modalVideoRef.current.muted = nextMuted;
     }
   };
 
-  const handleLoadedMetadata = () => {
-    if (videoRef.current) {
-      setDuration(videoRef.current.duration);
+  const handleTimeUpdate = (e: React.SyntheticEvent<HTMLVideoElement>) => {
+    const target = e.currentTarget;
+    setCurrentTime(target.currentTime);
+    if (!duration && target.duration) {
+      setDuration(target.duration);
+    }
+  };
+
+  const handleLoadedMetadata = (e: React.SyntheticEvent<HTMLVideoElement>) => {
+    const target = e.currentTarget;
+    if (target.duration) {
+      setDuration(target.duration);
     }
   };
 
   const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
     const time = parseFloat(e.target.value);
-    if (videoRef.current) {
-      videoRef.current.currentTime = time;
-      setCurrentTime(time);
-    }
+    setCurrentTime(time);
+    if (videoRef.current) videoRef.current.currentTime = time;
+    if (modalVideoRef.current) modalVideoRef.current.currentTime = time;
   };
 
   const openFullscreen = (e?: React.MouseEvent) => {
     e?.stopPropagation();
     if (onOpenFullscreen) {
       onOpenFullscreen();
-    } else {
-      setIsFullscreenModalOpen(true);
+      return;
     }
+
+    // 打开全屏时：必须立即暂停底层的内嵌视频，防止出现双重音频叠加！
+    if (videoRef.current) {
+      videoRef.current.pause();
+    }
+    setIsFullscreenModalOpen(true);
+  };
+
+  const closeFullscreen = () => {
+    // 关闭全屏时：暂停模态窗视频，同步播放进度
+    if (modalVideoRef.current) {
+      modalVideoRef.current.pause();
+      if (videoRef.current) {
+        videoRef.current.currentTime = modalVideoRef.current.currentTime;
+      }
+    }
+    setIsPlaying(false);
+    setIsFullscreenModalOpen(false);
   };
 
   // 全屏锁定背景滚动
@@ -127,7 +181,7 @@ export const VintageVideoPlayer: React.FC<VintageVideoPlayerProps> = ({
       onMouseLeave={() => setIsHovered(false)}
       className={`relative group rounded-2xl overflow-hidden bg-black/90 border border-[#5B7B6D]/20 shadow-xs select-none ${className}`}
     >
-      {/* 视频容器 */}
+      {/* 内嵌卡片视频容器 */}
       <div className="relative w-full h-full flex items-center justify-center cursor-pointer" onClick={handleTogglePlay}>
         <video
           ref={videoRef}
@@ -145,9 +199,8 @@ export const VintageVideoPlayer: React.FC<VintageVideoPlayerProps> = ({
         <div className="absolute inset-0 pointer-events-none bg-radial from-transparent via-black/10 to-black/40" />
 
         {/* 胶片放映标识（左上角微型标） */}
-        <div className="absolute top-2.5 left-2.5 pointer-events-none z-10 flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-black/50 backdrop-blur-xs border border-white/10 text-white/80 text-[10px] font-mono">
-          <Film className="w-3 h-3 text-[#E88765]" />
-          <span>{isPlaying ? '放映中' : '旧日胶片'}</span>
+        <div className="absolute top-2.5 left-2.5 pointer-events-none z-10 flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-black/50 backdrop-blur-xs border border-white/10 text-white/80 text-[10px] font-mono">
+          <span>{isPlaying && !isFullscreenModalOpen ? '放映中' : '旧日胶片'}</span>
           {duration > 0 && <span className="opacity-70">· {formatVideoDuration(duration)}</span>}
         </div>
 
@@ -175,7 +228,7 @@ export const VintageVideoPlayer: React.FC<VintageVideoPlayerProps> = ({
         </div>
 
         {/* 暂停时居中的温雅播放按键 */}
-        {!isPlaying && (
+        {!isPlaying && !isFullscreenModalOpen && (
           <motion.div
             initial={{ scale: 0.8, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
@@ -202,7 +255,7 @@ export const VintageVideoPlayer: React.FC<VintageVideoPlayerProps> = ({
         </div>
       </div>
 
-      {/* 全屏沉浸式胶片放映室 (Portal 挂载至 document.body) */}
+      {/* 全屏沉浸式胶片放映室 (Portal 挂载至 document.body，严格杜绝多端音频并发) */}
       {typeof document !== 'undefined' && createPortal(
         <AnimatePresence>
           {isFullscreenModalOpen && (
@@ -232,7 +285,7 @@ export const VintageVideoPlayer: React.FC<VintageVideoPlayerProps> = ({
                         const nextIdx = (rates.indexOf(playbackRate) + 1) % rates.length;
                         const nextRate = rates[nextIdx];
                         setPlaybackRate(nextRate);
-                        if (videoRef.current) videoRef.current.playbackRate = nextRate;
+                        if (modalVideoRef.current) modalVideoRef.current.playbackRate = nextRate;
                       }}
                       className="px-2 py-0.5 rounded-lg bg-white/10 hover:bg-white/20 text-white/80 text-[11px] font-mono transition-all"
                     >
@@ -241,7 +294,7 @@ export const VintageVideoPlayer: React.FC<VintageVideoPlayerProps> = ({
 
                     <button
                       type="button"
-                      onClick={() => setIsFullscreenModalOpen(false)}
+                      onClick={closeFullscreen}
                       className="p-1 text-white/70 hover:text-white rounded-lg hover:bg-white/10 transition-all cursor-pointer"
                     >
                       <X className="w-5 h-5" />
@@ -255,12 +308,20 @@ export const VintageVideoPlayer: React.FC<VintageVideoPlayerProps> = ({
                   onClick={handleTogglePlay}
                 >
                   <video
+                    ref={modalVideoRef}
                     src={src}
                     poster={poster}
                     playsInline
                     autoPlay
                     loop
-                    onTimeUpdate={(e) => setCurrentTime(e.currentTarget.currentTime)}
+                    muted={isMuted}
+                    onPlay={() => {
+                      setIsPlaying(true);
+                      notifyVideoPlaying();
+                    }}
+                    onPause={() => setIsPlaying(false)}
+                    onTimeUpdate={handleTimeUpdate}
+                    onLoadedMetadata={handleLoadedMetadata}
                     className="max-h-[70dvh] max-w-full object-contain"
                   />
                   {!isPlaying && (
@@ -310,8 +371,8 @@ export const VintageVideoPlayer: React.FC<VintageVideoPlayerProps> = ({
                       <button
                         type="button"
                         onClick={() => {
-                          if (videoRef.current) {
-                            videoRef.current.currentTime = 0;
+                          if (modalVideoRef.current) {
+                            modalVideoRef.current.currentTime = 0;
                             setCurrentTime(0);
                           }
                         }}
@@ -332,3 +393,4 @@ export const VintageVideoPlayer: React.FC<VintageVideoPlayerProps> = ({
     </div>
   );
 };
+

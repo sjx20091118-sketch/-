@@ -8,40 +8,57 @@ import {
   Volume2,
   VolumeX,
   Repeat,
+  Repeat1,
   Shuffle,
   Search,
   Plus,
   Music,
   ListMusic,
   Disc3,
-  X,
   ChevronDown,
+  ChevronLeft,
   Upload,
   Link,
-  Sparkles,
-  Check
+  Heart,
+  History,
+  Trash2,
+  ListOrdered
 } from 'lucide-react';
 import {
   SongItem,
+  CURATED_DUAL_ENGINE_SONGS,
   searchSongs,
   fetchSongPlayUrl,
   createLocalSongItem,
   createCustomUrlSongItem,
   loadSavedPlaylist,
   savePlaylist,
-  DEFAULT_INSPIRATION_SONGS
+  loadFavorites,
+  saveFavorites,
+  loadHistory,
+  saveHistory
 } from '../services/musicService';
+
+const DEFAULT_FALLBACK_COVER = 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=500&auto=format&fit=crop&q=80';
+
+export const CURATED_TIME_SONGS: SongItem[] = CURATED_DUAL_ENGINE_SONGS;
 
 interface VinylMusicPlayerProps {
   onShowToast?: (msg: string) => void;
 }
 
+type PlaylistSubTab = 'queue' | 'favorites' | 'history';
+
 export const VinylMusicPlayer: React.FC<VinylMusicPlayerProps> = ({ onShowToast }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [viewMode, setViewMode] = useState<'player' | 'search' | 'playlist'>('player');
-  
+  const [playlistSubTab, setPlaylistSubTab] = useState<PlaylistSubTab | null>(null);
+
   // Playlist & track state
   const [playlist, setPlaylist] = useState<SongItem[]>(() => loadSavedPlaylist());
+  const [favorites, setFavorites] = useState<SongItem[]>(() => loadFavorites());
+  const [history, setHistory] = useState<SongItem[]>(() => loadHistory());
+
   const [currentIndex, setCurrentIndex] = useState<number>(0);
   const [isPlaying, setIsPlaying] = useState(false);
   const [isLoadingUrl, setIsLoadingUrl] = useState(false);
@@ -65,6 +82,38 @@ export const VinylMusicPlayer: React.FC<VinylMusicPlayerProps> = ({ onShowToast 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const currentTrack: SongItem | undefined = playlist[currentIndex] || playlist[0];
+
+  // Helper to check if current track is favorited
+  const isCurrentFavorited = currentTrack ? favorites.some((f) => f.id === currentTrack.id) : false;
+
+  // Toggle favorite for current or specific song
+  const toggleFavorite = (song?: SongItem) => {
+    const target = song || currentTrack;
+    if (!target) return;
+
+    const exists = favorites.some((f) => f.id === target.id);
+    let updated: SongItem[];
+    if (exists) {
+      updated = favorites.filter((f) => f.id !== target.id);
+      onShowToast?.(`已取消收藏《${target.title}》`);
+    } else {
+      updated = [target, ...favorites];
+      onShowToast?.(`已添加《${target.title}》至我的喜欢 ❤️`);
+    }
+    setFavorites(updated);
+    saveFavorites(updated);
+  };
+
+  // Add to history records
+  const recordHistory = useCallback((song: SongItem) => {
+    if (!song) return;
+    setHistory((prev) => {
+      const filtered = prev.filter((s) => s.id !== song.id);
+      const updated = [song, ...filtered].slice(0, 50);
+      saveHistory(updated);
+      return updated;
+    });
+  }, []);
 
   // Initialize audio element
   useEffect(() => {
@@ -108,15 +157,17 @@ export const VinylMusicPlayer: React.FC<VinylMusicPlayerProps> = ({ onShowToast 
     }
   }, [volume, isMuted]);
 
-  // Load and play track
-  const playTrack = useCallback(async (track: SongItem, autoPlay = true) => {
+  // Load and play track with AI Dual-Engine Auto-Failover
+  const playTrack = useCallback(async (track: SongItem, autoPlay = true, isRetry = false) => {
     if (!audioRef.current) return;
 
+    recordHistory(track);
+
     let targetUrl = track.url;
-    if (!targetUrl) {
+    if (!targetUrl || isRetry) {
       setIsLoadingUrl(true);
       try {
-        targetUrl = await fetchSongPlayUrl(track.id);
+        targetUrl = await fetchSongPlayUrl(track.id, track.title, track.artist);
         if (targetUrl) {
           track.url = targetUrl;
           setPlaylist((prev) => {
@@ -125,7 +176,7 @@ export const VinylMusicPlayer: React.FC<VinylMusicPlayerProps> = ({ onShowToast 
             return updated;
           });
         } else {
-          onShowToast?.(`暂未获取到《${track.title}》播放源`);
+          onShowToast?.(`暂未获取到《${track.title}》可用音频`);
           setIsLoadingUrl(false);
           return;
         }
@@ -147,11 +198,17 @@ export const VinylMusicPlayer: React.FC<VinylMusicPlayerProps> = ({ onShowToast 
           .then(() => setIsPlaying(true))
           .catch((err) => {
             console.warn('Playback autoplay hindered', err);
-            setIsPlaying(false);
+            // If primary direct stream fails on first attempt, auto-engage secondary engine
+            if (!isRetry && track.title) {
+              console.log('Engaging AI Dual-Engine secondary mirror for:', track.title);
+              playTrack(track, autoPlay, true);
+            } else {
+              setIsPlaying(false);
+            }
           });
       }
     }
-  }, [onShowToast]);
+  }, [onShowToast, recordHistory]);
 
   const togglePlay = () => {
     if (!audioRef.current) return;
@@ -218,7 +275,6 @@ export const VinylMusicPlayer: React.FC<VinylMusicPlayerProps> = ({ onShowToast 
   };
 
   const selectSearchResult = async (song: SongItem) => {
-    // Check if song is already in playlist
     const existingIndex = playlist.findIndex((s) => s.id === song.id);
     if (existingIndex >= 0) {
       setCurrentIndex(existingIndex);
@@ -232,6 +288,35 @@ export const VinylMusicPlayer: React.FC<VinylMusicPlayerProps> = ({ onShowToast 
     }
     setViewMode('player');
     onShowToast?.(`已载入《${song.title}》`);
+  };
+
+  const handleAddToQueue = (song: SongItem, e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    const existingIndex = playlist.findIndex((s) => s.id === song.id);
+    if (existingIndex >= 0) {
+      onShowToast?.(`《${song.title}》已在当前播放列表中`);
+    } else {
+      const updated = [...playlist, song];
+      setPlaylist(updated);
+      savePlaylist(updated);
+      onShowToast?.(`已将《${song.title}》加入播放列表`);
+    }
+  };
+
+  const handlePlayFromCollection = (song: SongItem) => {
+    const existingIndex = playlist.findIndex((s) => s.id === song.id);
+    if (existingIndex >= 0) {
+      setCurrentIndex(existingIndex);
+      playTrack(playlist[existingIndex], true);
+    } else {
+      const updated = [song, ...playlist];
+      setPlaylist(updated);
+      savePlaylist(updated);
+      setCurrentIndex(0);
+      playTrack(song, true);
+    }
+    setViewMode('player');
+    onShowToast?.(`开始播放《${song.title}》`);
   };
 
   // Handle local file upload
@@ -251,22 +336,65 @@ export const VinylMusicPlayer: React.FC<VinylMusicPlayerProps> = ({ onShowToast 
     }
   };
 
-  // Handle custom URL
+  // Add custom URL
   const handleAddCustomUrl = () => {
-    if (!customUrl.trim()) return;
+    if (!customUrl.trim().startsWith('http')) {
+      onShowToast?.('请输入以 http/https 开头的有效音频地址');
+      return;
+    }
     const newSong = createCustomUrlSongItem(customUrl, customTitle);
     const updated = [newSong, ...playlist];
     setPlaylist(updated);
-    savePlaylist(updated);
     setCurrentIndex(0);
     playTrack(newSong, true);
     setShowCustomModal(false);
     setCustomUrl('');
     setCustomTitle('');
     setViewMode('player');
-    onShowToast?.(`已添加网络流《${newSong.title}》`);
+    onShowToast?.(`已载入自定义网络音频流`);
   };
 
+  const removePlaylistItem = (e: React.MouseEvent, indexToRemove: number) => {
+    e.stopPropagation();
+    const updated = playlist.filter((_, idx) => idx !== indexToRemove);
+    setPlaylist(updated);
+    savePlaylist(updated);
+    if (indexToRemove === currentIndex) {
+      if (updated.length > 0) {
+        const nextIndex = indexToRemove % updated.length;
+        setCurrentIndex(nextIndex);
+        playTrack(updated[nextIndex], isPlaying);
+      } else {
+        if (audioRef.current) {
+          audioRef.current.pause();
+          audioRef.current.src = '';
+        }
+        setIsPlaying(false);
+      }
+    } else if (indexToRemove < currentIndex) {
+      setCurrentIndex((prev) => prev - 1);
+    }
+    onShowToast?.('已从当前歌单移除');
+  };
+
+  const clearPlaylist = () => {
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.src = '';
+    }
+    setPlaylist([]);
+    savePlaylist([]);
+    setIsPlaying(false);
+    onShowToast?.('已清空当前播放列表');
+  };
+
+  const clearHistory = () => {
+    setHistory([]);
+    saveHistory([]);
+    onShowToast?.('已清空历史播放足迹');
+  };
+
+  // Format seconds to mm:ss
   const formatTime = (secs: number) => {
     if (isNaN(secs) || secs < 0) return '00:00';
     const m = Math.floor(secs / 60);
@@ -274,53 +402,46 @@ export const VinylMusicPlayer: React.FC<VinylMusicPlayerProps> = ({ onShowToast 
     return `${m < 10 ? '0' : ''}${m}:${s < 10 ? '0' : ''}${s}`;
   };
 
-  const HOT_TAGS = ['晴天', '起风了', '安静', '稻香', '富士山下', '如愿', '岁月神偷', '慢热'];
-
   return (
     <>
-      {/* 隐藏的本地音频文件选择器 */}
       <input
         type="file"
         ref={fileInputRef}
         onChange={handleFileUpload}
-        accept="audio/mp3,audio/mpeg,audio/wav,audio/aac,audio/flac,audio/ogg"
+        accept="audio/*"
         className="hidden"
       />
 
-      {/* ================= 常驻灵动黑胶微坞 (Floating Vinyl Pill) ================= */}
-      <div className="fixed bottom-20 right-4 sm:bottom-7 sm:right-7 z-40">
+      {/* ================= 页面右下角优雅悬浮黑胶胶囊 (The Ambient Vinyl Capsule) ================= */}
+      <div className="fixed bottom-20 right-4 sm:bottom-6 sm:right-6 z-40 flex items-center">
         <motion.div
-          initial={{ scale: 0, opacity: 0 }}
+          initial={{ scale: 0.8, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
           transition={{ type: 'spring', stiffness: 260, damping: 20 }}
-          className="relative group flex items-center"
+          className="relative flex items-center"
         >
-          {/* 拟物黑胶唱盘主按钮 */}
+          {/* 拟物黑胶唱盘主体 */}
           <button
             type="button"
             onClick={() => setIsOpen(true)}
-            title={currentTrack ? `正在播放: ${currentTrack.title}` : '回忆留声机'}
-            className="relative w-13 h-13 rounded-full bg-[#17201B] border-2 border-white/80 shadow-[0_8px_24px_rgba(0,0,0,0.22)] flex items-center justify-center overflow-hidden cursor-pointer hover:scale-105 active:scale-95 transition-transform"
+            title={currentTrack ? `正在播放：${currentTrack.title} - ${currentTrack.artist}` : '拾年音乐馆'}
+            className={`relative w-12 h-12 rounded-full shadow-lg border-2 border-[#FAF8F5] p-0.5 flex items-center justify-center transition-transform hover:scale-105 active:scale-95 bg-[#17201B] cursor-pointer ${
+              isPlaying ? 'ring-2 ring-[#5B7B6D] ring-offset-2 ring-offset-[#FAF8F5]' : ''
+            }`}
           >
-            {/* 黑胶细密同心圆刻纹 */}
+            {/* 旋转的唱片光盘 */}
             <div
-              className="absolute inset-0 opacity-40 pointer-events-none"
-              style={{
-                background:
-                  'repeating-radial-gradient(circle at 50% 50%, #000 0px, #000 1px, #2A332E 2px, #000 3px)',
-              }}
-            />
-
-            {/* 旋转封面标签 (Spinning Center Label) */}
-            <div
-              className={`w-7 h-7 rounded-full overflow-hidden border border-white/60 shadow-inner relative z-10 transition-transform ${
-                isPlaying ? 'animate-[spin_10s_linear_infinite]' : ''
+              className={`w-full h-full rounded-full overflow-hidden flex items-center justify-center ${
+                isPlaying ? 'animate-[spin_12s_linear_infinite]' : ''
               }`}
             >
               {currentTrack?.cover ? (
                 <img
                   src={currentTrack.cover}
                   alt={currentTrack.title}
+                  onError={(e) => {
+                    (e.currentTarget as HTMLImageElement).src = DEFAULT_FALLBACK_COVER;
+                  }}
                   className="w-full h-full object-cover"
                 />
               ) : (
@@ -379,20 +500,20 @@ export const VinylMusicPlayer: React.FC<VinylMusicPlayerProps> = ({ onShowToast 
               className="absolute inset-0 bg-black/45 backdrop-blur-sm"
             />
 
-            {/* 唱机面板本体 */}
+            {/* 唱机主机甲板 (The Turntable Body) - 统一全视窗固定高度，杜绝切换时跳动 */}
             <motion.div
-              initial={{ y: '100%', opacity: 0.8 }}
+              initial={{ y: '100%', opacity: 0.5 }}
               animate={{ y: 0, opacity: 1 }}
               exit={{ y: '100%', opacity: 0 }}
-              transition={{ type: 'spring', stiffness: 280, damping: 26 }}
-              className="relative w-full sm:max-w-lg bg-[#FAF8F5]/96 backdrop-blur-2xl rounded-t-3xl sm:rounded-3xl border border-[#2B332E]/10 shadow-[0_20px_50px_rgba(0,0,0,0.25)] overflow-hidden max-h-[92vh] flex flex-col z-10"
+              transition={{ type: 'spring', damping: 26, stiffness: 280 }}
+              className="relative w-full max-w-lg bg-[#FAF8F5] rounded-t-3xl sm:rounded-3xl border border-[#2B332E]/15 shadow-2xl overflow-hidden flex flex-col h-[85vh] max-h-[660px] min-h-[540px] z-10"
             >
-              {/* 顶部标题与视图模式切换条 */}
-              <div className="flex items-center justify-between px-5 pt-4 pb-2 border-b border-[#2B332E]/[0.06]">
-                <div className="flex items-center gap-1 bg-[#2B332E]/[0.05] p-1 rounded-full text-xs font-serif">
+              {/* 顶部控制栏与视图切换 */}
+              <div className="flex items-center justify-between px-5 py-3.5 border-b border-[#2B332E]/10 bg-white/70 backdrop-blur-md">
+                <div className="flex items-center gap-1.5 bg-[#2B332E]/5 p-1 rounded-full text-xs font-serif">
                   <button
                     onClick={() => setViewMode('player')}
-                    className={`px-3 py-1 rounded-full transition-all ${
+                    className={`px-3 py-1 rounded-full transition-all cursor-pointer ${
                       viewMode === 'player'
                         ? 'bg-white text-[#17201B] font-bold shadow-2xs'
                         : 'text-[#6E7C75] hover:text-[#17201B]'
@@ -402,7 +523,7 @@ export const VinylMusicPlayer: React.FC<VinylMusicPlayerProps> = ({ onShowToast 
                   </button>
                   <button
                     onClick={() => setViewMode('search')}
-                    className={`px-3 py-1 rounded-full transition-all flex items-center gap-1 ${
+                    className={`px-3 py-1 rounded-full transition-all flex items-center gap-1 cursor-pointer ${
                       viewMode === 'search'
                         ? 'bg-white text-[#17201B] font-bold shadow-2xs'
                         : 'text-[#6E7C75] hover:text-[#17201B]'
@@ -412,19 +533,19 @@ export const VinylMusicPlayer: React.FC<VinylMusicPlayerProps> = ({ onShowToast 
                   </button>
                   <button
                     onClick={() => setViewMode('playlist')}
-                    className={`px-3 py-1 rounded-full transition-all flex items-center gap-1 ${
+                    className={`px-3 py-1 rounded-full transition-all flex items-center gap-1 cursor-pointer ${
                       viewMode === 'playlist'
                         ? 'bg-white text-[#17201B] font-bold shadow-2xs'
                         : 'text-[#6E7C75] hover:text-[#17201B]'
                     }`}
                   >
-                    <ListMusic className="w-3 h-3" /> 歌单 ({playlist.length})
+                    <ListMusic className="w-3 h-3" /> 歌单库 ({playlist.length})
                   </button>
                 </div>
 
                 <button
                   onClick={() => setIsOpen(false)}
-                  className="p-1.5 rounded-full hover:bg-black/5 text-[#6E7C75] transition-colors"
+                  className="p-1.5 rounded-full hover:bg-black/5 text-[#6E7C75] transition-colors cursor-pointer"
                 >
                   <ChevronDown className="w-5 h-5" />
                 </button>
@@ -469,6 +590,9 @@ export const VinylMusicPlayer: React.FC<VinylMusicPlayerProps> = ({ onShowToast 
                             <img
                               src={currentTrack.cover}
                               alt={currentTrack.title}
+                              onError={(e) => {
+                                (e.currentTarget as HTMLImageElement).src = DEFAULT_FALLBACK_COVER;
+                              }}
                               className="w-full h-full object-cover"
                             />
                           ) : (
@@ -498,12 +622,29 @@ export const VinylMusicPlayer: React.FC<VinylMusicPlayerProps> = ({ onShowToast 
                     </div>
 
                     {/* 歌曲信息与时光标签 */}
-                    <div className="text-center mt-5 space-y-1 w-full max-w-xs px-2">
-                      <h3 className="text-lg sm:text-xl font-serif font-bold text-[#17201B] truncate">
-                        {currentTrack?.title || '时光留声机'}
-                      </h3>
+                    <div className="text-center mt-5 space-y-1 w-full max-w-xs px-2 relative">
+                      <div className="flex items-center justify-center gap-2">
+                        <h3 className="text-lg sm:text-xl font-serif font-bold text-[#17201B] truncate">
+                          {currentTrack?.title || '拾年留声机'}
+                        </h3>
+                        {currentTrack && (
+                          <button
+                            onClick={() => toggleFavorite()}
+                            title={isCurrentFavorited ? '取消喜欢' : '添加至我的喜欢'}
+                            className="p-1 rounded-full hover:bg-black/5 transition-transform active:scale-125"
+                          >
+                            <Heart
+                              className={`w-4 h-4 transition-colors ${
+                                isCurrentFavorited
+                                  ? 'fill-rose-500 text-rose-500'
+                                  : 'text-[#6E7C75] hover:text-rose-500'
+                              }`}
+                            />
+                          </button>
+                        )}
+                      </div>
                       <p className="text-xs text-[#6E7C75] font-serif truncate">
-                        {currentTrack?.artist || '未选定曲目'} {currentTrack?.album ? `· ${currentTrack.album}` : ''}
+                        {currentTrack?.artist || '暂未选定曲目'} {currentTrack?.album ? `· ${currentTrack.album}` : ''}
                       </p>
                     </div>
 
@@ -525,7 +666,7 @@ export const VinylMusicPlayer: React.FC<VinylMusicPlayerProps> = ({ onShowToast 
 
                     {/* 播放控制按钮群 */}
                     <div className="flex items-center justify-center gap-6 mt-4">
-                      {/* 循环模式 */}
+                      {/* 循环模式：包含标准带1的单曲循环 Repeat1 图标 */}
                       <button
                         onClick={() => {
                           const modes: ('all' | 'one' | 'shuffle')[] = ['all', 'one', 'shuffle'];
@@ -542,16 +683,16 @@ export const VinylMusicPlayer: React.FC<VinylMusicPlayerProps> = ({ onShowToast 
                         className="p-2 rounded-full text-[#6E7C75] hover:text-[#17201B] hover:bg-black/5 transition-colors"
                         title={
                           loopMode === 'all'
-                            ? '列表循环'
+                            ? '当前：列表循环（轻触切换单曲循环）'
                             : loopMode === 'one'
-                            ? '单曲循环'
-                            : '随机播放'
+                            ? '当前：单曲循环（轻触切换随机播放）'
+                            : '当前：随机播放（轻触切换列表循环）'
                         }
                       >
                         {loopMode === 'shuffle' ? (
                           <Shuffle className="w-4 h-4 text-[#E88765]" />
                         ) : loopMode === 'one' ? (
-                          <Repeat className="w-4 h-4 text-[#E88765]" />
+                          <Repeat1 className="w-4 h-4 text-[#E88765]" />
                         ) : (
                           <Repeat className="w-4 h-4" />
                         )}
@@ -568,7 +709,7 @@ export const VinylMusicPlayer: React.FC<VinylMusicPlayerProps> = ({ onShowToast 
                       {/* 主播放/暂停 (大号质感按钮) */}
                       <button
                         onClick={togglePlay}
-                        disabled={isLoadingUrl}
+                        disabled={isLoadingUrl || playlist.length === 0}
                         className="w-14 h-14 rounded-full bg-[#5B7B6D] hover:bg-[#3E564B] text-white flex items-center justify-center shadow-lg transition-transform active:scale-95 disabled:opacity-50 cursor-pointer"
                       >
                         {isLoadingUrl ? (
@@ -601,42 +742,47 @@ export const VinylMusicPlayer: React.FC<VinylMusicPlayerProps> = ({ onShowToast 
 
                 {viewMode === 'search' && (
                   <div className="space-y-4">
-                    {/* 搜索框 */}
-                    <div className="flex gap-2">
-                      <div className="relative flex-1">
-                        <input
-                          type="text"
-                          value={searchQuery}
-                          onChange={(e) => setSearchQuery(e.target.value)}
-                          onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-                          placeholder="输入歌名、歌手（如：周杰伦 晴天、起风了...）"
-                          className="w-full pl-9 pr-3 py-2 text-xs rounded-xl bg-white border border-[#2B332E]/15 focus:outline-none focus:border-[#5B7B6D] font-sans"
-                        />
-                        <Search className="w-4 h-4 text-[#6E7C75] absolute left-3 top-2.5" />
-                      </div>
+                    {/* 搜索输入框（适配移动端软键盘与即触提交） */}
+                    <form
+                      action="javascript:void(0)"
+                      onSubmit={(e) => {
+                        e.preventDefault();
+                        handleSearch();
+                      }}
+                      className="relative"
+                    >
+                      <input
+                        type="search"
+                        enterKeyHint="search"
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        placeholder="搜索全网歌曲、歌手（如：周杰伦、晴天、起风了）"
+                        className="w-full pl-10 pr-20 py-2.5 rounded-2xl bg-white border border-[#2B332E]/15 focus:outline-none focus:border-[#5B7B6D] text-xs font-serif shadow-2xs appearance-none"
+                      />
+                      <Search className="absolute left-3.5 top-3 w-4 h-4 text-[#6E7C75] pointer-events-none" />
                       <button
-                        onClick={() => handleSearch()}
+                        type="submit"
                         disabled={isSearching}
-                        className="px-4 py-2 bg-[#5B7B6D] text-white text-xs font-serif rounded-xl hover:bg-[#3E564B] transition-colors disabled:opacity-50"
+                        className="absolute right-1.5 top-1.5 px-3 py-1.5 bg-[#5B7B6D] hover:bg-[#3E564B] text-white text-xs rounded-xl font-medium transition-colors cursor-pointer active:scale-95 disabled:opacity-50"
                       >
-                        {isSearching ? '检索中...' : '搜索'}
+                        {isSearching ? '搜索中' : '搜索'}
                       </button>
-                    </div>
+                    </form>
 
-                    {/* 灵感标签推荐 */}
+                    {/* 推荐热搜标签 */}
                     <div className="space-y-1.5">
-                      <span className="text-[10px] text-[#6E7C75] font-serif">热门点播灵感：</span>
+                      <span className="text-[11px] text-[#6E7C75] font-serif">推荐搜索：</span>
                       <div className="flex flex-wrap gap-1.5">
-                        {HOT_TAGS.map((tag) => (
+                        {['三叶的主题曲', 'Sparkle', '晴天', '起风了', '七里香', '蒲公英的约定', '夏天的风', 'Lemon', 'Summer'].map((kw) => (
                           <button
-                            key={tag}
+                            key={kw}
                             onClick={() => {
-                              setSearchQuery(tag);
-                              handleSearch(tag);
+                              setSearchQuery(kw);
+                              handleSearch(kw);
                             }}
-                            className="px-2.5 py-1 rounded-full bg-white border border-[#5B7B6D]/15 text-[11px] text-[#5B7B6D] hover:bg-[#5B7B6D]/10 transition-colors font-serif"
+                            className="text-[11px] px-2.5 py-1 rounded-full bg-white border border-[#2B332E]/10 text-[#2B332E] hover:border-[#5B7B6D] hover:text-[#5B7B6D] transition-colors cursor-pointer"
                           >
-                            {tag}
+                            {kw}
                           </button>
                         ))}
                       </div>
@@ -658,107 +804,503 @@ export const VinylMusicPlayer: React.FC<VinylMusicPlayerProps> = ({ onShowToast 
                       </button>
                     </div>
 
-                    {/* 搜索结果列表 */}
+                    {/* 搜索结果或精选灵感曲库 */}
                     <div className="space-y-2 mt-3">
-                      <span className="text-xs font-serif font-bold text-[#17201B]">
-                        {searchResults.length > 0 ? `搜索结果 (${searchResults.length})` : '推荐氛围原声'}
-                      </span>
-                      <div className="space-y-1.5 max-h-[280px] overflow-y-auto pr-1">
-                        {(searchResults.length > 0 ? searchResults : DEFAULT_INSPIRATION_SONGS).map((song) => (
-                          <div
-                            key={song.id}
-                            onClick={() => selectSearchResult(song)}
-                            className="flex items-center justify-between p-2.5 rounded-2xl bg-white/80 hover:bg-white border border-[#2B332E]/[0.06] shadow-2xs hover:shadow-xs cursor-pointer group transition-all"
-                          >
-                            <div className="flex items-center gap-3 min-w-0">
-                              <div className="w-10 h-10 rounded-xl overflow-hidden bg-[#5B7B6D]/20 shrink-0">
-                                {song.cover ? (
-                                  <img src={song.cover} alt={song.title} className="w-full h-full object-cover" />
-                                ) : (
-                                  <div className="w-full h-full flex items-center justify-center text-[#5B7B6D]">
-                                    <Disc3 className="w-5 h-5" />
-                                  </div>
-                                )}
-                              </div>
-                              <div className="min-w-0">
-                                <h4 className="text-xs font-serif font-bold text-[#17201B] truncate group-hover:text-[#5B7B6D] transition-colors">
-                                  {song.title}
-                                </h4>
-                                <p className="text-[10px] text-[#6E7C75] truncate">
-                                  {song.artist} · {song.album}
-                                </p>
-                              </div>
-                            </div>
-
-                            <button className="p-1.5 rounded-full bg-[#FAF8F5] text-[#5B7B6D] group-hover:bg-[#5B7B6D] group-hover:text-white transition-colors shrink-0">
-                              <Play className="w-3.5 h-3.5 fill-current ml-0.5" />
+                      {searchResults.length > 0 ? (
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-serif font-bold text-[#17201B]">
+                              搜索结果 ({searchResults.length})
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSearchResults([]);
+                                setSearchQuery('');
+                              }}
+                              className="text-[11px] text-[#5B7B6D] hover:underline font-serif"
+                            >
+                              返回精选推荐
                             </button>
                           </div>
-                        ))}
-                      </div>
+                          <div className="space-y-1.5 max-h-[300px] overflow-y-auto pr-1">
+                            {searchResults.map((song) => (
+                              <div
+                                key={song.id}
+                                onClick={() => selectSearchResult(song)}
+                                className="flex items-center justify-between p-2.5 rounded-2xl bg-white/80 hover:bg-white border border-[#2B332E]/[0.06] shadow-2xs hover:shadow-xs cursor-pointer group transition-all"
+                              >
+                                <div className="flex items-center gap-3 min-w-0">
+                                  <div className="w-10 h-10 rounded-xl overflow-hidden bg-[#5B7B6D]/20 shrink-0">
+                                    {song.cover ? (
+                                      <img
+                                        src={song.cover}
+                                        alt={song.title}
+                                        onError={(e) => {
+                                          (e.currentTarget as HTMLImageElement).src = DEFAULT_FALLBACK_COVER;
+                                        }}
+                                        className="w-full h-full object-cover"
+                                      />
+                                    ) : (
+                                      <div className="w-full h-full flex items-center justify-center text-[#5B7B6D]">
+                                        <Disc3 className="w-5 h-5" />
+                                      </div>
+                                    )}
+                                  </div>
+                                  <div className="min-w-0">
+                                    <h4 className="text-xs font-serif font-bold text-[#17201B] truncate group-hover:text-[#5B7B6D] transition-colors">
+                                      {song.title}
+                                    </h4>
+                                    <p className="text-[10px] text-[#6E7C75] truncate">
+                                      {song.artist} · {song.album}
+                                    </p>
+                                  </div>
+                                </div>
+                                <div className="flex items-center gap-1 shrink-0 ml-2">
+                                  <button
+                                    type="button"
+                                    onClick={(e) => handleAddToQueue(song, e)}
+                                    title="加入播放歌单"
+                                    className="p-1.5 rounded-lg text-[#6E7C75] hover:text-[#5B7B6D] hover:bg-[#FAF8F5] transition-colors active:scale-90"
+                                  >
+                                    <Plus className="w-3.5 h-3.5" />
+                                  </button>
+                                  <button 
+                                    type="button"
+                                    onClick={() => selectSearchResult(song)}
+                                    title="立即播放"
+                                    className="p-1.5 rounded-full bg-[#FAF8F5] text-[#5B7B6D] group-hover:bg-[#5B7B6D] group-hover:text-white transition-colors shrink-0"
+                                  >
+                                    <Play className="w-3.5 h-3.5 fill-current ml-0.5" />
+                                  </button>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      ) : (
+                        /* 精选时光推荐歌曲列表：极简纯净 */
+                        <div className="space-y-2 pt-1">
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-[300px] overflow-y-auto pr-1">
+                            {CURATED_TIME_SONGS.map((song) => (
+                              <div
+                                key={song.id}
+                                onClick={() => selectSearchResult(song)}
+                                className="flex items-center justify-between p-2.5 rounded-2xl bg-white/85 hover:bg-white border border-[#2B332E]/[0.08] hover:border-[#5B7B6D]/40 shadow-2xs hover:shadow-xs cursor-pointer group transition-all"
+                              >
+                                <div className="flex items-center gap-2.5 min-w-0">
+                                  <div className="w-10 h-10 rounded-xl overflow-hidden bg-[#5B7B6D]/15 shrink-0 shadow-2xs">
+                                    <img
+                                      src={song.cover}
+                                      alt={song.title}
+                                      onError={(e) => {
+                                        (e.currentTarget as HTMLImageElement).src = DEFAULT_FALLBACK_COVER;
+                                      }}
+                                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                                    />
+                                  </div>
+                                  <div className="min-w-0">
+                                    <h4 className="text-xs font-serif font-bold text-[#17201B] truncate group-hover:text-[#5B7B6D] transition-colors">
+                                      {song.title}
+                                    </h4>
+                                    <p className="text-[10px] text-[#6E7C75] truncate font-serif mt-0.5">
+                                      {song.artist} · {song.durationFormatted}
+                                    </p>
+                                  </div>
+                                </div>
+                                <div className="flex items-center gap-1 shrink-0 ml-2">
+                                  <button
+                                    type="button"
+                                    onClick={(e) => handleAddToQueue(song, e)}
+                                    title="添入播放歌单"
+                                    className="p-1.5 rounded-lg text-[#6E7C75] hover:text-[#5B7B6D] hover:bg-[#FAF8F5] transition-colors active:scale-90"
+                                  >
+                                    <Plus className="w-3.5 h-3.5" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => selectSearchResult(song)}
+                                    title="立即试听"
+                                    className="p-1.5 rounded-full bg-[#FAF8F5] text-[#5B7B6D] group-hover:bg-[#5B7B6D] group-hover:text-white transition-colors"
+                                  >
+                                    <Play className="w-3 h-3 fill-current ml-0.5" />
+                                  </button>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
                 )}
 
+                {/* 歌单库面板：卡片化导航与下级二级界面 */}
                 {viewMode === 'playlist' && (
-                  <div className="space-y-3">
-                    <div className="flex justify-between items-center text-xs">
-                      <span className="font-serif font-bold text-[#17201B]">
-                        当前播放列表（共 {playlist.length} 首）
-                      </span>
-                      <button
-                        onClick={() => fileInputRef.current?.click()}
-                        className="text-[#5B7B6D] hover:underline flex items-center gap-1 font-serif text-[11px]"
-                      >
-                        <Plus className="w-3 h-3" /> 添加本地歌曲
-                      </button>
-                    </div>
-
-                    <div className="space-y-1.5 max-h-[340px] overflow-y-auto pr-1">
-                      {playlist.map((song, idx) => {
-                        const isCurrent = idx === currentIndex;
-                        return (
+                  <div className="space-y-4">
+                    {/* 一级界面：三个高美感卡片（播放队列、我的喜欢、历史足迹） */}
+                    {playlistSubTab === null ? (
+                      <div className="space-y-3">
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                          {/* 播放队列卡片 */}
                           <div
-                            key={song.id + idx}
-                            onClick={() => {
-                              setCurrentIndex(idx);
-                              playTrack(song, true);
-                              setViewMode('player');
-                            }}
-                            className={`flex items-center justify-between p-2.5 rounded-2xl border transition-all cursor-pointer ${
-                              isCurrent
-                                ? 'bg-[#5B7B6D]/15 border-[#5B7B6D]/30 text-[#17201B]'
-                                : 'bg-white/80 hover:bg-white border-[#2B332E]/[0.06] text-[#6E7C75]'
-                            }`}
+                            onClick={() => setPlaylistSubTab('queue')}
+                            className="p-4 rounded-2xl bg-white/90 hover:bg-white border border-[#2B332E]/10 hover:border-[#5B7B6D]/40 shadow-xs hover:shadow-md transition-all cursor-pointer group flex flex-col justify-between min-h-[110px]"
                           >
-                            <div className="flex items-center gap-2.5 min-w-0">
-                              <span className="w-4 text-center text-xs font-mono">
-                                {isCurrent && isPlaying ? (
-                                  <span className="w-2 h-2 rounded-full bg-[#E88765] inline-block animate-ping" />
-                                ) : (
-                                  idx + 1
-                                )}
-                              </span>
-                              <div className="min-w-0">
-                                <h4 className={`text-xs font-serif truncate ${isCurrent ? 'font-bold text-[#17201B]' : ''}`}>
-                                  {song.title}
-                                </h4>
-                                <span className="text-[10px] opacity-75 truncate">{song.artist}</span>
+                            <div className="flex items-center justify-between">
+                              <div className="w-10 h-10 rounded-xl bg-[#5B7B6D]/10 text-[#5B7B6D] flex items-center justify-center group-hover:scale-105 transition-transform">
+                                <ListOrdered className="w-5 h-5" />
                               </div>
+                              <span className="text-xs font-mono font-bold px-2 py-0.5 rounded-full bg-[#5B7B6D]/10 text-[#5B7B6D]">
+                                {playlist.length} 首
+                              </span>
                             </div>
-
-                            <div className="flex items-center gap-2">
-                              {song.isLocal && (
-                                <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 font-sans">
-                                  本地
-                                </span>
-                              )}
-                              <span className="text-[10px] font-mono">{song.durationFormatted || ''}</span>
+                            <div className="mt-3">
+                              <h4 className="font-serif font-bold text-sm text-[#17201B] group-hover:text-[#5B7B6D] transition-colors">
+                                播放队列
+                              </h4>
+                              <p className="text-[11px] text-[#6E7C75] mt-0.5">
+                                当前待奏与即席曲目
+                              </p>
                             </div>
                           </div>
-                        );
-                      })}
-                    </div>
+
+                          {/* 我的喜欢卡片 */}
+                          <div
+                            onClick={() => setPlaylistSubTab('favorites')}
+                            className="p-4 rounded-2xl bg-white/90 hover:bg-white border border-[#2B332E]/10 hover:border-rose-300 shadow-xs hover:shadow-md transition-all cursor-pointer group flex flex-col justify-between min-h-[110px]"
+                          >
+                            <div className="flex items-center justify-between">
+                              <div className="w-10 h-10 rounded-xl bg-rose-50 text-rose-500 flex items-center justify-center group-hover:scale-105 transition-transform">
+                                <Heart className="w-5 h-5 fill-rose-500" />
+                              </div>
+                              <span className="text-xs font-mono font-bold px-2 py-0.5 rounded-full bg-rose-50 text-rose-500">
+                                {favorites.length} 首
+                              </span>
+                            </div>
+                            <div className="mt-3">
+                              <h4 className="font-serif font-bold text-sm text-[#17201B] group-hover:text-rose-600 transition-colors">
+                                我的喜欢
+                              </h4>
+                              <p className="text-[11px] text-[#6E7C75] mt-0.5">
+                                永恒心动与挚爱珍藏
+                              </p>
+                            </div>
+                          </div>
+
+                          {/* 历史足迹卡片 */}
+                          <div
+                            onClick={() => setPlaylistSubTab('history')}
+                            className="p-4 rounded-2xl bg-white/90 hover:bg-white border border-[#2B332E]/10 hover:border-[#5B7B6D]/40 shadow-xs hover:shadow-md transition-all cursor-pointer group flex flex-col justify-between min-h-[110px]"
+                          >
+                            <div className="flex items-center justify-between">
+                              <div className="w-10 h-10 rounded-xl bg-[#2B332E]/5 text-[#5B7B6D] flex items-center justify-center group-hover:scale-105 transition-transform">
+                                <History className="w-5 h-5" />
+                              </div>
+                              <span className="text-xs font-mono font-bold px-2 py-0.5 rounded-full bg-[#2B332E]/5 text-[#6E7C75]">
+                                {history.length} 首
+                              </span>
+                            </div>
+                            <div className="mt-3">
+                              <h4 className="font-serif font-bold text-sm text-[#17201B] group-hover:text-[#5B7B6D] transition-colors">
+                                历史足迹
+                              </h4>
+                              <p className="text-[11px] text-[#6E7C75] mt-0.5">
+                                曾伴耳畔的岁序回响
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* 快捷本地导入入口 */}
+                        <div className="pt-3 border-t border-[#2B332E]/[0.06] flex items-center justify-between text-xs">
+                          <button
+                            onClick={() => fileInputRef.current?.click()}
+                            className="text-[#5B7B6D] hover:underline flex items-center gap-1 font-serif"
+                          >
+                            <Plus className="w-3.5 h-3.5" /> 导入本地伴奏歌曲到队列
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      /* 二级界面：选定卡片进入后的详细列表与返回导航 */
+                      <div className="space-y-3.5">
+                        {/* 二级返回顶栏 */}
+                        <div className="flex items-center justify-between border-b border-[#2B332E]/10 pb-2.5">
+                          <button
+                            onClick={() => setPlaylistSubTab(null)}
+                            className="flex items-center gap-1.5 text-xs text-[#5B7B6D] hover:text-[#3E564B] font-serif font-bold transition-colors cursor-pointer"
+                          >
+                            <ChevronLeft className="w-4 h-4" /> 返回歌单库
+                          </button>
+
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-serif font-bold text-[#17201B]">
+                              {playlistSubTab === 'queue' && `播放队列 (${playlist.length})`}
+                              {playlistSubTab === 'favorites' && `我的喜欢 (${favorites.length})`}
+                              {playlistSubTab === 'history' && `历史足迹 (${history.length})`}
+                            </span>
+
+                            {playlistSubTab === 'queue' && playlist.length > 0 && (
+                              <button
+                                onClick={clearPlaylist}
+                                title="清空当前队列"
+                                className="text-[11px] text-red-500/80 hover:text-red-600 flex items-center gap-0.5 cursor-pointer ml-2"
+                              >
+                                <Trash2 className="w-3 h-3" /> 清空
+                              </button>
+                            )}
+                            {playlistSubTab === 'history' && history.length > 0 && (
+                              <button
+                                onClick={clearHistory}
+                                title="清空历史播放"
+                                className="text-[11px] text-red-500/80 hover:text-red-600 flex items-center gap-0.5 cursor-pointer ml-2"
+                              >
+                                <Trash2 className="w-3 h-3" /> 清空
+                              </button>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* 1. 当前播放队列列表 */}
+                        {playlistSubTab === 'queue' && (
+                          <div className="space-y-2">
+                            <div className="flex justify-between items-center text-xs">
+                              <span className="text-[#6E7C75] text-[11px]">
+                                点击曲目即刻切换起奏
+                              </span>
+                              <button
+                                onClick={() => fileInputRef.current?.click()}
+                                className="text-[#5B7B6D] hover:underline flex items-center gap-1 font-serif text-[11px] cursor-pointer"
+                              >
+                                <Plus className="w-3 h-3" /> 导入本地歌曲
+                              </button>
+                            </div>
+
+                            {playlist.length === 0 ? (
+                              <div className="p-8 text-center bg-white/60 rounded-2xl border border-dashed border-[#5B7B6D]/20 space-y-2">
+                                <Disc3 className="w-8 h-8 text-[#5B7B6D]/40 mx-auto animate-pulse" />
+                                <p className="text-xs text-[#6E7C75] font-serif">当前播放列表暂无歌曲</p>
+                                <button
+                                  onClick={() => setViewMode('search')}
+                                  className="text-xs px-3 py-1 bg-[#5B7B6D] text-white rounded-xl font-sans cursor-pointer"
+                                >
+                                  前往全网搜歌
+                                </button>
+                              </div>
+                            ) : (
+                              <div className="space-y-1.5 max-h-[320px] overflow-y-auto pr-1">
+                                {playlist.map((song, idx) => {
+                                  const isCurrent = idx === currentIndex;
+                                  return (
+                                    <div
+                                      key={song.id + idx}
+                                      onClick={() => {
+                                        setCurrentIndex(idx);
+                                        playTrack(song, true);
+                                        setViewMode('player');
+                                      }}
+                                      className={`flex items-center justify-between p-2.5 rounded-2xl border transition-all cursor-pointer group ${
+                                        isCurrent
+                                          ? 'bg-[#5B7B6D]/15 border-[#5B7B6D]/30 text-[#17201B]'
+                                          : 'bg-white/80 hover:bg-white border-[#2B332E]/[0.06] text-[#6E7C75]'
+                                      }`}
+                                    >
+                                      <div className="flex items-center gap-2.5 min-w-0">
+                                        <span className="w-4 text-center text-xs font-mono">
+                                          {isCurrent && isPlaying ? (
+                                            <span className="w-2 h-2 rounded-full bg-[#E88765] inline-block animate-ping" />
+                                          ) : (
+                                            idx + 1
+                                          )}
+                                        </span>
+                                        <div className="min-w-0">
+                                          <h4 className={`text-xs font-serif truncate ${isCurrent ? 'font-bold text-[#17201B]' : ''}`}>
+                                            {song.title}
+                                          </h4>
+                                          <span className="text-[10px] opacity-75 truncate">{song.artist}</span>
+                                        </div>
+                                      </div>
+
+                                      <div className="flex items-center gap-2 shrink-0">
+                                        {song.isLocal && (
+                                          <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 font-sans">
+                                            本地
+                                          </span>
+                                        )}
+                                        <span className="text-[10px] font-mono">{song.durationFormatted || ''}</span>
+                                        <button
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            toggleFavorite(song);
+                                          }}
+                                          className="p-1 text-gray-400 hover:text-rose-500 cursor-pointer"
+                                          title="喜欢"
+                                        >
+                                          <Heart
+                                            className={`w-3.5 h-3.5 ${
+                                              favorites.some((f) => f.id === song.id)
+                                                ? 'fill-rose-500 text-rose-500'
+                                                : ''
+                                            }`}
+                                          />
+                                        </button>
+                                        <button
+                                          onClick={(e) => removePlaylistItem(e, idx)}
+                                          className="p-1 text-gray-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+                                          title="移除"
+                                        >
+                                          <Trash2 className="w-3.5 h-3.5" />
+                                        </button>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        {/* 2. 我的喜欢列表 */}
+                        {playlistSubTab === 'favorites' && (
+                          <div className="space-y-2">
+                            {favorites.length === 0 ? (
+                              <div className="p-8 text-center bg-white/60 rounded-2xl border border-dashed border-rose-300/40 space-y-2">
+                                <Heart className="w-8 h-8 text-rose-300 mx-auto" />
+                                <p className="text-xs text-[#6E7C75] font-serif">暂无喜欢的曲目</p>
+                                <p className="text-[11px] text-[#6E7C75]/70">在播放或搜索时轻触红心即可永久珍藏</p>
+                              </div>
+                            ) : (
+                              <div className="space-y-1.5 max-h-[320px] overflow-y-auto pr-1">
+                                {favorites.map((song) => (
+                                  <div
+                                    key={song.id}
+                                    onClick={() => handlePlayFromCollection(song)}
+                                    className="flex items-center justify-between p-2.5 rounded-2xl bg-white/80 hover:bg-white border border-[#2B332E]/[0.06] cursor-pointer group transition-all"
+                                  >
+                                    <div className="flex items-center gap-3 min-w-0">
+                                      <div className="w-9 h-9 rounded-xl overflow-hidden bg-rose-50 shrink-0">
+                                        {song.cover ? (
+                                          <img
+                                            src={song.cover}
+                                            alt={song.title}
+                                            onError={(e) => {
+                                              (e.currentTarget as HTMLImageElement).src = DEFAULT_FALLBACK_COVER;
+                                            }}
+                                            className="w-full h-full object-cover"
+                                          />
+                                        ) : (
+                                          <div className="w-full h-full flex items-center justify-center text-rose-400">
+                                            <Music className="w-4 h-4" />
+                                          </div>
+                                        )}
+                                      </div>
+                                      <div className="min-w-0">
+                                        <h4 className="text-xs font-serif font-bold text-[#17201B] truncate group-hover:text-rose-600 transition-colors">
+                                          {song.title}
+                                        </h4>
+                                        <span className="text-[10px] text-[#6E7C75] truncate">{song.artist}</span>
+                                      </div>
+                                    </div>
+
+                                    <div className="flex items-center gap-1.5">
+                                      <button
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          toggleFavorite(song);
+                                        }}
+                                        className="p-1.5 text-rose-500 hover:scale-110 transition-transform cursor-pointer"
+                                        title="取消喜欢"
+                                      >
+                                        <Heart className="w-4 h-4 fill-rose-500" />
+                                      </button>
+                                      <button
+                                        className="p-1.5 rounded-full bg-rose-50 text-rose-500 group-hover:bg-rose-500 group-hover:text-white transition-colors cursor-pointer"
+                                        title="播放"
+                                      >
+                                        <Play className="w-3.5 h-3.5 fill-current ml-0.5" />
+                                      </button>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        {/* 3. 历史足迹列表 */}
+                        {playlistSubTab === 'history' && (
+                          <div className="space-y-2">
+                            {history.length === 0 ? (
+                              <div className="p-8 text-center bg-white/60 rounded-2xl border border-dashed border-[#5B7B6D]/20 space-y-2">
+                                <History className="w-8 h-8 text-[#5B7B6D]/40 mx-auto" />
+                                <p className="text-xs text-[#6E7C75] font-serif">暂无历史播放记录</p>
+                              </div>
+                            ) : (
+                              <div className="space-y-1.5 max-h-[320px] overflow-y-auto pr-1">
+                                {history.map((song) => (
+                                  <div
+                                    key={song.id}
+                                    onClick={() => handlePlayFromCollection(song)}
+                                    className="flex items-center justify-between p-2.5 rounded-2xl bg-white/80 hover:bg-white border border-[#2B332E]/[0.06] cursor-pointer group transition-all"
+                                  >
+                                    <div className="flex items-center gap-3 min-w-0">
+                                      <div className="w-9 h-9 rounded-xl overflow-hidden bg-[#5B7B6D]/15 shrink-0">
+                                        {song.cover ? (
+                                          <img
+                                            src={song.cover}
+                                            alt={song.title}
+                                            onError={(e) => {
+                                              (e.currentTarget as HTMLImageElement).src = DEFAULT_FALLBACK_COVER;
+                                            }}
+                                            className="w-full h-full object-cover"
+                                          />
+                                        ) : (
+                                          <div className="w-full h-full flex items-center justify-center text-[#5B7B6D]">
+                                            <Music className="w-4 h-4" />
+                                          </div>
+                                        )}
+                                      </div>
+                                      <div className="min-w-0">
+                                        <h4 className="text-xs font-serif font-bold text-[#17201B] truncate group-hover:text-[#5B7B6D] transition-colors">
+                                          {song.title}
+                                        </h4>
+                                        <span className="text-[10px] text-[#6E7C75] truncate">{song.artist}</span>
+                                      </div>
+                                    </div>
+
+                                    <div className="flex items-center gap-1.5">
+                                      <button
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          toggleFavorite(song);
+                                        }}
+                                        className="p-1 text-gray-400 hover:text-rose-500 cursor-pointer"
+                                        title="喜欢"
+                                      >
+                                        <Heart
+                                          className={`w-3.5 h-3.5 ${
+                                            favorites.some((f) => f.id === song.id)
+                                              ? 'fill-rose-500 text-rose-500'
+                                              : ''
+                                          }`}
+                                        />
+                                      </button>
+                                      <button
+                                        className="p-1.5 rounded-full bg-[#FAF8F5] text-[#5B7B6D] group-hover:bg-[#5B7B6D] group-hover:text-white transition-colors cursor-pointer"
+                                        title="播放"
+                                      >
+                                        <Play className="w-3.5 h-3.5 fill-current ml-0.5" />
+                                      </button>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

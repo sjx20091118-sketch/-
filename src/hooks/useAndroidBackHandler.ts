@@ -55,6 +55,12 @@ export interface BackHandlerState {
   isThemePickerOpen: boolean;
   closeThemePicker: () => void;
 
+  isTopNavMenuOpen?: boolean;
+  closeTopNavMenu?: () => void;
+
+  isFullscreenClockOpen?: boolean;
+  closeFullscreenClock?: () => void;
+
   isYearPickerOpen: boolean;
   closeYearPicker: () => void;
 
@@ -171,7 +177,15 @@ export function useAndroidBackHandler(state: BackHandlerState) {
       return true;
     }
 
-    // 15. Bottom Drawer / Dropdown Pickers
+    // 15. Bottom Drawer / Dropdown Pickers / Fullscreen Overlays
+    if (s.isFullscreenClockOpen && s.closeFullscreenClock) {
+      s.closeFullscreenClock();
+      return true;
+    }
+    if (s.isTopNavMenuOpen && s.closeTopNavMenu) {
+      s.closeTopNavMenu();
+      return true;
+    }
     if (s.isVoicePickerModalOpen) {
       s.closeVoicePickerModal();
       return true;

@@ -140,10 +140,10 @@ export const PersonAlbum: React.FC<PersonAlbumProps> = ({
           type="button"
           onClick={() => fileInputRef.current?.click()}
           disabled={isUploading}
-          className="px-2.5 py-1 text-xs font-serif text-[#5B7B6D] hover:bg-[#FAF8F5] border border-[#5B7B6D]/20 rounded-xl transition-all flex items-center gap-1 cursor-pointer active:scale-95 disabled:opacity-50"
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white border border-[#5B7B6D]/30 hover:border-[#5B7B6D] hover:bg-[#5B7B6D]/10 text-[#5B7B6D] transition-all text-xs font-serif font-medium shadow-2xs cursor-pointer active:scale-95 disabled:opacity-50"
         >
-          <Plus className="w-3 h-3" />
-          <span>添加照片/视频</span>
+          <Plus className="w-3.5 h-3.5" />
+          <span>添加相片</span>
         </button>
       </div>
 

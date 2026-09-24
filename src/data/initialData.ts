@@ -54,6 +54,8 @@ export const INITIAL_SEED: AppData = {
         'https://i.imgs.ovh/2026/08/30/7d9f95bdddfd2cb6ba5b0e4b71aceef4.jpg',
         'https://i.imgs.ovh/2026/08/30/053e3fab96cb3d4e6349447a8ca17bfa.png'
       ],
+      artifactIds: ['a-101', 'a-102'],
+      storyIds: ['s-101', 's-102', 's-103'],
       impressions: [
         {
           id: 'imp-author-2026',

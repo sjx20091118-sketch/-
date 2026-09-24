@@ -35,7 +35,8 @@ export interface Person {
   customFields?: Record<string, string>;
   photos?: string[];   // 人物相册照片数组（本地压缩存储）
   artifactIds?: string[]; // 专属信物柜绑定的拾物阁物品ID
-  impressions: Impression[];
+  storyIds?: string[]; // 绑定的拾忆篇故事文章ID
+  impressions?: Impression[];
 }
 
 export interface Story {

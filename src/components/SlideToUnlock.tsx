@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { motion, useMotionValue, useTransform } from 'motion/react';
-import { Flame, Lock, Sparkle, MailOpen, ArrowRight, Check } from 'lucide-react';
+import { Flame, Lock, MailOpen, ArrowRight, Check } from 'lucide-react';
 import { HealingTheme } from '../types';
 
 interface SlideToUnlockProps {

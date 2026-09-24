@@ -11,6 +11,7 @@ interface PersonArtifactsShelfProps {
   boundArtifactIds?: string[];
   allArtifacts: Artifact[];
   onUpdateBoundArtifacts: (artifactIds: string[]) => void;
+  onSelectArtifact?: (artifact: Artifact) => void;
   showToast: (msg: string) => void;
 }
 
@@ -19,6 +20,7 @@ export const PersonArtifactsShelf: React.FC<PersonArtifactsShelfProps> = ({
   boundArtifactIds = [],
   allArtifacts,
   onUpdateBoundArtifacts,
+  onSelectArtifact,
   showToast
 }) => {
   const [isPickerOpen, setIsPickerOpen] = useState(false);
@@ -69,7 +71,7 @@ export const PersonArtifactsShelf: React.FC<PersonArtifactsShelfProps> = ({
         <button
           type="button"
           onClick={handleOpenPicker}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#FAF8F5] border border-[#5B7B6D]/20 text-xs font-serif text-[#5B7B6D] hover:text-[#E88765] hover:border-[#E88765]/40 hover:bg-white transition-all shadow-2xs active:scale-95 cursor-pointer"
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white border border-[#5B7B6D]/30 hover:border-[#5B7B6D] hover:bg-[#5B7B6D]/10 text-[#5B7B6D] transition-all text-xs font-serif font-medium shadow-2xs cursor-pointer active:scale-95"
         >
           <Plus className="w-3.5 h-3.5" />
           <span>从拾物阁拣选</span>
@@ -88,35 +90,29 @@ export const PersonArtifactsShelf: React.FC<PersonArtifactsShelfProps> = ({
       ) : (
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
           {boundArtifacts.map(art => (
-            <TiltCard
+            <div
               key={art.id}
-              maxTilt={4}
-              glareOpacity={0.2}
-              className="rounded-2xl border border-[#5B7B6D]/15 bg-[#FAF8F5] p-2.5 space-y-2 group shadow-2xs hover:shadow-sm transition-all"
+              onClick={() => onSelectArtifact?.(art)}
+              className="cursor-pointer"
             >
-              <div className="relative aspect-square rounded-xl overflow-hidden bg-stone-100">
-                <img
-                  src={art.image}
-                  alt={art.name}
-                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                />
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleRemoveSingle(art.id, art.name);
-                  }}
-                  title="移出信物柜"
-                  className="absolute top-1.5 right-1.5 p-1 rounded-lg bg-black/60 hover:bg-red-500 text-white opacity-0 group-hover:opacity-100 transition-all backdrop-blur-xs cursor-pointer"
-                >
-                  <Trash2 className="w-3 h-3" />
-                </button>
-              </div>
-              <div className="px-0.5">
-                <h4 className="font-serif font-bold text-xs text-[#2B332E] truncate">{art.name}</h4>
-                <p className="text-[10px] text-[#6E7C75] font-mono mt-0.5">{art.date || '岁月信物'}</p>
-              </div>
-            </TiltCard>
+              <TiltCard
+                maxTilt={4}
+                glareOpacity={0.2}
+                className="rounded-2xl border border-[#5B7B6D]/15 bg-[#FAF8F5] p-2.5 space-y-2 group shadow-2xs hover:shadow-sm transition-all"
+              >
+                <div className="relative aspect-square rounded-xl overflow-hidden bg-stone-100">
+                  <img
+                    src={art.image}
+                    alt={art.name}
+                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                  />
+                </div>
+                <div className="px-0.5">
+                  <h4 className="font-serif font-bold text-xs text-[#2B332E] truncate group-hover:text-[#5B7B6D] transition-colors">{art.name}</h4>
+                  <p className="text-[10px] text-[#6E7C75] font-mono mt-0.5">{art.date || '岁月信物'}</p>
+                </div>
+              </TiltCard>
+            </div>
           ))}
         </div>
       )}

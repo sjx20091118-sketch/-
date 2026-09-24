@@ -102,22 +102,125 @@ input, textarea, select, button {
 .custom-scrollbar {
   -webkit-overflow-scrolling: touch;
   scroll-behavior: smooth;
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* IE & Edge */
 }
 
 .custom-scrollbar::-webkit-scrollbar {
-  width: 3px;
-  height: 3px;
+  display: none !important;
+  width: 0px !important;
+  height: 0px !important;
+  background: transparent !important;
 }
-.custom-scrollbar::-webkit-scrollbar-track {
-  background: transparent;
+
+/* Dark Zen Theme Global Overrides */
+.dark-zen-theme {
+  --theme-canvas: #121614;
+  --theme-paper: #1A211D;
+  background-color: #121614 !important;
+  color: #FAF8F5 !important;
 }
-.custom-scrollbar::-webkit-scrollbar-thumb {
-  background: rgba(var(--accent-rgb), 0.25);
-  border-radius: 4px;
+
+.dark-zen-theme .apple-liquid-glass {
+  background: rgba(20, 26, 23, 0.82) !important;
+  border-color: rgba(255, 255, 255, 0.14) !important;
+  border-top-color: rgba(255, 255, 255, 0.24) !important;
+  border-bottom-color: rgba(0, 0, 0, 0.50) !important;
+  box-shadow: 0 12px 28px -4px rgba(0, 0, 0, 0.45), 0 4px 12px -2px rgba(0, 0, 0, 0.3), inset 0 1px 1px 0 rgba(255, 255, 255, 0.12) !important;
 }
-.custom-scrollbar::-webkit-scrollbar-thumb:hover,
-.custom-scrollbar::-webkit-scrollbar-thumb:active {
-  background: rgba(var(--accent-rgb), 0.55);
+
+.dark-zen-theme .apple-liquid-glass::before {
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.25), transparent) !important;
+}
+
+.dark-zen-theme .bg-white,
+.dark-zen-theme article,
+.dark-zen-theme .bg-white\/95,
+.dark-zen-theme .bg-white\/90,
+.dark-zen-theme .bg-white\/85,
+.dark-zen-theme .bg-white\/80,
+.dark-zen-theme .bg-white\/75,
+.dark-zen-theme .bg-white\/70,
+.dark-zen-theme .bg-white\/60,
+.dark-zen-theme .bg-white\/50,
+.dark-zen-theme .bg-white\/40 {
+  background-color: #1A221E !important;
+  border-color: rgba(91, 123, 109, 0.22) !important;
+  color: #FAF8F5 !important;
+}
+
+.dark-zen-theme .bg-\[\#FAF8F5\],
+.dark-zen-theme .bg-\[\#FAF8F5\]\/85,
+.dark-zen-theme .bg-\[\#FAF8F5\]\/90,
+.dark-zen-theme .bg-\[\#FAF6F0\] {
+  background-color: #141B17 !important;
+}
+
+.dark-zen-theme .bg-\[\#F2EFE9\],
+.dark-zen-theme .bg-\[\#F2EFE9\]\/60,
+.dark-zen-theme .bg-\[\#F2EFE9\]\/70 {
+  background-color: #1F2823 !important;
+  border-color: rgba(91, 123, 109, 0.20) !important;
+}
+
+.dark-zen-theme .bg-\[\#FDF0EB\] {
+  background-color: rgba(232, 135, 101, 0.16) !important;
+}
+
+.dark-zen-theme .text-\[\#2B332E\],
+.dark-zen-theme .text-\[\#17201B\],
+.dark-zen-theme h1,
+.dark-zen-theme h2,
+.dark-zen-theme h3,
+.dark-zen-theme h4 {
+  color: #FAF8F5 !important;
+}
+
+.dark-zen-theme .text-\[\#526058\],
+.dark-zen-theme .text-\[\#6E7C75\],
+.dark-zen-theme .text-\[\#6E7C75\]\/80,
+.dark-zen-theme .text-\[\#6E7C75\]\/75,
+.dark-zen-theme .text-\[\#6E7C75\]\/70,
+.dark-zen-theme .text-\[\#6E7C75\]\/60 {
+  color: #A8B8AE !important;
+}
+
+.dark-zen-theme .paper-texture {
+  background-color: #121614 !important;
+  background-image: radial-gradient(rgba(91, 123, 109, 0.22) 0.35px, transparent 0.35px) !important;
+}
+
+.dark-zen-theme input,
+.dark-zen-theme textarea,
+.dark-zen-theme select {
+  background-color: #1E2722 !important;
+  color: #FAF8F5 !important;
+  border-color: rgba(91, 123, 109, 0.3) !important;
+}
+
+.dark-zen-theme input::placeholder,
+.dark-zen-theme textarea::placeholder {
+  color: #72847A !important;
+}
+
+.dark-zen-theme .border-\[\#2B332E\]\/\[0\.08\],
+.dark-zen-theme .border-\[\#2B332E\]\/\[0\.06\],
+.dark-zen-theme .border-\[\#5B7B6D\]\/10,
+.dark-zen-theme .border-\[\#5B7B6D\]\/15,
+.dark-zen-theme .border-\[\#5B7B6D\]\/20,
+.dark-zen-theme .border-\[\#5B7B6D\]\/25,
+.dark-zen-theme .border-\[\#D9CFC1\],
+.dark-zen-theme .border-stone-200 {
+  border-color: rgba(91, 123, 109, 0.22) !important;
+}
+
+.dark-zen-theme #active-floating-dock-pill {
+  background-color: rgba(255, 255, 255, 0.12) !important;
+  border-color: rgba(255, 255, 255, 0.18) !important;
+}
+
+.dark-zen-theme .polaroid-shimmer {
+  opacity: 0.15 !important;
 }
 
 .paper-texture {
