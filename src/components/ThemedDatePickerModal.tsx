@@ -154,7 +154,7 @@ export const ThemedDatePickerModal: React.FC<ThemedDatePickerModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 select-none animate-fadeIn">
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center p-3 sm:p-4 select-none animate-fadeIn">
       {/* Dim backdrop */}
       <motion.div
         initial={{ opacity: 0 }}
@@ -198,24 +198,25 @@ export const ThemedDatePickerModal: React.FC<ThemedDatePickerModalProps> = ({
           </button>
         </div>
 
-        {/* Selected Date Preview Banner */}
-        <div className="px-4 py-2.5 bg-[#5B7B6D]/10 border-b border-[#5B7B6D]/10 flex items-center justify-between text-xs">
+        {/* Selected Date Preview Banner with Instant Confirm */}
+        <div className="px-4 py-2 bg-[#5B7B6D]/10 border-b border-[#5B7B6D]/10 flex items-center justify-between text-xs">
           <div className="flex items-center gap-1.5 text-[#5B7B6D] font-serif">
-            <span className="text-[11px] text-[#6E7C75]">当前选定：</span>
+            <span className="text-[11px] text-[#6E7C75]">选定：</span>
             <strong className="font-bold text-sm text-[#2B332E] font-mono tracking-wide">
               {mode === 'month-day'
                 ? `${viewMonth.toString().padStart(2, '0')}月${selectedDay.toString().padStart(2, '0')}日`
                 : `${viewYear}-${viewMonth.toString().padStart(2, '0')}-${selectedDay.toString().padStart(2, '0')}`}
             </strong>
           </div>
-          <button
-            type="button"
-            onClick={handleSelectToday}
-            className="text-[11px] font-semibold hover:underline flex items-center gap-1 active:scale-95 transition-transform"
-            style={{ color: accentColor }}
-          >
-            <RotateCcw className="w-3 h-3" /> 重置为今天
-          </button>
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={handleSelectToday}
+              className="text-[10px] text-[#6E7C75] hover:text-[#2B332E] flex items-center gap-0.5 px-2 py-1 rounded-md hover:bg-black/5 transition-colors cursor-pointer"
+            >
+              <RotateCcw className="w-2.5 h-2.5" /> 今天
+            </button>
+          </div>
         </div>
 
         {/* Calendar Body */}
@@ -360,6 +361,18 @@ export const ThemedDatePickerModal: React.FC<ThemedDatePickerModalProps> = ({
                       key={dayNum}
                       type="button"
                       onClick={() => setSelectedDay(dayNum)}
+                      onDoubleClick={() => {
+                        setSelectedDay(dayNum);
+                        const mm = viewMonth.toString().padStart(2, '0');
+                        const dd = dayNum.toString().padStart(2, '0');
+                        if (mode === 'month-day') {
+                          onConfirm(`${mm}月${dd}日`);
+                        } else {
+                          onConfirm(`${viewYear}-${mm}-${dd}`);
+                        }
+                        onClose();
+                      }}
+                      title="单击选定，双击立即确认"
                       className={`h-8 w-full rounded-xl flex items-center justify-center font-mono text-xs transition-all active:scale-95 ${
                         isSelected
                           ? 'text-white font-bold shadow-2xs'

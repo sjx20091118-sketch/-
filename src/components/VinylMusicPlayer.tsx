@@ -1011,16 +1011,6 @@ export const VinylMusicPlayer: React.FC<VinylMusicPlayerProps> = ({ onShowToast 
                             </div>
                           </div>
                         </div>
-
-                        {/* 快捷本地导入入口 */}
-                        <div className="pt-3 border-t border-[#2B332E]/[0.06] flex items-center justify-between text-xs">
-                          <button
-                            onClick={() => fileInputRef.current?.click()}
-                            className="text-[#5B7B6D] hover:underline flex items-center gap-1 font-serif"
-                          >
-                            <Plus className="w-3.5 h-3.5" /> 导入本地伴奏歌曲到队列
-                          </button>
-                        </div>
                       </div>
                     ) : (
                       /* 二级界面：选定卡片进入后的详细列表与返回导航 */
@@ -1147,8 +1137,8 @@ export const VinylMusicPlayer: React.FC<VinylMusicPlayerProps> = ({ onShowToast 
                                         </button>
                                         <button
                                           onClick={(e) => removePlaylistItem(e, idx)}
-                                          className="p-1 text-gray-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
-                                          title="移除"
+                                          className="p-1.5 text-rose-500/70 hover:text-red-600 sm:text-gray-400 sm:hover:text-red-500 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-all cursor-pointer rounded-lg hover:bg-rose-50/50"
+                                          title="从队列移除"
                                         >
                                           <Trash2 className="w-3.5 h-3.5" />
                                         </button>

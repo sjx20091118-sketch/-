@@ -196,7 +196,7 @@ export const PersonAlbum: React.FC<PersonAlbumProps> = ({
                     />
                     <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent pointer-events-none" />
                     <div className="absolute bottom-1.5 right-1.5 flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-black/60 backdrop-blur-xs text-white text-[9px] font-mono border border-white/20">
-                      <Film className="w-2.5 h-2.5 text-[#E88765]" />
+                      <Film className="w-2.5 h-2.5 text-white/90" />
                       <span>视频</span>
                     </div>
                   </>
@@ -240,7 +240,7 @@ export const PersonAlbum: React.FC<PersonAlbumProps> = ({
               <>
                 <video src={photos[0]} playsInline muted className="w-full h-full object-cover brightness-[0.9] group-hover:scale-105 transition-transform duration-300" />
                 <div className="absolute bottom-1.5 right-1.5 flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-black/60 text-white text-[9px] font-mono border border-white/20">
-                  <Film className="w-2.5 h-2.5 text-[#E88765]" />
+                  <Film className="w-2.5 h-2.5 text-white/90" />
                   <span>视频</span>
                 </div>
               </>
@@ -263,7 +263,7 @@ export const PersonAlbum: React.FC<PersonAlbumProps> = ({
               <>
                 <video src={photos[1]} playsInline muted className="w-full h-full object-cover brightness-[0.9] group-hover:scale-105 transition-transform duration-300" />
                 <div className="absolute bottom-1.5 right-1.5 flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-black/60 text-white text-[9px] font-mono border border-white/20">
-                  <Film className="w-2.5 h-2.5 text-[#E88765]" />
+                  <Film className="w-2.5 h-2.5 text-white/90" />
                   <span>视频</span>
                 </div>
               </>
@@ -466,7 +466,7 @@ export const PersonAlbum: React.FC<PersonAlbumProps> = ({
                                 }`}
                               />
                               <div className="absolute bottom-1.5 right-1.5 z-10 flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-black/60 text-white text-[8px] font-mono border border-white/20 pointer-events-none">
-                                <Film className="w-2.5 h-2.5 text-[#E88765]" />
+                                <Film className="w-2.5 h-2.5 text-white/90" />
                                 <span>视频</span>
                               </div>
                             </>
@@ -551,7 +551,7 @@ export const PersonAlbum: React.FC<PersonAlbumProps> = ({
                     <span className="text-xs text-[#2B332E] font-serif font-bold truncate max-w-[180px] flex items-center gap-1.5">
                       {isVideoMedia(photos[previewIndex]) ? (
                         <>
-                          <Film className="w-3.5 h-3.5 text-[#E88765]" />
+                          <Film className="w-3.5 h-3.5 text-[#5B7B6D]" />
                           <span>珍藏影像放映</span>
                         </>
                       ) : (

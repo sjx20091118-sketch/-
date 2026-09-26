@@ -56,7 +56,7 @@ export const PersonArtifactsShelf: React.FC<PersonArtifactsShelfProps> = ({
   };
 
   return (
-    <div className="bg-white/90 backdrop-blur-md rounded-3xl p-5 border border-[#5B7B6D]/15 shadow-xs space-y-4">
+    <div className="bg-white dark:bg-[#1E2822] rounded-3xl p-5 border border-[#5B7B6D]/20 dark:border-white/10 shadow-2xs space-y-4 relative z-10 isolate">
       {/* 顶栏 */}
       <div className="flex justify-between items-center">
         <div className="flex items-center gap-2">
@@ -64,14 +64,14 @@ export const PersonArtifactsShelf: React.FC<PersonArtifactsShelfProps> = ({
             <Package className="w-4 h-4" />
           </div>
           <div>
-            <h3 className="text-base font-serif font-bold text-[#2B332E]">专属信物陈列柜</h3>
+            <h3 className="text-base font-serif font-bold text-[#2B332E] dark:text-[#FAF8F5]">专属信物陈列柜</h3>
           </div>
         </div>
 
         <button
           type="button"
           onClick={handleOpenPicker}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white border border-[#5B7B6D]/30 hover:border-[#5B7B6D] hover:bg-[#5B7B6D]/10 text-[#5B7B6D] transition-all text-xs font-serif font-medium shadow-2xs cursor-pointer active:scale-95"
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#FAF8F5] dark:bg-white/10 border border-[#5B7B6D]/30 hover:border-[#5B7B6D] hover:bg-[#5B7B6D]/10 text-[#5B7B6D] dark:text-[#A7B4AD] transition-all text-xs font-serif font-medium shadow-2xs cursor-pointer active:scale-95"
         >
           <Plus className="w-3.5 h-3.5" />
           <span>从拾物阁拣选</span>
@@ -82,7 +82,7 @@ export const PersonArtifactsShelf: React.FC<PersonArtifactsShelfProps> = ({
       {boundArtifacts.length === 0 ? (
         <div
           onClick={handleOpenPicker}
-          className="cursor-pointer border-2 border-dashed border-[#5B7B6D]/20 hover:border-[#E88765]/40 bg-[#FAF8F5]/60 hover:bg-[#FAF8F5] rounded-2xl p-6 text-center transition-all group"
+          className="cursor-pointer border-2 border-dashed border-[#5B7B6D]/20 hover:border-[#E88765]/40 bg-[#FAF8F5] hover:bg-[#FAF6F0] rounded-2xl p-6 text-center transition-all group"
         >
           <Package className="w-8 h-8 text-[#5B7B6D]/40 group-hover:text-[#E88765] mx-auto mb-2 transition-colors" />
           <p className="text-xs text-[#6E7C75] font-serif">信物柜尚且空置，点击从「拾物阁」选取属于你们的信物</p>
@@ -97,19 +97,24 @@ export const PersonArtifactsShelf: React.FC<PersonArtifactsShelfProps> = ({
             >
               <TiltCard
                 maxTilt={4}
-                glareOpacity={0.2}
-                className="rounded-2xl border border-[#5B7B6D]/15 bg-[#FAF8F5] p-2.5 space-y-2 group shadow-2xs hover:shadow-sm transition-all"
+                glareOpacity={0.15}
+                className="rounded-2xl border border-[#5B7B6D]/15 dark:border-white/10 bg-white dark:bg-[#141C18] p-2.5 space-y-2 group shadow-2xs hover:shadow-sm hover:border-[#5B7B6D]/40 transition-all"
               >
-                <div className="relative aspect-square rounded-xl overflow-hidden bg-stone-100">
+                <div className="relative aspect-square rounded-xl overflow-hidden bg-[#FAF8F5] dark:bg-black/30 border border-[#5B7B6D]/10">
                   <img
                     src={art.image}
                     alt={art.name}
                     className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                   />
+                  {art.images && art.images.length > 1 && (
+                    <span className="absolute bottom-1 right-1 px-1.5 py-0.5 rounded-md bg-black/60 backdrop-blur-xs text-white text-[9px] font-sans flex items-center gap-0.5">
+                      📸 {art.images.length}
+                    </span>
+                  )}
                 </div>
                 <div className="px-0.5">
-                  <h4 className="font-serif font-bold text-xs text-[#2B332E] truncate group-hover:text-[#5B7B6D] transition-colors">{art.name}</h4>
-                  <p className="text-[10px] text-[#6E7C75] font-mono mt-0.5">{art.date || '岁月信物'}</p>
+                  <h4 className="font-serif font-bold text-xs text-[#2B332E] dark:text-[#FAF8F5] truncate group-hover:text-[#5B7B6D] transition-colors">{art.name}</h4>
+                  <p className="text-[10px] text-[#6E7C75] dark:text-[#A7B4AD] font-mono mt-0.5">{art.date || '岁月信物'}</p>
                 </div>
               </TiltCard>
             </div>

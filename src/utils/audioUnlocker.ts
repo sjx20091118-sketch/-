@@ -1,27 +1,29 @@
 /**
- * AudioUnlocker & TTS Playback Engine
+ * AudioUnlocker & High-Fidelity Mobile TTS Playback Engine
  * 
- * Solves WebView Autoplay Policy & Asynchronous Gesture Token Expiration:
- * 1. Synchronously primes / unlocks audio hardware & AudioContext within the user gesture tick (0ms).
- * 2. Manages a singleton HTMLAudioElement with pre-loaded media tokens.
- * 3. Supports instant swapping of Blob URLs / streaming audio buffers without dropping the trusted gesture state.
+ * Solves Mobile Browser / WebView Autoplay Restrictions:
+ * 1. Synchronously primes / resumes AudioContext on user touch/click gesture (0ms).
+ * 2. Uses Web Audio API AudioBufferSourceNode as the primary mobile pipeline:
+ *    Once AudioContext is resumed in gesture, any asynchronously fetched audio buffer
+ *    can be decoded and played without gesture token expiration!
+ * 3. Fallbacks seamlessly to HTMLAudioElement and Web Speech Synthesis.
  */
 
-// Ultra-short silent WAV base64 (0.05s) for warming up mobile audio hardware
-const SILENT_AUDIO_DATA_URI =
+const SILENT_WAV_BASE64 =
   'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA';
 
 class TTSAudioEngine {
   private static sharedAudio: HTMLAudioElement | null = null;
   private static audioContext: AudioContext | null = null;
-  private static isPrimed: boolean = false;
+  private static currentBufferSource: AudioBufferSourceNode | null = null;
   private static currentPlayingUrl: string | null = null;
+  private static onCurrentEnded: (() => void) | null = null;
 
   /**
-   * MUST be called synchronously inside user gesture handler (e.g. onClick)
-   * Primes both HTMLAudioElement and AudioContext in 0ms before any await/fetch!
+   * MUST be called synchronously inside user gesture handler (e.g. onClick/onTouchStart)
+   * Primes AudioContext, HTMLAudioElement and Web Speech in 0ms before any await/fetch!
    */
-  public static unlockAndPrime() {
+  public static unlockAndPrime(): void {
     try {
       // 1. Prime / Resume Web Audio Context
       const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
@@ -41,18 +43,21 @@ class TTSAudioEngine {
         this.sharedAudio.setAttribute('webkit-playsinline', 'true');
       }
 
-      // Only prime with silent dummy if not currently playing meaningful audio
+      // 3. Prime Web Speech API for mobile Android / iOS WebView
+      if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+        try {
+          if (window.speechSynthesis.paused) {
+            window.speechSynthesis.resume();
+          }
+        } catch (e) {}
+      }
+
+      // 4. Trigger dummy play on silent element to maintain gesture token
       if (!this.currentPlayingUrl || this.sharedAudio.paused) {
-        this.sharedAudio.src = SILENT_AUDIO_DATA_URI;
-        const playPromise = this.sharedAudio.play();
-        if (playPromise !== undefined) {
-          playPromise
-            .then(() => {
-              this.isPrimed = true;
-            })
-            .catch(() => {
-              // Benign: priming may fail on initial non-interactive load
-            });
+        this.sharedAudio.src = SILENT_WAV_BASE64;
+        const p = this.sharedAudio.play();
+        if (p !== undefined) {
+          p.catch(() => {});
         }
       }
     } catch (e) {
@@ -61,13 +66,51 @@ class TTSAudioEngine {
   }
 
   /**
-   * Seamlessly play the synthesized audio stream/url through the primed audio pipeline
+   * Seamlessly play synthesized audio via Web Audio API (preferred on mobile) or HTMLAudioElement
    */
   public static async playAudio(
     audioUrl: string,
     onEnded?: () => void,
     onError?: (err: any) => void
   ): Promise<void> {
+    this.stop();
+    this.currentPlayingUrl = audioUrl;
+    this.onCurrentEnded = onEnded || null;
+
+    // Method 1: Web Audio API (100% resilient on mobile WebViews)
+    if (this.audioContext) {
+      try {
+        if (this.audioContext.state === 'suspended') {
+          await this.audioContext.resume();
+        }
+        const response = await fetch(audioUrl);
+        const arrayBuffer = await response.arrayBuffer();
+        const audioBuffer = await this.audioContext.decodeAudioData(arrayBuffer);
+
+        const source = this.audioContext.createBufferSource();
+        source.buffer = audioBuffer;
+        source.connect(this.audioContext.destination);
+
+        source.onended = () => {
+          if (this.currentBufferSource === source) {
+            this.currentBufferSource = null;
+            this.currentPlayingUrl = null;
+            if (this.onCurrentEnded) {
+              this.onCurrentEnded();
+              this.onCurrentEnded = null;
+            }
+          }
+        };
+
+        this.currentBufferSource = source;
+        source.start(0);
+        return;
+      } catch (webAudioErr) {
+        console.warn('Web Audio playback fallback to HTMLAudio:', webAudioErr);
+      }
+    }
+
+    // Method 2: HTMLAudioElement Fallback
     if (!this.sharedAudio) {
       this.sharedAudio = new Audio();
       this.sharedAudio.setAttribute('playsinline', 'true');
@@ -75,9 +118,6 @@ class TTSAudioEngine {
     }
 
     const audio = this.sharedAudio;
-    this.currentPlayingUrl = audioUrl;
-
-    // Reset previous listeners
     audio.onended = null;
     audio.onerror = null;
 
@@ -86,7 +126,10 @@ class TTSAudioEngine {
 
     audio.onended = () => {
       this.currentPlayingUrl = null;
-      if (onEnded) onEnded();
+      if (this.onCurrentEnded) {
+        this.onCurrentEnded();
+        this.onCurrentEnded = null;
+      }
     };
 
     audio.onerror = (e) => {
@@ -97,8 +140,7 @@ class TTSAudioEngine {
     try {
       await audio.play();
     } catch (err) {
-      console.warn('TTSAudioEngine playAudio caught error:', err);
-      // Try fallback reload
+      console.warn('HTMLAudio play caught error:', err);
       try {
         audio.load();
         await audio.play();
@@ -113,22 +155,37 @@ class TTSAudioEngine {
   /**
    * Stop current audio playback
    */
-  public static stop() {
+  public static stop(): void {
+    if (this.currentBufferSource) {
+      try {
+        this.currentBufferSource.stop();
+        this.currentBufferSource.disconnect();
+      } catch (e) {}
+      this.currentBufferSource = null;
+    }
+
     if (this.sharedAudio) {
       try {
         this.sharedAudio.pause();
         this.sharedAudio.currentTime = 0;
-        this.sharedAudio.src = SILENT_AUDIO_DATA_URI;
       } catch (e) {}
     }
+
+    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+      try {
+        window.speechSynthesis.cancel();
+      } catch (e) {}
+    }
+
     this.currentPlayingUrl = null;
+    this.onCurrentEnded = null;
   }
 
   /**
    * Check if currently playing
    */
   public static isPlaying(): boolean {
-    return !!(this.sharedAudio && !this.sharedAudio.paused && this.currentPlayingUrl && this.currentPlayingUrl !== SILENT_AUDIO_DATA_URI);
+    return !!(this.currentBufferSource || (this.sharedAudio && !this.sharedAudio.paused && this.currentPlayingUrl));
   }
 
   /**

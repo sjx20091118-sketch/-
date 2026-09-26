@@ -33,7 +33,6 @@ export const VintageVideoPlayer: React.FC<VintageVideoPlayerProps> = ({
   const [isMuted, setIsMuted] = useState(true);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
-  const [isHovered, setIsHovered] = useState(false);
   const [isFullscreenModalOpen, setIsFullscreenModalOpen] = useState(false);
   const [playbackRate, setPlaybackRate] = useState<number>(1);
 
@@ -177,9 +176,7 @@ export const VintageVideoPlayer: React.FC<VintageVideoPlayerProps> = ({
 
   return (
     <div
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
-      className={`relative group rounded-2xl overflow-hidden bg-black/90 border border-[#5B7B6D]/20 shadow-xs select-none ${className}`}
+      className={`relative group rounded-3xl overflow-hidden bg-black/90 border border-white/10 shadow-md select-none ${className}`}
     >
       {/* 内嵌卡片视频容器 */}
       <div className="relative w-full h-full flex items-center justify-center cursor-pointer" onClick={handleTogglePlay}>
@@ -196,30 +193,31 @@ export const VintageVideoPlayer: React.FC<VintageVideoPlayerProps> = ({
         />
 
         {/* 胶片颗粒纹理与四周暗角微晕 */}
-        <div className="absolute inset-0 pointer-events-none bg-radial from-transparent via-black/10 to-black/40" />
+        <div className="absolute inset-0 pointer-events-none bg-gradient-to-t from-black/60 via-transparent to-black/30" />
 
-        {/* 胶片放映标识（左上角微型标） */}
-        <div className="absolute top-2.5 left-2.5 pointer-events-none z-10 flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-black/50 backdrop-blur-xs border border-white/10 text-white/80 text-[10px] font-mono">
-          <span>{isPlaying && !isFullscreenModalOpen ? '放映中' : '旧日胶片'}</span>
-          {duration > 0 && <span className="opacity-70">· {formatVideoDuration(duration)}</span>}
+        {/* 胶片放映标识（左上角微型标 - 苹果液态玻璃风格） */}
+        <div className="absolute top-2.5 left-2.5 pointer-events-none z-10 flex items-center gap-1.5 px-3 py-1 rounded-full bg-black/40 backdrop-blur-md border border-white/15 text-white/90 text-[10px] font-mono shadow-xs">
+          <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
+          <span>{isPlaying && !isFullscreenModalOpen ? '放映中' : '岁月影像'}</span>
+          {duration > 0 && <span className="opacity-70 font-mono">· {formatVideoDuration(duration)}</span>}
         </div>
 
-        {/* 右上角快捷控制区：轻触静音/发声 + 放大放映 */}
+        {/* 右上角快捷控制区：轻触静音/发声 + 放大放映（全白色液态玻璃图标，彻底告别刺眼杂色） */}
         <div className="absolute top-2.5 right-2.5 z-20 flex items-center gap-1.5">
           <button
             type="button"
             onClick={handleToggleMute}
-            className="p-1.5 rounded-full bg-black/60 hover:bg-black/80 text-white/90 backdrop-blur-xs transition-all active:scale-90 border border-white/15"
+            className="p-2 rounded-full bg-black/40 hover:bg-black/60 text-white backdrop-blur-md transition-all active:scale-90 border border-white/15 cursor-pointer shadow-xs"
             title={isMuted ? '轻触开启声音' : '静音'}
           >
-            {isMuted ? <VolumeX className="w-3.5 h-3.5 text-amber-200" /> : <Volume2 className="w-3.5 h-3.5 text-emerald-400" />}
+            {isMuted ? <VolumeX className="w-3.5 h-3.5 text-white/80" /> : <Volume2 className="w-3.5 h-3.5 text-white" />}
           </button>
 
           {showFullscreenButton && (
             <button
               type="button"
               onClick={openFullscreen}
-              className="p-1.5 rounded-full bg-black/60 hover:bg-black/80 text-white/90 backdrop-blur-xs transition-all active:scale-90 border border-white/15"
+              className="p-2 rounded-full bg-black/40 hover:bg-black/60 text-white backdrop-blur-md transition-all active:scale-90 border border-white/15 cursor-pointer shadow-xs"
               title="沉浸放大放映"
             >
               <Maximize2 className="w-3.5 h-3.5" />
@@ -227,28 +225,28 @@ export const VintageVideoPlayer: React.FC<VintageVideoPlayerProps> = ({
           )}
         </div>
 
-        {/* 暂停时居中的温雅播放按键 */}
+        {/* 暂停时居中的温雅微光播放按键（苹果极简磨砂液态玻璃） */}
         {!isPlaying && !isFullscreenModalOpen && (
           <motion.div
-            initial={{ scale: 0.8, opacity: 0 }}
+            initial={{ scale: 0.85, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
-            exit={{ scale: 0.8, opacity: 0 }}
-            className="absolute z-10 w-12 h-12 rounded-full bg-black/50 hover:bg-black/70 backdrop-blur-sm border border-white/20 flex items-center justify-center text-white shadow-lg transition-transform group-hover:scale-105"
+            exit={{ scale: 0.85, opacity: 0 }}
+            className="absolute z-10 w-12 h-12 rounded-full bg-white/20 hover:bg-white/30 backdrop-blur-md border border-white/30 flex items-center justify-center text-white shadow-xl transition-transform group-hover:scale-110 active:scale-95"
           >
             <Play className="w-5 h-5 fill-white translate-x-0.5" />
           </motion.div>
         )}
 
-        {/* 悬停或播放时的底部时光极细刻度与进度条 */}
-        <div className="absolute bottom-0 inset-x-0 z-20 bg-gradient-to-t from-black/80 via-black/30 to-transparent p-2.5 pt-4 transition-opacity">
+        {/* 底部时光极细刻度与进度条 */}
+        <div className="absolute bottom-0 inset-x-0 z-20 bg-gradient-to-t from-black/80 via-black/40 to-transparent p-2.5 pt-4 transition-opacity">
           <div className="w-full bg-white/20 h-1 rounded-full overflow-hidden mb-1.5 relative">
             <div
-              className="h-full bg-amber-200/90 rounded-full transition-all duration-100"
+              className="h-full bg-white rounded-full transition-all duration-100 shadow-[0_0_6px_rgba(255,255,255,0.8)]"
               style={{ width: `${progressPercent}%` }}
             />
           </div>
 
-          <div className="flex items-center justify-between text-[10px] text-white/80 font-mono">
+          <div className="flex items-center justify-between text-[10px] text-white/85 font-mono px-0.5">
             <span>{formatVideoDuration(currentTime)}</span>
             <span>{formatVideoDuration(duration)}</span>
           </div>
@@ -259,24 +257,25 @@ export const VintageVideoPlayer: React.FC<VintageVideoPlayerProps> = ({
       {typeof document !== 'undefined' && createPortal(
         <AnimatePresence>
           {isFullscreenModalOpen && (
-            <div className="fixed inset-0 w-screen h-[100dvh] z-[10050] flex items-center justify-center p-2 sm:p-6 bg-black/95 backdrop-blur-md select-none">
+            <div className="fixed inset-0 w-screen h-[100dvh] z-[10050] flex items-center justify-center p-2 sm:p-6 bg-black/95 backdrop-blur-xl select-none">
               <motion.div
-                initial={{ opacity: 0, scale: 0.95 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.95 }}
-                className="relative w-full max-w-3xl max-h-[94dvh] bg-[#1a1c1a] rounded-3xl border border-white/15 shadow-2xl flex flex-col overflow-hidden font-sans"
+                initial={{ opacity: 0, scale: 0.95, y: 10 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.95, y: 10 }}
+                transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
+                className="relative w-full max-w-3xl max-h-[94dvh] bg-[#121614] rounded-3xl border border-white/15 shadow-2xl flex flex-col overflow-hidden font-sans"
               >
-                {/* 顶栏控制 */}
-                <div className="p-3 sm:px-5 sm:py-3.5 bg-black/60 border-b border-white/10 flex items-center justify-between shrink-0">
-                  <div className="flex items-center gap-2">
-                    <Film className="w-4 h-4 text-[#E88765]" />
-                    <span className="text-xs sm:text-sm font-serif font-bold text-white tracking-wide">
+                {/* 顶栏控制（苹果极简磨砂液态玻璃） */}
+                <div className="p-3 sm:px-5 sm:py-3.5 bg-black/50 backdrop-blur-md border-b border-white/10 flex items-center justify-between shrink-0">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <Film className="w-4 h-4 text-white/80 shrink-0" />
+                    <span className="text-xs sm:text-sm font-serif font-bold text-white tracking-wide truncate">
                       {title}
                     </span>
-                    {date && <span className="text-[11px] text-white/50 font-mono">· {date}</span>}
+                    {date && <span className="text-[11px] text-white/60 font-mono shrink-0">· {date}</span>}
                   </div>
 
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-2 shrink-0">
                     {/* 倍速调节 */}
                     <button
                       type="button"
@@ -287,7 +286,7 @@ export const VintageVideoPlayer: React.FC<VintageVideoPlayerProps> = ({
                         setPlaybackRate(nextRate);
                         if (modalVideoRef.current) modalVideoRef.current.playbackRate = nextRate;
                       }}
-                      className="px-2 py-0.5 rounded-lg bg-white/10 hover:bg-white/20 text-white/80 text-[11px] font-mono transition-all"
+                      className="px-2.5 py-1 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-mono transition-all border border-white/10 cursor-pointer active:scale-95"
                     >
                       {playbackRate === 0.75 ? '0.75x 慢放' : `${playbackRate}x`}
                     </button>
@@ -295,7 +294,7 @@ export const VintageVideoPlayer: React.FC<VintageVideoPlayerProps> = ({
                     <button
                       type="button"
                       onClick={closeFullscreen}
-                      className="p-1 text-white/70 hover:text-white rounded-lg hover:bg-white/10 transition-all cursor-pointer"
+                      className="p-1.5 text-white/80 hover:text-white rounded-xl hover:bg-white/10 transition-all cursor-pointer"
                     >
                       <X className="w-5 h-5" />
                     </button>
@@ -304,7 +303,7 @@ export const VintageVideoPlayer: React.FC<VintageVideoPlayerProps> = ({
 
                 {/* 视频主画幅 */}
                 <div
-                  className="relative flex-1 bg-black flex items-center justify-center overflow-hidden min-h-[280px]"
+                  className="relative flex-1 bg-black flex items-center justify-center overflow-hidden min-h-[280px] cursor-pointer"
                   onClick={handleTogglePlay}
                 >
                   <video
@@ -325,16 +324,16 @@ export const VintageVideoPlayer: React.FC<VintageVideoPlayerProps> = ({
                     className="max-h-[70dvh] max-w-full object-contain"
                   />
                   {!isPlaying && (
-                    <div className="absolute inset-0 flex items-center justify-center bg-black/30 pointer-events-none">
-                      <div className="w-14 h-14 rounded-full bg-white/20 backdrop-blur-md flex items-center justify-center text-white">
-                        <Play className="w-6 h-6 fill-white translate-x-0.5" />
+                    <div className="absolute inset-0 flex items-center justify-center bg-black/40 pointer-events-none">
+                      <div className="w-16 h-16 rounded-full bg-white/20 backdrop-blur-md border border-white/30 flex items-center justify-center text-white shadow-2xl">
+                        <Play className="w-7 h-7 fill-white translate-x-0.5" />
                       </div>
                     </div>
                   )}
                 </div>
 
-                {/* 底栏全功能手账控制条 */}
-                <div className="p-3 sm:px-5 sm:py-4 bg-black/80 border-t border-white/10 flex flex-col gap-2 shrink-0">
+                {/* 底栏全功能手账控制条（苹果极简磨砂液态玻璃胶囊） */}
+                <div className="p-3 sm:px-5 sm:py-4 bg-black/70 backdrop-blur-md border-t border-white/10 flex flex-col gap-2.5 shrink-0">
                   {/* 可拖动时光刻度滑轨 */}
                   <input
                     type="range"
@@ -343,15 +342,15 @@ export const VintageVideoPlayer: React.FC<VintageVideoPlayerProps> = ({
                     step={0.1}
                     value={currentTime}
                     onChange={handleSeek}
-                    className="w-full h-1.5 bg-white/20 rounded-lg appearance-none cursor-pointer accent-[#E88765]"
+                    className="w-full h-1.5 bg-white/20 rounded-lg appearance-none cursor-pointer accent-white"
                   />
 
-                  <div className="flex items-center justify-between text-xs text-white/70 font-mono">
+                  <div className="flex items-center justify-between text-xs text-white/85 font-mono">
                     <div className="flex items-center gap-3">
                       <button
                         type="button"
                         onClick={handleTogglePlay}
-                        className="p-1 text-white hover:text-[#E88765] transition-colors"
+                        className="p-1.5 text-white hover:text-white/80 transition-all rounded-lg hover:bg-white/10 cursor-pointer"
                       >
                         {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4 fill-white" />}
                       </button>
@@ -359,9 +358,9 @@ export const VintageVideoPlayer: React.FC<VintageVideoPlayerProps> = ({
                       <button
                         type="button"
                         onClick={handleToggleMute}
-                        className="p-1 text-white hover:text-amber-200 transition-colors"
+                        className="p-1.5 text-white hover:text-white/80 transition-all rounded-lg hover:bg-white/10 cursor-pointer"
                       >
-                        {isMuted ? <VolumeX className="w-4 h-4 text-amber-300" /> : <Volume2 className="w-4 h-4" />}
+                        {isMuted ? <VolumeX className="w-4 h-4 text-white/70" /> : <Volume2 className="w-4 h-4 text-white" />}
                       </button>
 
                       <span>{formatVideoDuration(currentTime)} / {formatVideoDuration(duration)}</span>
@@ -376,7 +375,7 @@ export const VintageVideoPlayer: React.FC<VintageVideoPlayerProps> = ({
                             setCurrentTime(0);
                           }
                         }}
-                        className="p-1 hover:text-white transition-colors"
+                        className="p-1.5 text-white/80 hover:text-white transition-all rounded-lg hover:bg-white/10 cursor-pointer"
                         title="从头放映"
                       >
                         <RotateCcw className="w-3.5 h-3.5" />
@@ -393,4 +392,3 @@ export const VintageVideoPlayer: React.FC<VintageVideoPlayerProps> = ({
     </div>
   );
 };
-

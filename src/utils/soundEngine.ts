@@ -136,6 +136,34 @@ class SoundEngine {
       // 忽略
     }
   }
+
+  // 4. iOS 触感轮响极清脆微滴答（年份滚动、滚轮微触感）
+  public playHapticClick(pitch = 1100) {
+    if (this.isMuted) return;
+    try {
+      this.initCtx();
+      if (!this.ctx) return;
+
+      const now = this.ctx.currentTime;
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(pitch, now);
+      osc.frequency.exponentialRampToValueAtTime(pitch * 0.65, now + 0.018);
+
+      gain.gain.setValueAtTime(0.045, now);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.018);
+
+      osc.connect(gain);
+      gain.connect(this.ctx.destination);
+
+      osc.start(now);
+      osc.stop(now + 0.02);
+    } catch {
+      // 忽略
+    }
+  }
 }
 
 export const sound = new SoundEngine();

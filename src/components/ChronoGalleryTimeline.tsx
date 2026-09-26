@@ -90,38 +90,27 @@ export const ChronoGalleryTimeline: React.FC<ChronoGalleryTimelineProps> = ({
     <div className="space-y-4">
       {groupedByYear.length === 0 ? (
         /* 空状态 */
-        <div className={`p-12 text-center rounded-3xl border border-dashed space-y-3 transition-colors ${
+        <div className={`p-10 text-center rounded-3xl border border-dashed space-y-3 transition-colors ${
           isDarkMode
             ? 'bg-[#161D19]/80 border-white/15 text-[#FAF8F5]'
-            : 'bg-white/70 border-[#5B7B6D]/20'
+            : 'bg-white/80 border-[#5B7B6D]/20 shadow-2xs'
         }`}>
-          <div className="w-12 h-12 mx-auto rounded-full bg-[#5B7B6D]/15 flex items-center justify-center text-[#5B7B6D]">
-            <Compass className="w-5 h-5" />
+          <div className="w-12 h-12 mx-auto rounded-full bg-[#5B7B6D]/15 flex items-center justify-center text-[#5B7B6D] border border-[#5B7B6D]/20 shadow-2xs">
+            <Compass className="w-6 h-6" style={{ color: activeSpineColor }} />
           </div>
           <h3 className={`font-serif font-bold text-base ${isDarkMode ? 'text-[#FAF8F5]' : 'text-[#17201B]'}`}>
-            该年份尚无时光驻点
+            {selectedYear !== 'all' ? `「${selectedYear} 年暂无档案记录」` : '暂无时光驻点'}
           </h3>
           <p className={`text-xs font-serif max-w-sm mx-auto ${isDarkMode ? 'text-[#A0B0A7]' : 'text-[#6E7C75]'}`}>
-            记忆在等候你的落笔，点击右上角定格当下的欢喜与沉静
+            {selectedYear !== 'all' ? '岁序常易，此年暂未留存瞬间' : '记忆在等候你的落笔，点击右上角定格当下的欢喜与沉静'}
           </p>
           <div className="pt-2 flex justify-center gap-2">
-            {selectedYear !== 'all' && (
-              <button
-                onClick={() => onSelectYear('all')}
-                className={`px-3.5 py-1.5 rounded-xl border text-xs font-serif transition-colors ${
-                  isDarkMode
-                    ? 'bg-[#222B26] border-white/15 text-[#C2CDC7] hover:bg-[#2A3630]'
-                    : 'bg-white border-[#2B332E]/15 text-[#5B7B6D] hover:bg-[#FAF8F5]'
-                }`}
-              >
-                回到全景时光
-              </button>
-            )}
             <button
               onClick={onOpenAdd}
-              className="px-3.5 py-1.5 rounded-xl bg-[#5B7B6D] text-white text-xs font-serif hover:bg-[#3E564B]"
+              className="px-4 py-2 rounded-xl text-white text-xs font-serif shadow-xs transition-all active:scale-95"
+              style={{ backgroundColor: activeSpineColor }}
             >
-              定格这一刻
+              {selectedYear !== 'all' ? `＋ 记录 ${selectedYear} 年首个瞬间` : '定格这一刻'}
             </button>
           </div>
         </div>

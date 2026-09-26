@@ -52,7 +52,11 @@ export interface Artifact {
   name: string;
   date: string;
   story: string;
-  image: string;
+  image: string; // 主封面相片 (向下兼容)
+  images?: string[]; // 多张照片画廊
+  video?: string; // 关联的短视频 URL / Base64
+  videoPoster?: string; // 视频封面海报
+  mediaType?: 'image' | 'video'; // 主要媒体类型
 }
 
 export interface Letter {
@@ -90,4 +94,15 @@ export interface HealingTheme {
   primaryRgb: string;    // R, G, B for opacity
   primaryDarkRgb: string;
   accentRgb: string;
+  dark?: {
+    primary: string;
+    primaryDark: string;
+    accent: string;
+    accentLight: string;
+    paper: string;
+    canvas: string;
+    primaryRgb: string;
+    primaryDarkRgb: string;
+    accentRgb: string;
+  };
 }

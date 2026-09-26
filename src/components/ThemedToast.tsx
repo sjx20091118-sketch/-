@@ -22,8 +22,8 @@ export const ThemedToast: React.FC<ThemedToastProps> = ({ toast, theme, isDarkMo
   const text = typeof toast === 'string' ? toast : toast.message;
   const type = typeof toast === 'string' ? 'literary' : toast.type || 'literary';
 
-  const accentTone = isDarkMode ? '#52B788' : (theme?.accent || '#E88765');
-  const primaryTone = isDarkMode ? '#52B788' : (theme?.primary || '#5B7B6D');
+  const primaryTone = theme?.primary || (isDarkMode ? '#4EBA86' : '#5B7B6D');
+  const accentTone = theme?.accent || (isDarkMode ? '#6EE7B7' : '#4EBA86');
 
   // Determine icon based on message keywords or custom type
   const renderIcon = () => {

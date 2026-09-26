@@ -17,6 +17,8 @@ import {
   Package,
   Mail,
   MailOpen,
+  Image as ImageIcon,
+  Film,
   Plus,
   Calendar,
   CalendarRange,
@@ -47,6 +49,7 @@ import {
   Headphones,
   Settings,
   UserPlus,
+  Folder,
   FolderPlus,
   FolderOpen,
   Copy,
@@ -64,6 +67,7 @@ import { AppData, Person, Story, Artifact, Letter, ChatMessage, TimelineItem } f
 import { INITIAL_SEED } from './data/initialData';
 import { LocalImageUploader, PRESET_AVATARS, compressImageFile } from './components/LocalImageUploader';
 import { LocalMediaUploader } from './components/LocalMediaUploader';
+import { VintageVideoPlayer } from './components/VintageVideoPlayer';
 import { TimelineVideoCard } from './components/TimelineVideoCard';
 import { ChronoGalleryTimeline } from './components/ChronoGalleryTimeline';
 import { VinylMusicPlayer } from './components/VinylMusicPlayer';
@@ -79,9 +83,13 @@ import { sound } from './utils/soundEngine';
 import { TimeAiCompanion } from './components/TimeAiCompanion';
 import { SlideToUnlock } from './components/SlideToUnlock';
 import { ThemedToast } from './components/ThemedToast';
+import { ArtifactMediaUploader } from './components/ArtifactMediaUploader';
+import { ArtifactGalleryViewer } from './components/ArtifactGalleryViewer';
 import { useAndroidBackHandler } from './hooks/useAndroidBackHandler';
 import { useKeyboardStatus } from './hooks/useKeyboardStatus';
 import TTSAudioEngine from './utils/audioUnlocker';
+import { exportZipArchive, parseBackupArchive } from './utils/zipBackup';
+import { buildApiUrl, callClientGeminiDirect, callClientDeepSeekDirect } from './services/apiConfig';
 
 export interface TtsVoiceOption {
   id: string;
@@ -304,6 +312,17 @@ export interface HealingTheme {
   primaryRgb: string;    // R, G, B for opacity
   primaryDarkRgb: string;
   accentRgb: string;
+  dark?: {
+    primary: string;
+    primaryDark: string;
+    accent: string;
+    accentLight: string;
+    paper: string;
+    canvas: string;
+    primaryRgb: string;
+    primaryDarkRgb: string;
+    accentRgb: string;
+  };
 }
 
 export const HEALING_THEMES: HealingTheme[] = [
@@ -314,13 +333,50 @@ export const HEALING_THEMES: HealingTheme[] = [
     quote: '如雨过天青，沉静温润',
     primary: '#5B7B6D',
     primaryDark: '#3E564B',
-    accent: '#E88765',
-    accentLight: '#FDF0EB',
+    accent: '#4EBA86',
+    accentLight: '#EDF7F2',
     paper: '#F2EFE9',
     canvas: '#FAF8F5',
     primaryRgb: '91, 123, 109',
     primaryDarkRgb: '62, 86, 75',
-    accentRgb: '232, 135, 101'
+    accentRgb: '78, 186, 134',
+    dark: {
+      primary: '#4EBA86',
+      primaryDark: '#2D7250',
+      accent: '#6EE7B7',
+      accentLight: 'rgba(78, 186, 134, 0.16)',
+      paper: '#14201B',
+      canvas: '#0D1411',
+      primaryRgb: '78, 186, 134',
+      primaryDarkRgb: '45, 114, 80',
+      accentRgb: '110, 231, 183'
+    }
+  },
+  {
+    id: 'azure-meadow',
+    name: '晴空碧草',
+    enName: 'Azure & Meadow',
+    quote: '天青湛蓝，初晴碧草，静谧治愈',
+    primary: '#2D7FA8',
+    primaryDark: '#1C5572',
+    accent: '#38C172',
+    accentLight: '#F0FDF4',
+    paper: '#EEF5F9',
+    canvas: '#F7FAFC',
+    primaryRgb: '45, 127, 168',
+    primaryDarkRgb: '28, 85, 114',
+    accentRgb: '56, 193, 114',
+    dark: {
+      primary: '#38BDF8',
+      primaryDark: '#0284C7',
+      accent: '#4ADE80',
+      accentLight: 'rgba(56, 189, 248, 0.14)',
+      paper: '#101B24',
+      canvas: '#0A1218',
+      primaryRgb: '56, 189, 248',
+      primaryDarkRgb: '2, 132, 199',
+      accentRgb: '74, 222, 128'
+    }
   },
   {
     id: 'ocean-glaze',
@@ -329,13 +385,24 @@ export const HEALING_THEMES: HealingTheme[] = [
     quote: '晨雾初散，海盐与远方清风',
     primary: '#3E6F8E',
     primaryDark: '#294F66',
-    accent: '#C77558',
-    accentLight: '#FBF0EB',
+    accent: '#38BDF8',
+    accentLight: '#EBF5FB',
     paper: '#EBF1F6',
     canvas: '#F7FAFD',
     primaryRgb: '62, 111, 142',
     primaryDarkRgb: '41, 79, 102',
-    accentRgb: '199, 117, 88'
+    accentRgb: '56, 189, 248',
+    dark: {
+      primary: '#38BDF8',
+      primaryDark: '#0284C7',
+      accent: '#7DD3FC',
+      accentLight: 'rgba(56, 189, 248, 0.16)',
+      paper: '#101E2B',
+      canvas: '#09121A',
+      primaryRgb: '56, 189, 248',
+      primaryDarkRgb: '2, 132, 199',
+      accentRgb: '125, 211, 252'
+    }
   },
   {
     id: 'mist-lavender',
@@ -344,13 +411,24 @@ export const HEALING_THEMES: HealingTheme[] = [
     quote: '山黛晚照，温柔如初',
     primary: '#5D5580',
     primaryDark: '#443D61',
-    accent: '#D97757',
-    accentLight: '#F7EDE9',
+    accent: '#A78BFA',
+    accentLight: '#F3F0FA',
     paper: '#EEEBF5',
     canvas: '#FAF8FC',
     primaryRgb: '93, 85, 128',
     primaryDarkRgb: '68, 61, 97',
-    accentRgb: '217, 119, 87'
+    accentRgb: '167, 139, 250',
+    dark: {
+      primary: '#A78BFA',
+      primaryDark: '#7C3AED',
+      accent: '#C4B5FD',
+      accentLight: 'rgba(167, 139, 250, 0.16)',
+      paper: '#1B152C',
+      canvas: '#110D1C',
+      primaryRgb: '167, 139, 250',
+      primaryDarkRgb: '124, 58, 237',
+      accentRgb: '196, 181, 253'
+    }
   },
   {
     id: 'cherry-sakura',
@@ -359,13 +437,24 @@ export const HEALING_THEMES: HealingTheme[] = [
     quote: '落樱如雪，春光细语温柔',
     primary: '#9C5874',
     primaryDark: '#753C54',
-    accent: '#4B7B75',
+    accent: '#5EEAD4',
     accentLight: '#EBF4F2',
     paper: '#F7EDF1',
     canvas: '#FCF7F9',
     primaryRgb: '156, 88, 116',
     primaryDarkRgb: '117, 60, 84',
-    accentRgb: '75, 123, 117'
+    accentRgb: '94, 234, 212',
+    dark: {
+      primary: '#E879A8',
+      primaryDark: '#BE185D',
+      accent: '#5EEAD4',
+      accentLight: 'rgba(232, 121, 168, 0.16)',
+      paper: '#231522',
+      canvas: '#160E16',
+      primaryRgb: '232, 121, 168',
+      primaryDarkRgb: '190, 24, 93',
+      accentRgb: '94, 234, 212'
+    }
   }
 ];
 
@@ -412,7 +501,8 @@ export default function App() {
   const [isTopNavMenuOpen, setIsTopNavMenuOpen] = useState<boolean>(false);
   const [isDarkMode, setIsDarkMode] = useState<boolean>(() => localStorage.getItem('shinian_dark_mode') === 'true');
   const [isFullscreenClockOpen, setIsFullscreenClockOpen] = useState<boolean>(false);
-  const [topNavSubView, setTopNavSubView] = useState<'main' | 'theme' | 'settings' | 'backup' | 'voice' | 'security' | 'ai'>('main');
+  const [topNavSubView, setTopNavSubView] = useState<'main' | 'theme' | 'settings' | 'backup' | 'voice' | 'security' | 'ai' | 'panoramicTime' | 'friendGroups'>('main');
+  const [topNavNewGroupInput, setTopNavNewGroupInput] = useState<string>('');
   const [themeId, setThemeId] = useState<string>(() => {
     const saved = localStorage.getItem('shinian_theme_id');
     if (saved === 'grass-cream' || saved === 'autumn-amber' || saved === 'sunlit-apricot') return 'breeze-sage';
@@ -426,10 +516,20 @@ export default function App() {
   const [readerStory, setReaderStory] = useState<Story | null>(null);
   const [selectedPerson, setSelectedPerson] = useState<Person | null>(null);
   const [selectedArtifact, setSelectedArtifact] = useState<Artifact | null>(null);
+  const [selectedArtifactImagePreview, setSelectedArtifactImagePreview] = useState<string>('');
   const [selectedLetter, setSelectedLetter] = useState<Letter | null>(null);
   const [showSplash, setShowSplash] = useState<boolean>(true);
   const [shareMemoirItem, setShareMemoirItem] = useState<UniversalShareSource | TimelineItem | null>(null);
   const [isShareModalOpen, setIsShareModalOpen] = useState<boolean>(false);
+
+  // Century-wide panoramic years list (2000 to 2035)
+  const centuryYears = useMemo(() => {
+    const list = ['all'];
+    for (let y = 2035; y >= 2000; y--) {
+      list.push(String(y));
+    }
+    return list;
+  }, []);
 
   // Auto-dismiss splash screen after 1.8 seconds
   useEffect(() => {
@@ -439,6 +539,11 @@ export default function App() {
     }, 1800);
     return () => clearTimeout(timer);
   }, [showSplash]);
+
+  // Sync dark class on documentElement for Tailwind dark: variants and global styling
+  useEffect(() => {
+    document.documentElement.classList.toggle('dark', isDarkMode);
+  }, [isDarkMode]);
 
   // Custom UI Notifications & Dialogs
   const [toast, setToast] = useState<string | null>(null);
@@ -453,8 +558,16 @@ export default function App() {
   }, []);
 
   const currentTheme = useMemo(() => {
-    return HEALING_THEMES.find(t => t.id === themeId) || HEALING_THEMES[0];
-  }, [themeId]);
+    const base = HEALING_THEMES.find(t => t.id === themeId) || HEALING_THEMES[0];
+    if (!isDarkMode) return base;
+    if (base.dark) {
+      return {
+        ...base,
+        ...base.dark
+      };
+    }
+    return base;
+  }, [themeId, isDarkMode]);
 
   const contextualAction = useMemo(() => {
     if (activeTab === 'home') {
@@ -601,9 +714,22 @@ export default function App() {
   // Controlled date states for visual pickers
   const [formTimelineDate, setFormTimelineDate] = useState<string>(() => new Date().toISOString().slice(0, 10));
   const [formArtifactDate, setFormArtifactDate] = useState<string>(() => new Date().toISOString().slice(0, 10));
+  const [formArtifactImages, setFormArtifactImages] = useState<string[]>([]);
+  const [formArtifactVideo, setFormArtifactVideo] = useState<string | undefined>(undefined);
+  const [formArtifactVideoPoster, setFormArtifactVideoPoster] = useState<string | undefined>(undefined);
+  const [formArtifactMediaType, setFormArtifactMediaType] = useState<'image' | 'video'>('image');
   const [formStoryDate, setFormStoryDate] = useState<string>(() => new Date().toISOString().slice(0, 10));
   const [formLetterUnlockDate, setFormLetterUnlockDate] = useState<string>('2030-01-01');
   const [editStoryDate, setEditStoryDate] = useState<string>('');
+
+  // Artifact Edit State
+  const [editingArtifact, setEditingArtifact] = useState<Artifact | null>(null);
+  const [editArtifactDate, setEditArtifactDate] = useState<string>('');
+  const [editArtifactImage, setEditArtifactImage] = useState<string>('');
+  const [editArtifactImages, setEditArtifactImages] = useState<string[]>([]);
+  const [editArtifactVideo, setEditArtifactVideo] = useState<string | undefined>(undefined);
+  const [editArtifactVideoPoster, setEditArtifactVideoPoster] = useState<string | undefined>(undefined);
+  const [editArtifactMediaType, setEditArtifactMediaType] = useState<'image' | 'video'>('image');
 
   // Edit Person / Add Person controlled date states for visual pickers
   const [editPersonBirthday, setEditPersonBirthday] = useState<string>('');
@@ -666,7 +792,7 @@ export default function App() {
   const [formTimelineVideoPoster, setFormTimelineVideoPoster] = useState<string>('');
   const [formTimelineMediaType, setFormTimelineMediaType] = useState<'image' | 'video'>('image');
   const [formPersonAvatar, setFormPersonAvatar] = useState<string>('');
-  const [formPersonRel, setFormPersonRel] = useState<string>('挚友');
+  const [formPersonRel, setFormPersonRel] = useState<string>('');
   const [formPersonGroup, setFormPersonGroup] = useState<string>('未分组');
   const [formArtifactImage, setFormArtifactImage] = useState<string>('');
   const [editPersonAvatar, setEditPersonAvatar] = useState<string>('');
@@ -675,6 +801,7 @@ export default function App() {
 
   // People grouping & top status bar state
   const [selectedPersonGroup, setSelectedPersonGroup] = useState<string>('all');
+  const [formGroupPickerTarget, setFormGroupPickerTarget] = useState<'add' | 'edit' | null>(null);
   const [isGroupPickerOpen, setIsGroupPickerOpen] = useState<boolean>(false);
   const [customGroups, setCustomGroups] = useState<string[]>(() => {
     try {
@@ -727,11 +854,20 @@ export default function App() {
 
   // Mobile Hardware & Gesture Back Button Interception (Centralized 17-Level Back Stack)
   useAndroidBackHandler({
+    selectedArtifactImagePreview,
+    closeArtifactImagePreview: () => setSelectedArtifactImagePreview(''),
+
+    isShareModalOpen,
+    closeShareModal: () => setIsShareModalOpen(false),
+
     datePickerOpen: datePickerConfig.isOpen,
     closeDatePicker: () => setDatePickerConfig(prev => ({ ...prev, isOpen: false })),
 
     confirmDialog,
     closeConfirmDialog: () => setConfirmDialog(null),
+
+    sealingRitualData,
+    closeSealingRitual: () => setSealingRitualData(null),
 
     editingImpression,
     closeEditingImpression: () => setEditingImpression(null),
@@ -753,6 +889,9 @@ export default function App() {
 
     editingStory,
     closeEditingStory: () => setEditingStory(null),
+
+    editingArtifact,
+    closeEditingArtifact: () => setEditingArtifact(null),
 
     activeModal,
     closeActiveModal: () => setActiveModal(null),
@@ -780,6 +919,8 @@ export default function App() {
 
     isTopNavMenuOpen,
     closeTopNavMenu: () => setIsTopNavMenuOpen(false),
+    topNavSubView,
+    setTopNavSubView,
 
     isFullscreenClockOpen,
     closeFullscreenClock: () => setIsFullscreenClockOpen(false),
@@ -904,13 +1045,6 @@ export default function App() {
     };
   }, [data, years, getYearFromDate]);
 
-  // Adjust selectedYear if the active selectedYear no longer exists
-  useEffect(() => {
-    if (selectedYear !== 'all' && !years.includes(selectedYear)) {
-      setSelectedYear('all');
-    }
-  }, [years, selectedYear]);
-
   const [highlightIndex, setHighlightIndex] = useState<number>(() => Math.floor(Math.random() * 10000));
   const todayHighlight = useMemo(() => {
     if (!data.timeline.length) return null;
@@ -1007,6 +1141,18 @@ export default function App() {
     showToast(`已保存修改《${updatedStory.title}》`);
   };
 
+  const handleUpdateArtifact = (updatedArtifact: Artifact) => {
+    setData(prev => ({
+      ...prev,
+      artifacts: prev.artifacts.map(a => a.id === updatedArtifact.id ? updatedArtifact : a)
+    }));
+    if (selectedArtifact && selectedArtifact.id === updatedArtifact.id) {
+      setSelectedArtifact(updatedArtifact);
+    }
+    setEditingArtifact(null);
+    showToast(`已保存旧物《${updatedArtifact.name}》修改`);
+  };
+
   const handleUnsealLetter = (letterToUnseal: Letter) => {
     setIsUnsealingLetter(true);
     setTimeout(() => {
@@ -1073,47 +1219,46 @@ export default function App() {
     showToast('已删除该条印象记录');
   };
 
-  const handleExport = () => {
-    const jsonStr = JSON.stringify(data, null, 2);
-    const blob = new Blob([jsonStr], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `拾年_记忆档案备份_${new Date().toISOString().slice(0, 10)}.json`;
-    a.click();
-    showToast('离线记忆档案包导出成功');
+  const handleExport = async () => {
+    handleDownloadBackup();
   };
 
-  const processBackupFile = (file: File) => {
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      try {
-        const parsed = JSON.parse(event.target?.result as string);
-        if (parsed && (Array.isArray(parsed.timeline) || Array.isArray(parsed.people) || Array.isArray(parsed.stories))) {
-          setImportPreview({
-            data: {
-              timeline: Array.isArray(parsed.timeline) ? parsed.timeline : [],
-              people: Array.isArray(parsed.people) ? parsed.people : [],
-              stories: Array.isArray(parsed.stories) ? parsed.stories : [],
-              artifacts: Array.isArray(parsed.artifacts) ? parsed.artifacts : [],
-              letters: Array.isArray(parsed.letters) ? parsed.letters : []
-            },
-            filename: file.name,
-            timelineCount: parsed.timeline?.length || 0,
-            peopleCount: parsed.people?.length || 0,
-            storiesCount: parsed.stories?.length || 0,
-            artifactsCount: parsed.artifacts?.length || 0,
-            lettersCount: parsed.letters?.length || 0
-          });
-          showToast('已成功解析备份档案文件');
-        } else {
-          showToast('文件格式不符合《拾年》档案标准');
+  const handleDownloadBackup = async () => {
+    try {
+      showToast('正在打包全量记忆档案 ZIP 压缩包 (包含高清图片、视频与文字)...');
+      await exportZipArchive(data, customGroups);
+      showToast('已成功导出并保存全量记忆档案 ZIP 压缩包');
+    } catch (err: any) {
+      console.error('ZIP Export Error:', err);
+      showToast('导出备份压缩包失败，请重试');
+    }
+  };
+
+  const processBackupFile = async (file: File) => {
+    try {
+      showToast('正在解析档案备份包...');
+      const result = await parseBackupArchive(file);
+      if (result && result.data) {
+        if (result.customGroups && Array.isArray(result.customGroups) && result.customGroups.length > 0) {
+          setCustomGroups(prev => Array.from(new Set([...prev, ...result.customGroups!])));
         }
-      } catch (err) {
-        showToast('JSON 文件解析失败，请检查文件格式');
+        setImportPreview({
+          data: result.data,
+          filename: result.filename,
+          timelineCount: result.data.timeline?.length || 0,
+          peopleCount: result.data.people?.length || 0,
+          storiesCount: result.data.stories?.length || 0,
+          artifactsCount: result.data.artifacts?.length || 0,
+          lettersCount: result.data.letters?.length || 0
+        });
+        showToast(`已成功解析备份档案「${file.name}」`);
+      } else {
+        showToast('文件格式不符合《拾年》档案标准');
       }
-    };
-    reader.readAsText(file);
+    } catch (err: any) {
+      console.error('Backup parse error:', err);
+      showToast(err.message || '备份文件解析失败，请检查文件格式');
+    }
   };
 
   const handleImport = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1190,44 +1335,130 @@ export default function App() {
     setIsAiLoading(true);
 
     try {
-      const res = await fetch('/api/ai/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          prompt: promptToUse,
-          messages: newMessages,
-          memoryData: data,
-          engine: aiEngine,
-          customApiKey: aiEngine === 'deepseek' ? deepSeekKey : aiApiKey
-        })
-      });
+      let aiResponseText = '';
+      let succeeded = false;
 
-      if (!res.ok) {
-        const errData = await res.json().catch(() => ({}));
-        throw new Error(errData.error || `请求异常 (${res.status})`);
+      // 1. Try server endpoint
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 8000);
+
+        const res = await fetch(buildApiUrl('/api/ai/chat'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            prompt: promptToUse,
+            messages: newMessages,
+            memoryData: data,
+            engine: aiEngine,
+            customApiKey: aiEngine === 'deepseek' ? deepSeekKey : aiApiKey
+          }),
+          signal: controller.signal
+        });
+        clearTimeout(timeoutId);
+
+        if (res.ok) {
+          const resJson = await res.json();
+          if (resJson.reply) {
+            aiResponseText = resJson.reply;
+            succeeded = true;
+          }
+        }
+      } catch (networkErr) {
+        console.warn('Backend /api/ai/chat unreachable, attempting direct client fallback:', networkErr);
       }
 
-      const resJson = await res.json();
-      const aiResponseText = resJson.reply || "抱歉，我刚刚沉思了一下，未能返回回应。";
-      setAiChatMessages([...newMessages, { role: 'model', text: aiResponseText }]);
+      // 2. Client-side direct API fallback if user configured their own key
+      if (!succeeded) {
+        if (aiEngine === 'deepseek' && deepSeekKey.trim()) {
+          try {
+            const formatted = newMessages.map(m => ({
+              role: m.role === 'model' ? 'assistant' : 'user',
+              content: m.text
+            }));
+            aiResponseText = await callClientDeepSeekDirect({
+              apiKey: deepSeekKey,
+              messages: formatted,
+              systemPrompt: `你是名叫“拾年”的私人记忆陪伴助手。请用温润优雅的语调与用户交谈。`
+            });
+            succeeded = true;
+          } catch (dsErr) {
+            console.warn('Client DeepSeek direct failed:', dsErr);
+          }
+        } else if (aiEngine === 'gemini' && aiApiKey.trim()) {
+          try {
+            aiResponseText = await callClientGeminiDirect({
+              apiKey: aiApiKey,
+              prompt: promptToUse,
+              messages: newMessages.slice(0, -1),
+              systemInstruction: `你是名叫“拾年”的私人记忆陪伴助手。请用温和细腻、富有诗意的语言与用户交谈。`
+            });
+            succeeded = true;
+          } catch (geminiErr) {
+            console.warn('Client Gemini direct failed:', geminiErr);
+          }
+        }
+      }
+
+      if (succeeded && aiResponseText) {
+        setAiChatMessages([...newMessages, { role: 'model', text: aiResponseText }]);
+        return;
+      }
+
+      throw new Error('Fallback to local memory synthesis');
     } catch (err: any) {
-      console.warn('AI Chat API fallback activated:', err);
-      const q = promptToUse.toLowerCase();
+      console.warn('AI Chat API fallback / offline synthesis activated:', err);
+      const q = promptToUse.trim();
+      const lower = q.toLowerCase();
+
+      // Dynamic Contextual Memory Synthesis Engine with real user data
       let fallbackText = '';
 
-      if (aiEngine === 'deepseek' && !deepSeekKey) {
-        fallbackText = "提示：当前选择 DeepSeek 引擎，尚未配置 API Key。可在右上角「设置」中填入你的专属密钥，或直接切换为内置推荐的标准模型。";
-      } else if (q.includes('朋友') || q.includes('同窗') || q.includes('谁') || q.includes('人') || q.includes('陆青寻') || q.includes('林夏') || q.includes('陈导师')) {
-        const peopleDetails = data.people.map(p => `${p.name}（${p.relationship || '朋友'}，${p.bio || '重要同行者'}）`).join('；');
-        fallbackText = `在你的拾人册中，记录着这些重要同行者：${peopleDetails || '陆青寻、林夏'}。其中陆青寻是大学同窗与默契设计搭档，林夏是一路相伴的知心密友。无论是深夜改图的陪伴还是海边晚风的约定，这些温暖的羁绊都是你成长中最坚韧的底色。`;
-      } else if (q.includes('成长') || q.includes('轨迹') || q.includes('几年') || q.includes('总结') || q.includes('回忆')) {
-        const topEvents = data.timeline.slice(0, 3).map(t => `《${t.title}》`).join('、');
-        fallbackText = `回顾你的《拾年》档案，从操场看台上的晚霞与吉他弹唱，到毕业旅行与拥有自己的温馨空间，你在 ${data.timeline.length} 处时光节点（如 ${topEvents}）中一步步蜕变成长。每一段足迹都闪烁着独属于你的青春光芒。`;
-      } else if (q.includes('旧物') || q.includes('物') || q.includes('相机') || q.includes('票根') || q.includes('宝藏')) {
-        const artNames = data.artifacts.map(a => `《${a.name}》`).join('、');
-        fallbackText = `在你的拾物阁里，静静珍藏着 ${artNames || '理光GR相机、毕业旅行海边日落票根'} 等 ${data.artifacts.length} 件旧物。这些信物虽不言语，却承载着特定时光的温存记忆与指尖温度。`;
-      } else {
-        fallbackText = `岁月如一条静淌的小河。在你的档案里，记录着 ${data.timeline.length} 个时光瞬间、${data.people.length} 位同路人、${data.stories.length} 篇故事随笔与 ${data.artifacts.length} 件旧物。无论走得多远，只要翻开回忆，那些美好的温暖与感动都依旧如初。你想了解其中的哪一段？`;
+      // 1. Check if user asks about a specific person in data
+      const matchedPerson = data.people.find(p => p.name && (lower.includes(p.name.toLowerCase()) || q.includes(p.name)));
+      if (matchedPerson) {
+        const imps = (matchedPerson.impressions || []).map(i => `• ${i.year}年：${i.text}`).join('\n');
+        const customWhere = matchedPerson.customFields?.['认识地点'] || '';
+        const bio = matchedPerson.bio ? `档案记述：“${matchedPerson.bio}”` : '';
+        const days = matchedPerson.knownDate ? calculateDaysKnown(matchedPerson.knownDate) : null;
+        
+        fallbackText = `关于【${matchedPerson.name}】（${matchedPerson.relationship || '挚友'}）：\n\n${customWhere ? `你们初识于${customWhere}。` : ''}${days ? `至今已相识走过 ${days.toLocaleString()} 个日夜。` : ''}\n${bio}\n${imps ? `\n成长印记轨迹：\n${imps}` : ''}\n\n无论是旧日共同度过的时光还是档案里的一笔一划，都是属于你们最真挚的生命温度。你想进一步回顾哪段共同经历？`;
+      } 
+      // 2. Check if user asks about people / friends overview
+      else if (lower.includes('朋友') || lower.includes('同窗') || lower.includes('谁') || lower.includes('人物') || lower.includes('伙伴') || lower.includes('好友')) {
+        const peopleList = data.people.map(p => `• 「${p.name}」(${p.relationship || '同行者'}${p.customFields?.['认识地点'] ? ` · 结识于${p.customFields['认识地点']}` : ''})`).join('\n');
+        fallbackText = `在你的《拾年》拾人册中，记录着 ${data.people.length} 位重要同路人：\n\n${peopleList || '暂无人物'}\n\n每一位好友都在特定的岁月刻度上为你带来过光亮与陪伴。你想细细聊聊其中哪一位？`;
+      }
+      // 3. Check if user asks about a specific artifact
+      const matchedArtifact = data.artifacts.find(a => a.name && (lower.includes(a.name.toLowerCase()) || q.includes(a.name)));
+      if (!fallbackText && matchedArtifact) {
+        fallbackText = `关于旧物【${matchedArtifact.name}】（获得于 ${matchedArtifact.date}）：\n\n“${matchedArtifact.story || '一件承载岁月的静默信物。'}”\n\n物品虽静止无言，却将那段时光的触感与温度悉心保存在了拾物阁里。`;
+      } else if (!fallbackText && (lower.includes('旧物') || lower.includes('物') || lower.includes('相机') || lower.includes('票根') || lower.includes('信物') || lower.includes('藏品'))) {
+        const artSummary = data.artifacts.map(a => `• 《${a.name}》(${a.date}): ${a.story ? a.story.slice(0, 36) + '...' : '岁月信物'}`).join('\n');
+        fallbackText = `在你的「拾物阁」里，安放着 ${data.artifacts.length} 件承载光阴的旧物信物：\n\n${artSummary || '暂无旧物记录'}\n\n这些物品是你青春道路上的微型光阴标本。`;
+      }
+      // 4. Check if user asks about timeline / specific years / growth
+      const yearMatch = q.match(/\d{4}/)?.[0];
+      if (!fallbackText && yearMatch) {
+        const yearEvents = data.timeline.filter(t => t.date.startsWith(yearMatch));
+        if (yearEvents.length > 0) {
+          const evs = yearEvents.map(t => `• [${t.date}] 《${t.title}》：${t.content}`).join('\n');
+          fallbackText = `定格在 ${yearMatch} 年的时光印记（共 ${yearEvents.length} 条）：\n\n${evs}\n\n那一年的光影与脚步，构成了你生命长河中不可或缺的篇章。`;
+        } else {
+          fallbackText = `${yearMatch} 年的时光长卷暂未记录详细节点。你可以轻触首页右上角的「添加」按钮，随时补录那一年的珍贵故事。`;
+        }
+      } else if (!fallbackText && (lower.includes('时间') || lower.includes('轴') || lower.includes('轨迹') || lower.includes('成长') || lower.includes('总结') || lower.includes('回顾'))) {
+        const topEvents = data.timeline.slice(0, 4).map(t => `• [${t.date}] 《${t.title}》：${t.content ? t.content.slice(0, 40) + '...' : ''}`).join('\n');
+        fallbackText = `回顾你的《拾年》时光长卷，已走过 ${data.timeline.length} 处人生里程碑：\n\n${topEvents}\n\n从最初青涩的起点到如今从容坚定的步履，每一次记录都是你成长的注脚。`;
+      }
+      // 5. Check if user asks about stories / chapters
+      if (!fallbackText && (lower.includes('故事') || lower.includes('篇章') || lower.includes('文章') || lower.includes('随笔') || lower.includes('写'))) {
+        const storiesList = data.stories.map(s => `• ${s.chapter} 《${s.title}》(${s.date})`).join('\n');
+        fallbackText = `在你的「拾忆篇」长卷中，已收录 ${data.stories.length} 篇深度故事：\n\n${storiesList || '暂无故事记录'}\n\n你想翻开哪一章节重温那些细腻的文字？`;
+      }
+      // 6. Default responsive literary reflection
+      if (!fallbackText) {
+        fallbackText = `漫漫岁月，拾年归处。\n\n在你的私人档案库中，已封存着 ${data.timeline.length} 个时光瞬间、${data.people.length} 位重要同路人、${data.stories.length} 篇故事随笔与 ${data.artifacts.length} 件旧物。\n\n你可以向我询问任何一位好友、某一年份的往事、一件特定旧物，或让我为你整理某段时期的心路历程。你想聊聊哪一段？`;
       }
 
       setAiChatMessages([...newMessages, { role: 'model', text: fallbackText }]);
@@ -1246,7 +1477,7 @@ export default function App() {
 
     setIsAiPolishLoading(true);
     try {
-      const res = await fetch('/api/ai/polish', {
+      const res = await fetch(buildApiUrl('/api/ai/polish'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1307,7 +1538,7 @@ export default function App() {
       const { base64Data, mimeType } = await fileToBase64(file);
       const previewImgUrl = `data:${mimeType};base64,${base64Data}`;
 
-      const res = await fetch('/api/ai/vision', {
+      const res = await fetch(buildApiUrl('/api/ai/vision'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1394,9 +1625,9 @@ export default function App() {
     showToast(`正在生成【${voiceObj.name}】微软神经语音朗诵...`);
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 8000);
+      const timeoutId = setTimeout(() => controller.abort(), 4500);
 
-      const res = await fetch('/api/ai/tts', {
+      const res = await fetch(buildApiUrl('/api/ai/tts'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1460,6 +1691,9 @@ export default function App() {
       if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
         try {
           window.speechSynthesis.cancel();
+          if (window.speechSynthesis.paused) {
+            window.speechSynthesis.resume();
+          }
           const utterance = new SpeechSynthesisUtterance(textToRead);
           utterance.lang = 'zh-CN';
           utterance.rate = 0.92;
@@ -1470,8 +1704,8 @@ export default function App() {
           if (zhVoice) utterance.voice = zhVoice;
 
           utterance.onstart = () => {
-            setAudioPlayingVoiceName(`系统内置语音 · ${voiceObj.name}`);
-            showToast(`正在播放【${voiceObj.name}】朗读`);
+            setAudioPlayingVoiceName(`自然朗读 · ${voiceObj.name}`);
+            showToast(`正在播放【${voiceObj.name}】朗诵`);
           };
           utterance.onend = () => {
             setAudioPlayingVoiceName('');
@@ -1482,10 +1716,10 @@ export default function App() {
 
           window.speechSynthesis.speak(utterance);
         } catch (speechErr) {
-          showToast('语音朗读遇到波动，请重试');
+          showToast('语音朗读生成中，请再次轻触播放');
         }
       } else {
-        showToast('当前设备环境暂不支持直接语音播放');
+        showToast('语音通道连接中，请稍后重试');
       }
     } finally {
       setIsTtsGenerating(false);
@@ -1617,115 +1851,138 @@ export default function App() {
   }
 
   return (
-    <div className={`h-full w-full flex items-center justify-center p-0 sm:p-4 overflow-hidden transition-colors duration-500 ${
-      isDarkMode ? 'bg-[#0D110F] text-[#FAF8F5]' : 'bg-[#FAF8F5] text-[#2B332E]'
-    }`}>
+    <div
+      className={`h-full w-full flex items-center justify-center p-0 sm:p-4 overflow-hidden transition-colors duration-500 ${
+        isDarkMode ? 'text-[#FAF8F5]' : 'text-[#2B332E]'
+      }`}
+      style={{
+        backgroundColor: currentTheme.canvas
+      }}
+    >
       <div
         id="root-card"
-        className={`w-full max-w-md h-full sm:h-[880px] sm:rounded-3xl shadow-2xl overflow-hidden flex flex-col relative sm:border select-none transition-colors duration-500 paper-texture ${
+        className={`w-full max-w-md h-full sm:h-[880px] sm:rounded-3xl shadow-none overflow-hidden flex flex-col relative sm:border select-none transition-colors duration-500 paper-texture ${
           isDarkMode
-            ? 'dark-zen-theme bg-[#121614] text-[#FAF8F5] sm:border-[#5B7B6D]/25'
-            : 'bg-[#FAF8F5] text-[#2B332E] sm:border-[#E88765]/20'
+            ? 'dark-zen-theme text-[#FAF8F5] sm:border-white/10'
+            : 'text-[#2B332E] sm:border-black/10'
         }`}
+        style={{
+          backgroundColor: currentTheme.canvas
+        }}
       >
-        {/* Background Ambient Radial Glow (from Fullscreen Zen Clock Aesthetics) */}
+        {/* Background Ambient Radial Glow (Dynamic Smooth Theme Adaptation) */}
         <div className="absolute inset-0 pointer-events-none overflow-hidden z-0">
           <div
             className={`absolute -top-32 -left-32 w-96 h-96 rounded-full filter transition-all duration-700 ${
-              isDarkMode ? 'opacity-10 blur-[100px]' : 'opacity-25 blur-3xl'
+              isDarkMode ? 'opacity-20 blur-[100px]' : 'opacity-25 blur-3xl'
             }`}
             style={{ backgroundColor: currentTheme.primary }}
           />
           <div
             className={`absolute -bottom-32 -right-32 w-96 h-96 rounded-full filter transition-all duration-700 ${
-              isDarkMode ? 'opacity-08 blur-[100px]' : 'opacity-20 blur-3xl'
+              isDarkMode ? 'opacity-15 blur-[100px]' : 'opacity-20 blur-3xl'
             }`}
             style={{ backgroundColor: currentTheme.accent }}
           />
         </div>
 
-        {/* Apple Dynamic Liquid Glass Floating Dual Capsules Top Navigation (Seamless, No Screen Dividing Line) */}
-        <div className="absolute top-[max(var(--safe-area-top,16px),env(safe-area-inset-top,16px),1rem)] left-3.5 right-3.5 sm:left-4 sm:right-4 z-30 pointer-events-none select-none flex items-center justify-between">
-          {/* Left Capsule: Refined Calligraphy Typography with Subtle Dividing Line */}
+        {/* Apple Dynamic Unified Floating Aura Island Top Navigation */}
+        <div className="absolute top-[max(var(--safe-area-top,16px),env(safe-area-inset-top,16px),1rem)] left-3.5 right-3.5 sm:left-4 sm:right-4 z-30 pointer-events-none select-none flex items-center justify-center">
           <motion.div
-            whileHover={{ scale: 1.02 }}
-            whileTap={{ scale: 0.98 }}
-            className="apple-liquid-glass rounded-full px-3.5 py-1.5 pointer-events-auto flex items-center gap-2.5 shadow-[0_4px_20px_rgba(0,0,0,0.06)] border border-white/80 transition-all cursor-default"
+            initial={{ y: -10, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            transition={{ type: 'spring', stiffness: 380, damping: 26 }}
+            className="apple-liquid-glass pointer-events-auto rounded-full px-3.5 py-1.5 flex items-center justify-between gap-2.5 max-w-xl w-full border border-white/85 dark:border-white/20 shadow-[0_4px_24px_-4px_rgba(0,0,0,0.06),inset_0_1px_1.5px_0_rgba(255,255,255,0.95)] dark:shadow-[0_4px_24px_-4px_rgba(0,0,0,0.4),inset_0_1px_1.5px_0_rgba(255,255,255,0.18)] transition-all"
           >
-            <span
-              className="text-base font-bold tracking-widest font-serif leading-none select-none transition-colors duration-300"
-              style={{
-                fontFamily: '"Noto Serif SC", "Ma Shan Zheng", Georgia, serif',
-                color: isDarkMode ? (currentTheme.accent) : currentTheme.primaryDark
-              }}
-            >
-              拾年
-            </span>
-            <div 
-              className="w-[1px] h-3 transition-colors duration-300" 
-              style={{ backgroundColor: isDarkMode ? `${currentTheme.primary}70` : `${currentTheme.primary}40` }}
-            />
-            <span 
-              className="text-[10px] sm:text-[11px] font-serif tracking-wider leading-none whitespace-nowrap opacity-90 select-none transition-colors duration-300"
-              style={{ color: isDarkMode ? '#C2CDC7' : '#6E7C75' }}
-            >
-              岁华清照 · 拾年归处
-            </span>
-          </motion.div>
-
-          {/* Right Action Area: Dynamic Module Action / Day-Night Capsule + Chevron Down Trigger */}
-          <div className="flex items-center gap-2 pointer-events-auto">
-            {/* Dynamic Module Action Capsule or Day/Night Mode Switch (Zero-text Pure Round Icon Capsule) */}
-            {contextualAction && (
-              <motion.button
-                whileHover={{ scale: 1.06 }}
-                whileTap={{ scale: 0.92 }}
-                onClick={() => {
-                  contextualAction.onClick();
+            {/* Left Brand Area */}
+            <div className="flex items-center gap-2 min-w-0">
+              <div
+                className="w-2 h-2 rounded-full shrink-0 animate-pulse transition-colors duration-500 shadow-xs"
+                style={{ backgroundColor: currentTheme.primary }}
+              />
+              <span
+                className="text-base font-bold tracking-widest font-serif leading-none select-none shrink-0 drop-shadow-2xs"
+                style={{
+                  fontFamily: '"Noto Serif SC", "Ma Shan Zheng", Georgia, serif',
+                  color: isDarkMode ? currentTheme.primary : currentTheme.primaryDark
                 }}
-                title={contextualAction.isDayNight ? (isDarkMode ? '切换至晨曦明亮模式' : '切换至暗夜冥想模式') : undefined}
-                className={`apple-liquid-glass flex items-center justify-center transition-all border border-white/80 shadow-[0_4px_20px_rgba(0,0,0,0.06)] active:scale-95 cursor-pointer ${
-                  contextualAction.isDayNight
-                    ? 'w-8.5 h-8.5 sm:w-9 sm:h-9 rounded-full'
-                    : 'px-3 sm:px-3.5 py-1.5 rounded-full gap-1.5 text-xs font-serif font-semibold'
-                }`}
-                style={{ color: currentTheme.primaryDark }}
               >
-                {contextualAction.isDayNight ? (
-                  isDarkMode ? (
-                    <Moon className="w-4 h-4 text-indigo-400 drop-shadow-xs" />
-                  ) : (
-                    <Sun className="w-4 h-4 text-amber-500 animate-spin-slow drop-shadow-xs" />
-                  )
-                ) : (
-                  <>
-                    <Plus className="w-3.5 h-3.5" style={{ color: currentTheme.primary }} />
-                    <span>{contextualAction.label}</span>
-                  </>
-                )}
-              </motion.button>
-            )}
+                拾年
+              </span>
+              <div 
+                className="w-[1px] h-3.5 shrink-0 opacity-40 mx-0.5" 
+                style={{ backgroundColor: isDarkMode ? `${currentTheme.primary}70` : `${currentTheme.primary}45` }}
+              />
+              <span 
+                className="text-[11px] font-serif tracking-wider leading-none truncate opacity-85 select-none"
+                style={{ color: isDarkMode ? '#C2CDC7' : '#526058' }}
+              >
+                岁华清照 · 拾年归处
+              </span>
+            </div>
 
-            {/* Chevron Down Capsule Trigger */}
-            <div className="relative">
-              <button
-                onClick={() => {
-                  if (isTopNavMenuOpen) {
-                    setIsTopNavMenuOpen(false);
-                  } else {
-                    setTopNavSubView('main');
-                    setIsTopNavMenuOpen(true);
-                  }
-                }}
-                className="apple-liquid-glass w-8.5 h-8.5 sm:w-9 sm:h-9 rounded-full flex items-center justify-center text-[#2B332E] hover:text-[#5B7B6D] transition-all border border-white/80 shadow-[0_4px_20px_rgba(0,0,0,0.06)] active:scale-95 cursor-pointer"
-                title="展开时光功能导航"
-              >
-                <ChevronDown
-                  className={`w-4 h-4 text-[#5B7B6D] transition-transform duration-300 ${
-                    isTopNavMenuOpen ? 'rotate-180 text-[#E88765]' : ''
+            {/* Right Seamless Embedded Actions & Nav Trigger */}
+            <div className="flex items-center gap-1.5 shrink-0">
+              {contextualAction && (
+                <motion.button
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.92 }}
+                  transition={{ type: 'spring', stiffness: 420, damping: 24 }}
+                  onClick={() => {
+                    sound.playHapticClick(contextualAction.isDayNight ? 1000 : 1200);
+                    contextualAction.onClick();
+                  }}
+                  title={contextualAction.isDayNight ? (isDarkMode ? '切换至晨曦明亮模式' : '切换至暗夜冥想模式') : undefined}
+                  className={`flex items-center justify-center transition-all cursor-pointer rounded-full border border-black/5 dark:border-white/10 ${
+                    contextualAction.isDayNight
+                      ? 'w-8 h-8 bg-black/[0.03] dark:bg-white/[0.08] hover:bg-black/[0.06] dark:hover:bg-white/[0.14]'
+                      : 'px-2.5 py-1 text-xs font-serif font-semibold gap-1 bg-black/[0.03] dark:bg-white/[0.08] hover:bg-black/[0.06] dark:hover:bg-white/[0.14]'
                   }`}
-                />
-              </button>
+                  style={{ color: isDarkMode ? currentTheme.primary : currentTheme.primaryDark }}
+                >
+                  {contextualAction.isDayNight ? (
+                    isDarkMode ? (
+                      <Moon
+                        className="w-4 h-4 drop-shadow-xs transition-colors"
+                        style={{ color: currentTheme.dark?.accent || currentTheme.accent || currentTheme.primary }}
+                      />
+                    ) : (
+                      <Sun className="w-4 h-4 text-amber-500 animate-spin-slow drop-shadow-xs" />
+                    )
+                  ) : (
+                    <>
+                      <Plus className="w-3.5 h-3.5" style={{ color: currentTheme.primary }} />
+                      <span className="tracking-wide">{contextualAction.label}</span>
+                    </>
+                  )}
+                </motion.button>
+              )}
+
+              {/* Menu Trigger Capsule */}
+              <div className="relative">
+                <motion.button
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.92 }}
+                  transition={{ type: 'spring', stiffness: 420, damping: 24 }}
+                  onClick={() => {
+                    sound.playHapticClick(1150);
+                    if (isTopNavMenuOpen) {
+                      setIsTopNavMenuOpen(false);
+                    } else {
+                      setTopNavSubView('main');
+                      setIsTopNavMenuOpen(true);
+                    }
+                  }}
+                  className="w-8 h-8 rounded-full flex items-center justify-center transition-all border border-black/5 dark:border-white/10 bg-black/[0.03] dark:bg-white/[0.08] hover:bg-black/[0.06] dark:hover:bg-white/[0.14] active:scale-95 cursor-pointer shadow-2xs"
+                  title="展开时光功能导航"
+                >
+                  <ChevronDown
+                    className={`w-3.5 h-3.5 transition-transform duration-300 ${
+                      isTopNavMenuOpen ? 'rotate-180' : ''
+                    }`}
+                    style={{ color: isDarkMode ? currentTheme.primary : currentTheme.primaryDark }}
+                  />
+                </motion.button>
 
               {/* Cascading Popups System */}
               <AnimatePresence mode="wait">
@@ -1741,23 +1998,22 @@ export default function App() {
                     {topNavSubView === 'main' && (
                       <motion.div
                         key="main-menu"
-                        initial={{ opacity: 0, scale: 0.92, y: -6 }}
+                        initial={{ opacity: 0, scale: 0.94, y: -6 }}
                         animate={{ opacity: 1, scale: 1, y: 0 }}
                         exit={{ opacity: 0, scale: 0.94, y: -6 }}
-                        transition={{ duration: 0.22, ease: [0.25, 1, 0.5, 1] }}
+                        transition={{ duration: 0.2, ease: [0.25, 1, 0.5, 1] }}
                         className={`absolute top-full right-0 mt-2 w-52 p-2 apple-liquid-glass rounded-3xl shadow-none border z-50 font-sans space-y-1 ${
                           isDarkMode
-                            ? 'bg-[#161D19]/90 border-white/15 text-[#FAF8F5]'
-                            : 'bg-white/80 border-white/85 text-[#2B332E]'
+                            ? 'bg-[#141B18]/92 border-white/15 text-[#FAF8F5]'
+                            : 'bg-white/88 border-white/85 text-[#2B332E]'
                         }`}
                       >
-                        {/* Item 1: 全景时光 or 好友分组 depending on active tab */}
+                        {/* Contextual Item: In people tab, only show '好友分组'; in other tabs, only show '全景时光' */}
                         {activeTab === 'people' ? (
                           <button
                             onClick={() => {
                               sound.playWaterDrop(880);
-                              setIsTopNavMenuOpen(false);
-                              setTimeout(() => setIsGroupPickerOpen(true), 120);
+                              setTopNavSubView('friendGroups');
                             }}
                             className={`w-full px-3 py-2 rounded-2xl flex items-center justify-between transition-all text-left text-xs group ${
                               isDarkMode
@@ -1769,26 +2025,28 @@ export default function App() {
                               <div
                                 className="w-6 h-6 rounded-xl flex items-center justify-center group-hover:scale-105 transition-transform"
                                 style={{
-                                  backgroundColor: isDarkMode ? `${currentTheme.accent}25` : `${currentTheme.primary}18`,
-                                  color: isDarkMode ? currentTheme.accent : currentTheme.primaryDark
+                                  backgroundColor: isDarkMode ? `${currentTheme.primary}25` : `${currentTheme.primary}18`,
+                                  color: isDarkMode ? currentTheme.primary : currentTheme.primaryDark
                                 }}
                               >
                                 <Users className="w-3.5 h-3.5" />
                               </div>
                               <span className="font-serif font-medium">好友分组</span>
                             </div>
-                            <span className={`text-[10px] px-1.5 py-0.5 rounded-md font-sans truncate max-w-[64px] ${
-                              isDarkMode ? 'bg-white/10 text-[#A0B0A7]' : 'bg-black/5 text-[#6E7C75]'
-                            }`}>
-                              {selectedPersonGroup === 'all' ? '全部' : selectedPersonGroup}
-                            </span>
+                            <div className="flex items-center gap-1">
+                              <span className={`text-[10px] px-1.5 py-0.5 rounded-md font-sans truncate max-w-[64px] ${
+                                isDarkMode ? 'bg-white/10 text-[#A0B0A7]' : 'bg-black/5 text-[#6E7C75]'
+                              }`}>
+                                {selectedPersonGroup === 'all' ? '全部' : selectedPersonGroup}
+                              </span>
+                              <ChevronRight className="w-3 h-3 opacity-60 group-hover:opacity-100 transition-colors" />
+                            </div>
                           </button>
                         ) : (
                           <button
                             onClick={() => {
                               sound.playWaterDrop(880);
-                              setIsTopNavMenuOpen(false);
-                              setTimeout(() => setIsYearPickerOpen(true), 120);
+                              setTopNavSubView('panoramicTime');
                             }}
                             className={`w-full px-3 py-2 rounded-2xl flex items-center justify-between transition-all text-left text-xs group ${
                               isDarkMode
@@ -1800,23 +2058,26 @@ export default function App() {
                               <div
                                 className="w-6 h-6 rounded-xl flex items-center justify-center group-hover:scale-105 transition-transform"
                                 style={{
-                                  backgroundColor: isDarkMode ? `${currentTheme.accent}25` : `${currentTheme.primary}18`,
-                                  color: isDarkMode ? currentTheme.accent : currentTheme.primaryDark
+                                  backgroundColor: isDarkMode ? `${currentTheme.primary}25` : `${currentTheme.primary}18`,
+                                  color: isDarkMode ? currentTheme.primary : currentTheme.primaryDark
                                 }}
                               >
                                 <Compass className="w-3.5 h-3.5" />
                               </div>
                               <span className="font-serif font-medium">全景时光</span>
                             </div>
-                            <span className={`text-[10px] px-1.5 py-0.5 rounded-md font-sans ${
-                              isDarkMode ? 'bg-white/10 text-[#A0B0A7]' : 'bg-black/5 text-[#6E7C75]'
-                            }`}>
-                              {selectedYear === 'all' ? '全景' : `${selectedYear}年`}
-                            </span>
+                            <div className="flex items-center gap-1">
+                              <span className={`text-[10px] px-1.5 py-0.5 rounded-md font-sans ${
+                                isDarkMode ? 'bg-white/10 text-[#A0B0A7]' : 'bg-black/5 text-[#6E7C75]'
+                              }`}>
+                                {selectedYear === 'all' ? '全景' : `${selectedYear}年`}
+                              </span>
+                              <ChevronRight className="w-3 h-3 opacity-60 group-hover:opacity-100 transition-colors" />
+                            </div>
                           </button>
                         )}
 
-                        {/* Item 3: 调色 (Cascades into Level 2 Theme Palette) */}
+                        {/* Item 2: 调色 */}
                         <button
                           onClick={() => {
                             sound.playWaterDrop(880);
@@ -1832,8 +2093,8 @@ export default function App() {
                             <div
                               className="w-6 h-6 rounded-xl flex items-center justify-center group-hover:scale-105 transition-transform"
                               style={{
-                                backgroundColor: isDarkMode ? `${currentTheme.accent}25` : `${currentTheme.primary}18`,
-                                color: isDarkMode ? currentTheme.accent : currentTheme.primaryDark
+                                backgroundColor: isDarkMode ? `${currentTheme.primary}25` : `${currentTheme.primary}18`,
+                                color: isDarkMode ? currentTheme.primary : currentTheme.primaryDark
                               }}
                             >
                               <Palette className="w-3.5 h-3.5" />
@@ -1852,7 +2113,7 @@ export default function App() {
                           </div>
                         </button>
 
-                        {/* Item 4: 设置 (Cascades into Level 2 Settings Menu) */}
+                        {/* Item 3: 设置 */}
                         <button
                           onClick={() => {
                             sound.playWaterDrop(880);
@@ -1868,8 +2129,8 @@ export default function App() {
                             <div
                               className="w-6 h-6 rounded-xl flex items-center justify-center group-hover:scale-105 transition-transform"
                               style={{
-                                backgroundColor: isDarkMode ? `${currentTheme.accent}25` : `${currentTheme.primary}18`,
-                                color: isDarkMode ? currentTheme.accent : currentTheme.primaryDark
+                                backgroundColor: isDarkMode ? `${currentTheme.primary}25` : `${currentTheme.primary}18`,
+                                color: isDarkMode ? currentTheme.primary : currentTheme.primaryDark
                               }}
                             >
                               <Settings className="w-3.5 h-3.5" />
@@ -1879,7 +2140,7 @@ export default function App() {
                           <ChevronRight className="w-3 h-3 opacity-60 group-hover:opacity-100 transition-colors" />
                         </button>
 
-                        {/* Item 5: 锁定空间 */}
+                        {/* Item 4: 锁定空间 */}
                         <button
                           onClick={() => {
                             sound.playWaterDrop(880);
@@ -1898,8 +2159,8 @@ export default function App() {
                             <div
                               className="w-6 h-6 rounded-xl flex items-center justify-center group-hover:scale-105 transition-transform"
                               style={{
-                                backgroundColor: isDarkMode ? `${currentTheme.accent}25` : `${currentTheme.primary}18`,
-                                color: isDarkMode ? currentTheme.accent : currentTheme.primaryDark
+                                backgroundColor: isDarkMode ? `${currentTheme.primary}25` : `${currentTheme.primary}18`,
+                                color: isDarkMode ? currentTheme.primary : currentTheme.primaryDark
                               }}
                             >
                               <Lock className="w-3.5 h-3.5" />
@@ -1910,33 +2171,307 @@ export default function App() {
                       </motion.div>
                     )}
 
-                    {/* Level 2: Healing Palette Theme Picker Card */}
-                    {topNavSubView === 'theme' && (
+                    {/* Level 2: Panoramic Time Micro-Popover Capsule (Century Wheel Scroll 2000-2035) */}
+                    {topNavSubView === 'panoramicTime' && (
                       <motion.div
-                        key="theme-menu"
-                        initial={{ opacity: 0, scale: 0.92, y: -6 }}
+                        key="panoramic-menu"
+                        initial={{ opacity: 0, scale: 0.94, y: -6 }}
                         animate={{ opacity: 1, scale: 1, y: 0 }}
                         exit={{ opacity: 0, scale: 0.94, y: -6 }}
-                        transition={{ duration: 0.22, ease: [0.25, 1, 0.5, 1] }}
-                        className="absolute top-full right-0 mt-2 w-64 p-3.5 apple-liquid-glass rounded-3xl shadow-2xl border border-white/85 z-50 font-sans"
+                        transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
+                        className={`absolute top-full right-0 mt-2 w-72 max-w-[calc(100vw-2rem)] p-3.5 apple-liquid-glass rounded-3xl border z-50 font-sans shadow-none box-border ${
+                          isDarkMode
+                            ? 'bg-[#141B18]/92 border-white/15 text-[#FAF8F5]'
+                            : 'bg-white/90 border-white/80 text-[#2B332E]'
+                        }`}
                       >
                         {/* Header with Back Button */}
-                        <div className="flex items-center justify-between pb-2.5 mb-2 border-b border-black/5">
+                        <div className={`flex items-center justify-between pb-2 mb-2 border-b ${
+                          isDarkMode ? 'border-white/10' : 'border-black/5'
+                        }`}>
                           <button
                             onClick={() => {
                               sound.playWaterDrop(760);
                               setTopNavSubView('main');
                             }}
-                            className="flex items-center gap-1 text-xs hover:underline font-serif font-semibold active:scale-95 transition-all"
-                            style={{ color: currentTheme.primaryDark }}
+                            className="flex items-center gap-1 text-xs font-serif font-semibold active:scale-95 transition-all cursor-pointer"
+                            style={{ color: currentTheme.primary }}
                           >
-                            <ChevronLeft className="w-4 h-4" />
+                            <ChevronLeft className="w-3.5 h-3.5" />
                             <span>返回</span>
                           </button>
-                          <h4 className="text-xs font-bold text-[#2B332E] font-serif">时光色调</h4>
+                          <h4 className="text-xs font-bold font-serif tracking-wide">全景时光 · 世纪跨度</h4>
                           <button
                             onClick={() => setIsTopNavMenuOpen(false)}
-                            className="p-1 text-[#6E7C75]/60 hover:text-[#2B332E] rounded-full hover:bg-black/5"
+                            className="p-1 text-[#6E7C75]/60 hover:text-[#2B332E] dark:hover:text-white rounded-full hover:bg-black/5 cursor-pointer"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+
+                        {/* Vertical Century Scroll List (2000 to 2035) */}
+                        <div className="max-h-60 overflow-y-auto custom-scrollbar space-y-1 py-0.5">
+                          {centuryYears.map((year) => {
+                            const isSelected = selectedYear === year;
+                            const count = year === 'all'
+                              ? data.timeline.length
+                              : data.timeline.filter(t => t.date.startsWith(year)).length;
+
+                            return (
+                              <button
+                                key={year}
+                                onClick={() => {
+                                  sound.playHapticClick(1200);
+                                  setSelectedYear(year);
+                                  showToast(year === 'all' ? '已展示全景时光' : `已筛选 ${year} 年时光印记`);
+                                }}
+                                className={`w-full px-3 py-2 rounded-2xl flex items-center justify-between text-xs transition-all active:scale-[0.98] cursor-pointer ${
+                                  isSelected
+                                    ? isDarkMode
+                                      ? 'bg-white/15 font-semibold text-white'
+                                      : 'bg-black/5 font-semibold text-[#2B332E]'
+                                    : isDarkMode
+                                      ? 'text-white/70 hover:bg-white/5 hover:text-white'
+                                      : 'text-[#526058] hover:bg-black/[0.03] hover:text-[#2B332E]'
+                                }`}
+                              >
+                                <div className="flex items-center gap-2">
+                                  <div
+                                    className={`w-1.5 h-1.5 rounded-full transition-all ${
+                                      isSelected ? 'scale-100' : 'scale-0 opacity-0'
+                                    }`}
+                                    style={{ backgroundColor: currentTheme.primary }}
+                                  />
+                                  <span className="font-serif">
+                                    {year === 'all' ? '全部全景' : `${year} 年`}
+                                  </span>
+                                </div>
+                                <div className="flex items-center gap-1.5">
+                                  {count > 0 ? (
+                                    <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded-md ${
+                                      isSelected
+                                        ? isDarkMode ? 'bg-white/20 text-white' : 'bg-black/10 text-[#2B332E]'
+                                        : isDarkMode ? 'bg-white/10 text-white/80' : 'bg-black/5 text-[#526058]'
+                                    }`}>
+                                      {count} 条
+                                    </span>
+                                  ) : (
+                                    <span className="text-[10px] font-mono opacity-25 px-1">-</span>
+                                  )}
+                                  {isSelected && (
+                                    <Check className="w-3.5 h-3.5" style={{ color: currentTheme.primary }} />
+                                  )}
+                                </div>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </motion.div>
+                    )}
+
+                    {/* Level 2: Friend Groups Micro-Popover Capsule (With Deletion and Anti-Overflow Form) */}
+                    {topNavSubView === 'friendGroups' && (
+                      <motion.div
+                        key="friendgroups-menu"
+                        initial={{ opacity: 0, scale: 0.94, y: -6 }}
+                        animate={{ opacity: 1, scale: 1, y: 0 }}
+                        exit={{ opacity: 0, scale: 0.94, y: -6 }}
+                        transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
+                        className={`absolute top-full right-0 mt-2 w-72 sm:w-80 max-w-[calc(100vw-2rem)] p-3.5 apple-liquid-glass rounded-3xl border z-50 font-sans shadow-none box-border ${
+                          isDarkMode
+                            ? 'bg-[#141B18]/92 border-white/15 text-[#FAF8F5]'
+                            : 'bg-white/90 border-white/80 text-[#2B332E]'
+                        }`}
+                      >
+                        {/* Header with Back Button */}
+                        <div className={`flex items-center justify-between pb-2 mb-2 border-b ${
+                          isDarkMode ? 'border-white/10' : 'border-black/5'
+                        }`}>
+                          <button
+                            onClick={() => {
+                              sound.playWaterDrop(760);
+                              setTopNavSubView('main');
+                            }}
+                            className="flex items-center gap-1 text-xs font-serif font-semibold active:scale-95 transition-all cursor-pointer"
+                            style={{ color: currentTheme.primary }}
+                          >
+                            <ChevronLeft className="w-3.5 h-3.5" />
+                            <span>返回</span>
+                          </button>
+                          <h4 className="text-xs font-bold font-serif tracking-wide">好友分组</h4>
+                          <button
+                            onClick={() => setIsTopNavMenuOpen(false)}
+                            className="p-1 text-[#6E7C75]/60 hover:text-[#2B332E] dark:hover:text-white rounded-full hover:bg-black/5 cursor-pointer"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+
+                        {/* Vertical Scroll List of Friend Groups */}
+                        <div className="max-h-48 overflow-y-auto custom-scrollbar space-y-1 py-0.5">
+                          {['all', ...allGroupsList].map((groupName) => {
+                            const isSelected = selectedPersonGroup === groupName;
+                            const count = groupName === 'all'
+                              ? data.people.length
+                              : data.people.filter(p => (p.group || '未分组') === groupName).length;
+
+                            return (
+                              <button
+                                key={groupName}
+                                onClick={() => {
+                                  sound.playHapticClick(1200);
+                                  setSelectedPersonGroup(groupName);
+                                  showToast(groupName === 'all' ? '已展示全部好友' : `已切换至「${groupName}」分组`);
+                                }}
+                                className={`w-full px-3 py-2 rounded-2xl flex items-center justify-between text-xs transition-all active:scale-[0.98] cursor-pointer group ${
+                                  isSelected
+                                    ? isDarkMode
+                                      ? 'bg-white/15 font-semibold text-white'
+                                      : 'bg-black/5 font-semibold text-[#2B332E]'
+                                    : isDarkMode
+                                      ? 'text-white/70 hover:bg-white/5 hover:text-white'
+                                      : 'text-[#526058] hover:bg-black/[0.03] hover:text-[#2B332E]'
+                                }`}
+                              >
+                                <div className="flex items-center gap-2 truncate mr-1">
+                                  <div
+                                    className={`w-1.5 h-1.5 rounded-full transition-all shrink-0 ${
+                                      isSelected ? 'scale-100' : 'scale-0 opacity-0'
+                                    }`}
+                                    style={{ backgroundColor: currentTheme.primary }}
+                                  />
+                                  <span className="font-serif truncate">
+                                    {groupName === 'all' ? '全部好友' : groupName}
+                                  </span>
+                                </div>
+                                <div className="flex items-center gap-1.5 shrink-0">
+                                  {/* Delete Group Trigger Button (Only for custom groups) */}
+                                  {groupName !== 'all' && groupName !== '未分组' && (
+                                    <span
+                                      role="button"
+                                      tabIndex={0}
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        sound.playWaterDrop(600);
+                                        setConfirmDialog({
+                                          name: `好友分组「${groupName}」`,
+                                          onConfirm: () => handleDeleteGroup(groupName)
+                                        });
+                                      }}
+                                      onKeyDown={(e) => {
+                                        if (e.key === 'Enter' || e.key === ' ') {
+                                          e.stopPropagation();
+                                          setConfirmDialog({
+                                            name: `好友分组「${groupName}」`,
+                                            onConfirm: () => handleDeleteGroup(groupName)
+                                          });
+                                        }
+                                      }}
+                                      className="p-1 rounded-lg text-[#6E7C75]/60 hover:text-red-500 hover:bg-red-500/10 active:scale-90 transition-all cursor-pointer"
+                                      title="删除此分组"
+                                    >
+                                      <Trash2 className="w-3 h-3" />
+                                    </span>
+                                  )}
+                                  <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded-md ${
+                                    isSelected
+                                      ? isDarkMode ? 'bg-white/20 text-white' : 'bg-black/10 text-[#2B332E]'
+                                      : isDarkMode ? 'bg-white/5 text-white/50' : 'bg-black/5 text-[#6E7C75]'
+                                  }`}>
+                                    {count} 人
+                                  </span>
+                                  {isSelected && (
+                                    <Check className="w-3.5 h-3.5" style={{ color: currentTheme.primary }} />
+                                  )}
+                                </div>
+                              </button>
+                            );
+                          })}
+                        </div>
+
+                        {/* Bottom Action: Integrated Compact "+ 添加好友分组" (Never overflows) */}
+                        <div className={`pt-2 mt-1.5 border-t box-border ${
+                          isDarkMode ? 'border-white/10' : 'border-black/5'
+                        }`}>
+                          <form
+                            onSubmit={(e) => {
+                              e.preventDefault();
+                              const val = topNavNewGroupInput.trim();
+                              if (val) {
+                                handleAddGroup(val);
+                                setTopNavNewGroupInput('');
+                                setSelectedPersonGroup(val);
+                                showToast(`已新建分组「${val}」`);
+                              }
+                            }}
+                            className="flex items-center gap-1.5 w-full box-border"
+                          >
+                            <input
+                              type="text"
+                              value={topNavNewGroupInput}
+                              onChange={(e) => setTopNavNewGroupInput(e.target.value)}
+                              placeholder="新建分组..."
+                              className={`min-w-0 flex-1 px-2.5 py-1.5 text-xs rounded-xl border font-serif outline-none transition-all box-border ${
+                                isDarkMode
+                                  ? 'bg-black/25 border-white/15 text-white placeholder-white/30 focus:border-white/40'
+                                  : 'bg-white/90 border-black/10 text-[#2B332E] placeholder-[#6E7C75]/60 focus:border-black/30'
+                              }`}
+                            />
+                            <button
+                              type="submit"
+                              disabled={!topNavNewGroupInput.trim()}
+                              className={`px-3 py-1.5 rounded-xl text-xs font-serif font-medium flex items-center gap-1 transition-all shrink-0 cursor-pointer ${
+                                topNavNewGroupInput.trim()
+                                  ? 'text-white active:scale-95'
+                                  : 'opacity-35 cursor-not-allowed text-[#6E7C75]'
+                              }`}
+                              style={{
+                                backgroundColor: topNavNewGroupInput.trim()
+                                  ? currentTheme.primary
+                                  : isDarkMode ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)'
+                              }}
+                            >
+                              <Plus className="w-3 h-3" />
+                              <span>添加</span>
+                            </button>
+                          </form>
+                        </div>
+                      </motion.div>
+                    )}
+
+                    {/* Level 2: Healing Palette Theme Picker Card */}
+                    {topNavSubView === 'theme' && (
+                      <motion.div
+                        key="theme-menu"
+                        initial={{ opacity: 0, scale: 0.94, y: -6 }}
+                        animate={{ opacity: 1, scale: 1, y: 0 }}
+                        exit={{ opacity: 0, scale: 0.94, y: -6 }}
+                        transition={{ duration: 0.2, ease: [0.25, 1, 0.5, 1] }}
+                        className={`absolute top-full right-0 mt-2 w-64 p-3.5 apple-liquid-glass rounded-3xl shadow-none border z-50 font-sans ${
+                          isDarkMode
+                            ? 'bg-[#141B18]/92 border-white/15 text-[#FAF8F5]'
+                            : 'bg-white/90 border-white/80 text-[#2B332E]'
+                        }`}
+                      >
+                        {/* Header with Back Button */}
+                        <div className={`flex items-center justify-between pb-2 mb-2 border-b ${
+                          isDarkMode ? 'border-white/10' : 'border-black/5'
+                        }`}>
+                          <button
+                            onClick={() => {
+                              sound.playWaterDrop(760);
+                              setTopNavSubView('main');
+                            }}
+                            className="flex items-center gap-1 text-xs hover:underline font-serif font-semibold active:scale-95 transition-all cursor-pointer"
+                            style={{ color: currentTheme.primary }}
+                          >
+                            <ChevronLeft className="w-3.5 h-3.5" />
+                            <span>返回</span>
+                          </button>
+                          <h4 className="text-xs font-bold font-serif tracking-wide">时光色调</h4>
+                          <button
+                            onClick={() => setIsTopNavMenuOpen(false)}
+                            className="p-1 text-[#6E7C75]/60 hover:text-[#2B332E] dark:hover:text-white rounded-full hover:bg-black/5 cursor-pointer"
                           >
                             <X className="w-3.5 h-3.5" />
                           </button>
@@ -1946,6 +2481,9 @@ export default function App() {
                         <div className="space-y-1.5">
                           {HEALING_THEMES.map(th => {
                             const isSelected = th.id === currentTheme.id;
+                            const thPrimary = isDarkMode && th.dark ? th.dark.primary : th.primary;
+                            const thAccent = isDarkMode && th.dark ? th.dark.accent : th.accent;
+
                             return (
                               <button
                                 key={th.id}
@@ -1953,35 +2491,39 @@ export default function App() {
                                   handleSelectTheme(th.id);
                                   setIsTopNavMenuOpen(false);
                                 }}
-                                className={`w-full p-2 rounded-2xl flex items-center justify-between border transition-all text-left ${
+                                className={`w-full p-2 rounded-2xl flex items-center justify-between border transition-all text-left cursor-pointer ${
                                   isSelected
-                                    ? 'border-[#5B7B6D] bg-white/85 shadow-xs font-semibold'
-                                    : 'border-transparent hover:bg-white/55 hover:border-white/60'
+                                    ? isDarkMode
+                                      ? 'border-white/30 bg-white/15 shadow-none font-semibold text-white'
+                                      : 'border-[#5B7B6D]/40 bg-black/5 shadow-none font-semibold text-[#2B332E]'
+                                    : isDarkMode
+                                      ? 'border-transparent hover:bg-white/5 text-white/80'
+                                      : 'border-transparent hover:bg-black/[0.03] text-[#526058]'
                                 }`}
                               >
                                 <div className="flex items-center gap-2.5">
                                   <div className="flex items-center -space-x-1">
                                     <div
-                                      className="w-4 h-4 rounded-full border border-white shadow-2xs"
-                                      style={{ backgroundColor: th.primary }}
+                                      className="w-4 h-4 rounded-full border border-white/60 shadow-2xs"
+                                      style={{ backgroundColor: thPrimary }}
                                     />
                                     <div
-                                      className="w-4 h-4 rounded-full border border-white shadow-2xs"
-                                      style={{ backgroundColor: th.accent }}
+                                      className="w-4 h-4 rounded-full border border-white/60 shadow-2xs"
+                                      style={{ backgroundColor: thAccent }}
                                     />
                                   </div>
                                   <div>
-                                    <div className="text-xs text-[#2B332E] flex items-center gap-1 font-serif">
+                                    <div className="text-xs flex items-center gap-1 font-serif">
                                       <span>{th.name}</span>
-                                      <span className="text-[9px] text-[#6E7C75]/70 font-mono">({th.enName})</span>
+                                      <span className="text-[9px] opacity-60 font-mono">({th.enName})</span>
                                     </div>
-                                    <div className="text-[9px] text-[#6E7C75] font-serif leading-tight mt-0.5">
+                                    <div className="text-[9px] opacity-70 font-serif leading-tight mt-0.5">
                                       {th.quote}
                                     </div>
                                   </div>
                                 </div>
                                 {isSelected && (
-                                  <Check className="w-3.5 h-3.5 text-[#5B7B6D] shrink-0" />
+                                  <Check className="w-3.5 h-3.5 shrink-0" style={{ color: currentTheme.primary }} />
                                 )}
                               </button>
                             );
@@ -1994,11 +2536,15 @@ export default function App() {
                     {topNavSubView === 'settings' && (
                       <motion.div
                         key="settings-menu"
-                        initial={{ opacity: 0, scale: 0.92, y: -6 }}
+                        initial={{ opacity: 0, scale: 0.94, y: -6 }}
                         animate={{ opacity: 1, scale: 1, y: 0 }}
                         exit={{ opacity: 0, scale: 0.94, y: -6 }}
-                        transition={{ duration: 0.22, ease: [0.25, 1, 0.5, 1] }}
-                        className="absolute top-full right-0 mt-2 w-64 p-3.5 apple-liquid-glass rounded-3xl shadow-2xl border border-white/85 z-50 font-sans"
+                        transition={{ duration: 0.2, ease: [0.25, 1, 0.5, 1] }}
+                        className={`absolute top-full right-0 mt-2 w-64 p-3.5 apple-liquid-glass rounded-3xl shadow-none border z-50 font-sans ${
+                          isDarkMode
+                            ? 'bg-[#141B18]/92 border-white/15 text-[#FAF8F5]'
+                            : 'bg-white/90 border-white/85 text-[#2B332E]'
+                        }`}
                       >
                         {/* Header with Back Button */}
                         <div className="flex items-center justify-between pb-2.5 mb-2 border-b border-black/5">
@@ -2127,70 +2673,82 @@ export default function App() {
                     {topNavSubView === 'backup' && (
                       <motion.div
                         key="backup-card"
-                        initial={{ opacity: 0, scale: 0.92, y: -6 }}
+                        initial={{ opacity: 0, scale: 0.94, y: -6 }}
                         animate={{ opacity: 1, scale: 1, y: 0 }}
                         exit={{ opacity: 0, scale: 0.94, y: -6 }}
-                        transition={{ duration: 0.22, ease: [0.25, 1, 0.5, 1] }}
-                        className="absolute top-full right-0 mt-2 w-72 p-4 apple-liquid-glass rounded-3xl shadow-2xl border border-white/85 z-50 font-sans space-y-3"
+                        transition={{ duration: 0.2, ease: [0.25, 1, 0.5, 1] }}
+                        className={`absolute top-full right-0 mt-2 w-64 p-3.5 apple-liquid-glass rounded-3xl shadow-none border z-50 font-sans space-y-2.5 ${
+                          isDarkMode
+                            ? 'bg-[#141B18]/92 border-white/15 text-[#FAF8F5]'
+                            : 'bg-white/90 border-white/85 text-[#2B332E]'
+                        }`}
                       >
                         {/* Header */}
-                        <div className="flex items-center justify-between pb-2 border-b border-black/5">
+                        <div className={`flex items-center justify-between pb-2 border-b ${
+                          isDarkMode ? 'border-white/10' : 'border-black/5'
+                        }`}>
                           <button
                             onClick={() => {
                               sound.playWaterDrop(760);
                               setTopNavSubView('settings');
                             }}
-                            className="flex items-center gap-1 text-xs hover:underline font-serif font-semibold active:scale-95 transition-all"
-                            style={{ color: currentTheme.primaryDark }}
+                            className="flex items-center gap-1 text-xs hover:underline font-serif font-semibold active:scale-95 transition-all cursor-pointer"
+                            style={{ color: currentTheme.primary }}
                           >
                             <ChevronLeft className="w-4 h-4" />
                             <span>返回设置</span>
                           </button>
-                          <h4 className="text-xs font-bold text-[#2B332E] font-serif">离线档案备份</h4>
+                          <h4 className="text-xs font-bold font-serif">离线档案备份</h4>
                           <button
                             onClick={() => setIsTopNavMenuOpen(false)}
-                            className="p-1 text-[#6E7C75]/60 hover:text-[#2B332E] rounded-full hover:bg-black/5"
+                            className="p-1 text-[#6E7C75]/60 hover:text-[#2B332E] dark:hover:text-white rounded-full hover:bg-black/5 cursor-pointer"
                           >
                             <X className="w-3.5 h-3.5" />
                           </button>
                         </div>
 
                         {/* Summary Badge */}
-                        <div className="p-2.5 rounded-2xl bg-white/70 border border-[#5B7B6D]/15 flex items-center justify-between text-[11px]">
-                          <span className="text-[#6E7C75] font-serif">时光记忆存档</span>
-                          <span className="font-bold text-[#2B332E] font-mono">
+                        <div className={`p-2 rounded-2xl border flex items-center justify-between text-[11px] ${
+                          isDarkMode ? 'bg-white/5 border-white/10' : 'bg-white/70 border-[#5B7B6D]/15'
+                        }`}>
+                          <span className="opacity-75 font-serif">时光记忆存档</span>
+                          <span className="font-bold font-mono">
                             共 {data.timeline.length + data.people.length + data.stories.length + data.artifacts.length + data.letters.length} 项
                           </span>
                         </div>
 
-                        {/* Export Action */}
+                        {/* Export Action: Clean ZIP Archive Package */}
                         <button
                           type="button"
                           onClick={() => {
-                            handleExport();
+                            handleDownloadBackup();
                             setIsTopNavMenuOpen(false);
                           }}
-                          className="w-full py-2.5 px-3 bg-[#5B7B6D] hover:bg-[#3E564B] text-white font-serif font-bold text-xs rounded-2xl shadow-xs transition-all flex items-center justify-center gap-1.5 active:scale-95"
+                          className="w-full py-2.5 px-3 text-white font-serif font-bold text-xs rounded-2xl shadow-sm transition-all flex items-center justify-center gap-1.5 active:scale-95 cursor-pointer"
                           style={{ backgroundColor: currentTheme.primary }}
                         >
-                          <Download className="w-3.5 h-3.5" />
-                          <span>导出离线备份包 (.json)</span>
+                          <Download className="w-4 h-4" />
+                          <span>导出ZIP离线备份包</span>
                         </button>
 
-                        {/* Import Dropzone */}
-                        <div className="p-3 bg-white/80 rounded-2xl border border-dashed border-[#5B7B6D]/25 text-center relative hover:border-[#5B7B6D]/50 transition-colors cursor-pointer">
+                        {/* Import Dropzone (.zip) */}
+                        <div className={`p-3 rounded-2xl border border-dashed text-center relative transition-colors cursor-pointer ${
+                          isDarkMode
+                            ? 'bg-white/5 border-white/20 hover:border-white/40'
+                            : 'bg-white/80 border-[#5B7B6D]/25 hover:border-[#5B7B6D]/50'
+                        }`}>
                           <input
                             type="file"
-                            accept=".json"
+                            accept=".zip,.json,application/zip,application/json"
                             onChange={(e) => {
                               handleImport(e);
                               setIsTopNavMenuOpen(false);
                             }}
                             className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                           />
-                          <Upload className="w-5 h-5 mx-auto mb-1 text-[#5B7B6D]" />
-                          <div className="text-xs font-bold text-[#2B332E] font-serif">导入恢复备份数据</div>
-                          <div className="text-[9px] text-[#6E7C75] mt-0.5">点击选择或拖入 JSON 文件</div>
+                          <Upload className="w-4 h-4 mx-auto mb-1" style={{ color: currentTheme.primary }} />
+                          <div className="text-xs font-bold font-serif">导入还原备份档案</div>
+                          <div className="text-[10px] opacity-70 mt-0.5 font-serif">支持选取或拖入 .zip 压缩包</div>
                         </div>
                       </motion.div>
                     )}
@@ -2199,44 +2757,50 @@ export default function App() {
                     {topNavSubView === 'voice' && (
                       <motion.div
                         key="voice-card"
-                        initial={{ opacity: 0, scale: 0.92, y: -6 }}
+                        initial={{ opacity: 0, scale: 0.94, y: -6 }}
                         animate={{ opacity: 1, scale: 1, y: 0 }}
                         exit={{ opacity: 0, scale: 0.94, y: -6 }}
-                        transition={{ duration: 0.22, ease: [0.25, 1, 0.5, 1] }}
-                        className="absolute top-full right-0 mt-2 w-72 max-h-[78vh] flex flex-col p-3.5 apple-liquid-glass rounded-3xl shadow-2xl border border-white/85 z-50 font-sans"
+                        transition={{ duration: 0.2, ease: [0.25, 1, 0.5, 1] }}
+                        className={`absolute top-full right-0 mt-2 w-72 max-h-[78vh] flex flex-col p-3.5 apple-liquid-glass rounded-3xl shadow-none border z-50 font-sans ${
+                          isDarkMode
+                            ? 'bg-[#141B18]/92 border-white/15 text-[#FAF8F5]'
+                            : 'bg-white/90 border-white/85 text-[#2B332E]'
+                        }`}
                       >
                         {/* Header */}
-                        <div className="flex items-center justify-between pb-2 border-b border-black/5 shrink-0">
+                        <div className={`flex items-center justify-between pb-2 border-b shrink-0 ${
+                          isDarkMode ? 'border-white/10' : 'border-black/5'
+                        }`}>
                           <button
                             onClick={() => {
                               sound.playWaterDrop(760);
                               setTopNavSubView('settings');
                             }}
-                            className="flex items-center gap-1 text-xs hover:underline font-serif font-semibold active:scale-95 transition-all"
-                            style={{ color: currentTheme.primaryDark }}
+                            className="flex items-center gap-1 text-xs hover:underline font-serif font-semibold active:scale-95 transition-all cursor-pointer"
+                            style={{ color: currentTheme.primary }}
                           >
                             <ChevronLeft className="w-4 h-4" />
                             <span>返回设置</span>
                           </button>
-                          <h4 className="text-xs font-bold text-[#2B332E] font-serif">朗读者音色</h4>
+                          <h4 className="text-xs font-bold font-serif">朗读者音色</h4>
                           <button
                             onClick={() => setIsTopNavMenuOpen(false)}
-                            className="p-1 text-[#6E7C75]/60 hover:text-[#2B332E] rounded-full hover:bg-black/5"
+                            className="p-1 text-[#6E7C75]/60 hover:text-[#2B332E] dark:hover:text-white rounded-full hover:bg-black/5 cursor-pointer"
                           >
                             <X className="w-3.5 h-3.5" />
                           </button>
                         </div>
 
                         {/* Gender Filter Tabs */}
-                        <div className="flex gap-1 my-2 bg-black/5 p-1 rounded-xl shrink-0">
+                        <div className="flex gap-1 my-2 bg-black/5 dark:bg-white/5 p-1 rounded-xl shrink-0">
                           {(['all', '女声', '男声'] as const).map(g => (
                             <button
                               key={g}
                               onClick={() => setVoiceFilterGender(g)}
-                              className={`flex-1 py-1 rounded-lg text-[11px] font-serif font-medium transition-all ${
+                              className={`flex-1 py-1 rounded-lg text-[11px] font-serif font-medium transition-all cursor-pointer ${
                                 voiceFilterGender === g
-                                  ? 'bg-white text-[#2B332E] shadow-2xs font-bold'
-                                  : 'text-[#6E7C75] hover:text-[#2B332E]'
+                                  ? 'bg-white dark:bg-white/20 text-[#2B332E] dark:text-white shadow-none font-bold'
+                                  : 'text-[#6E7C75] dark:text-white/60 hover:text-[#2B332E] dark:hover:text-white'
                               }`}
                             >
                               {g === 'all' ? '全部' : g}
@@ -2262,14 +2826,18 @@ export default function App() {
                                   }}
                                   className={`p-2.5 rounded-2xl border transition-all text-left cursor-pointer ${
                                     isSelected
-                                      ? 'bg-white/90 border-[#5B7B6D] shadow-xs'
-                                      : 'bg-white/50 border-transparent hover:bg-white/70'
+                                      ? isDarkMode
+                                        ? 'bg-white/15 border-white/30 shadow-none'
+                                        : 'bg-white/90 border-[#5B7B6D] shadow-none'
+                                      : isDarkMode
+                                        ? 'bg-white/5 border-transparent hover:bg-white/10'
+                                        : 'bg-white/50 border-transparent hover:bg-white/70'
                                   }`}
                                 >
                                   <div className="flex items-center justify-between">
                                     <div className="flex items-center gap-1.5 min-w-0">
-                                      <span className="font-serif font-bold text-xs text-[#2B332E] truncate">{v.name}</span>
-                                      <span className="text-[9px] px-1.5 py-0.2 rounded-md bg-black/5 text-[#6E7C75] font-sans shrink-0">
+                                      <span className="font-serif font-bold text-xs truncate">{v.name}</span>
+                                      <span className="text-[9px] px-1.5 py-0.2 rounded-md bg-black/5 dark:bg-white/10 font-sans shrink-0 opacity-75">
                                         {v.gender}
                                       </span>
                                     </div>
@@ -2280,13 +2848,13 @@ export default function App() {
                                         handlePreviewVoice(v);
                                       }}
                                       disabled={isTtsGenerating}
-                                      className="text-[10px] px-2 py-0.5 rounded-lg bg-black/5 hover:bg-[#5B7B6D] hover:text-white transition-colors flex items-center gap-1 shrink-0"
+                                      className="text-[10px] px-2 py-0.5 rounded-lg bg-black/5 dark:bg-white/10 hover:bg-[#5B7B6D] hover:text-white transition-colors flex items-center gap-1 shrink-0 cursor-pointer"
                                     >
                                       <Play className="w-2.5 h-2.5" />
                                       <span>{isPreviewing ? '播放中' : '试听'}</span>
                                     </button>
                                   </div>
-                                  <p className="text-[10px] text-[#6E7C75] font-serif line-clamp-1 mt-1 leading-tight">
+                                  <p className="text-[10px] opacity-75 font-serif line-clamp-1 mt-1 leading-tight">
                                     {v.character}
                                   </p>
                                 </div>
@@ -2300,29 +2868,35 @@ export default function App() {
                     {topNavSubView === 'security' && (
                       <motion.div
                         key="security-card"
-                        initial={{ opacity: 0, scale: 0.92, y: -6 }}
+                        initial={{ opacity: 0, scale: 0.94, y: -6 }}
                         animate={{ opacity: 1, scale: 1, y: 0 }}
                         exit={{ opacity: 0, scale: 0.94, y: -6 }}
-                        transition={{ duration: 0.22, ease: [0.25, 1, 0.5, 1] }}
-                        className="absolute top-full right-0 mt-2 w-72 p-4 apple-liquid-glass rounded-3xl shadow-2xl border border-white/85 z-50 font-sans space-y-3"
+                        transition={{ duration: 0.2, ease: [0.25, 1, 0.5, 1] }}
+                        className={`absolute top-full right-0 mt-2 w-72 p-4 apple-liquid-glass rounded-3xl shadow-none border z-50 font-sans space-y-3 ${
+                          isDarkMode
+                            ? 'bg-[#141B18]/92 border-white/15 text-[#FAF8F5]'
+                            : 'bg-white/90 border-white/85 text-[#2B332E]'
+                        }`}
                       >
                         {/* Header */}
-                        <div className="flex items-center justify-between pb-2 border-b border-black/5">
+                        <div className={`flex items-center justify-between pb-2 border-b ${
+                          isDarkMode ? 'border-white/10' : 'border-black/5'
+                        }`}>
                           <button
                             onClick={() => {
                               sound.playWaterDrop(760);
                               setTopNavSubView('settings');
                             }}
-                            className="flex items-center gap-1 text-xs hover:underline font-serif font-semibold active:scale-95 transition-all"
-                            style={{ color: currentTheme.primaryDark }}
+                            className="flex items-center gap-1 text-xs hover:underline font-serif font-semibold active:scale-95 transition-all cursor-pointer"
+                            style={{ color: currentTheme.primary }}
                           >
                             <ChevronLeft className="w-4 h-4" />
                             <span>返回设置</span>
                           </button>
-                          <h4 className="text-xs font-bold text-[#2B332E] font-serif">修改访问口令</h4>
+                          <h4 className="text-xs font-bold font-serif">修改访问口令</h4>
                           <button
                             onClick={() => setIsTopNavMenuOpen(false)}
-                            className="p-1 text-[#6E7C75]/60 hover:text-[#2B332E] rounded-full hover:bg-black/5"
+                            className="p-1 text-[#6E7C75]/60 hover:text-[#2B332E] dark:hover:text-white rounded-full hover:bg-black/5 cursor-pointer"
                           >
                             <X className="w-3.5 h-3.5" />
                           </button>
@@ -2333,44 +2907,50 @@ export default function App() {
                           setIsTopNavMenuOpen(false);
                         }} className="space-y-2.5 text-xs">
                           <div>
-                            <label className="text-[10px] text-[#6E7C75] block mb-1 font-serif">当前原口令：</label>
+                            <label className="text-[10px] opacity-75 block mb-1 font-serif">当前原口令：</label>
                             <input
                               type="password"
                               required
                               value={oldPinInput}
                               onChange={(e) => setOldPinInput(e.target.value)}
                               placeholder="默认 1234"
-                              className="w-full p-2 rounded-xl border border-[#5B7B6D]/20 bg-white/90 focus:outline-none font-mono text-xs"
+                              className={`w-full p-2 rounded-xl border focus:outline-none font-mono text-xs ${
+                                isDarkMode ? 'bg-black/30 border-white/15 text-white' : 'bg-white/90 border-[#5B7B6D]/20 text-[#2B332E]'
+                              }`}
                             />
                           </div>
 
                           <div>
-                            <label className="text-[10px] text-[#6E7C75] block mb-1 font-serif">设置新口令：</label>
+                            <label className="text-[10px] opacity-75 block mb-1 font-serif">设置新口令：</label>
                             <input
                               type="password"
                               required
                               value={newPinInput}
                               onChange={(e) => setNewPinInput(e.target.value)}
                               placeholder="至少 4 位"
-                              className="w-full p-2 rounded-xl border border-[#5B7B6D]/20 bg-white/90 focus:outline-none font-mono text-xs"
+                              className={`w-full p-2 rounded-xl border focus:outline-none font-mono text-xs ${
+                                isDarkMode ? 'bg-black/30 border-white/15 text-white' : 'bg-white/90 border-[#5B7B6D]/20 text-[#2B332E]'
+                              }`}
                             />
                           </div>
 
                           <div>
-                            <label className="text-[10px] text-[#6E7C75] block mb-1 font-serif">确认新口令：</label>
+                            <label className="text-[10px] opacity-75 block mb-1 font-serif">确认新口令：</label>
                             <input
                               type="password"
                               required
                               value={confirmPinInput}
                               onChange={(e) => setConfirmPinInput(e.target.value)}
                               placeholder="再次输入"
-                              className="w-full p-2 rounded-xl border border-[#5B7B6D]/20 bg-white/90 focus:outline-none font-mono text-xs"
+                              className={`w-full p-2 rounded-xl border focus:outline-none font-mono text-xs ${
+                                isDarkMode ? 'bg-black/30 border-white/15 text-white' : 'bg-white/90 border-[#5B7B6D]/20 text-[#2B332E]'
+                              }`}
                             />
                           </div>
 
                           <button
                             type="submit"
-                            className="w-full py-2 bg-[#5B7B6D] text-white font-serif font-bold rounded-xl shadow-xs transition-all active:scale-95"
+                            className="w-full py-2 text-white font-serif font-bold rounded-xl shadow-none transition-all active:scale-95 cursor-pointer"
                             style={{ backgroundColor: currentTheme.primary }}
                           >
                             保存新口令
@@ -2383,29 +2963,35 @@ export default function App() {
                     {topNavSubView === 'ai' && (
                       <motion.div
                         key="ai-card"
-                        initial={{ opacity: 0, scale: 0.92, y: -6 }}
+                        initial={{ opacity: 0, scale: 0.94, y: -6 }}
                         animate={{ opacity: 1, scale: 1, y: 0 }}
                         exit={{ opacity: 0, scale: 0.94, y: -6 }}
-                        transition={{ duration: 0.22, ease: [0.25, 1, 0.5, 1] }}
-                        className="absolute top-full right-0 mt-2 w-72 p-4 apple-liquid-glass rounded-3xl shadow-2xl border border-white/85 z-50 font-sans space-y-3"
+                        transition={{ duration: 0.2, ease: [0.25, 1, 0.5, 1] }}
+                        className={`absolute top-full right-0 mt-2 w-72 p-4 apple-liquid-glass rounded-3xl shadow-none border z-50 font-sans space-y-3 ${
+                          isDarkMode
+                            ? 'bg-[#141B18]/92 border-white/15 text-[#FAF8F5]'
+                            : 'bg-white/90 border-white/85 text-[#2B332E]'
+                        }`}
                       >
                         {/* Header */}
-                        <div className="flex items-center justify-between pb-2 border-b border-black/5">
+                        <div className={`flex items-center justify-between pb-2 border-b ${
+                          isDarkMode ? 'border-white/10' : 'border-black/5'
+                        }`}>
                           <button
                             onClick={() => {
                               sound.playWaterDrop(760);
                               setTopNavSubView('settings');
                             }}
-                            className="flex items-center gap-1 text-xs hover:underline font-serif font-semibold active:scale-95 transition-all"
-                            style={{ color: currentTheme.primaryDark }}
+                            className="flex items-center gap-1 text-xs hover:underline font-serif font-semibold active:scale-95 transition-all cursor-pointer"
+                            style={{ color: currentTheme.primary }}
                           >
                             <ChevronLeft className="w-4 h-4" />
                             <span>返回设置</span>
                           </button>
-                          <h4 className="text-xs font-bold text-[#2B332E] font-serif">AI 智能引擎</h4>
+                          <h4 className="text-xs font-bold font-serif">AI 智能引擎</h4>
                           <button
                             onClick={() => setIsTopNavMenuOpen(false)}
-                            className="p-1 text-[#6E7C75]/60 hover:text-[#2B332E] rounded-full hover:bg-black/5"
+                            className="p-1 text-[#6E7C75]/60 hover:text-[#2B332E] dark:hover:text-white rounded-full hover:bg-black/5 cursor-pointer"
                           >
                             <X className="w-3.5 h-3.5" />
                           </button>
@@ -2447,17 +3033,39 @@ export default function App() {
                             }`}
                           >
                             <div className="flex items-center justify-between">
-                              <span className="font-serif font-bold text-xs text-[#2B332E]">🐉 DeepSeek 引擎</span>
+                              <span className="font-serif font-bold text-xs text-[#2B332E] dark:text-[#FAF8F5] flex items-center gap-1.5">
+                                <svg className="w-4 h-4 text-[#1D72F3] shrink-0" viewBox="0 0 24 24" fill="currentColor">
+                                  <path d="M21.8 12.8c-.4-3.3-2.9-6-6.2-6.8-4-1-8.2.2-11 3.2-1.9 2.1-2.8 4.8-2.3 7.6.3 1.6 1.3 2.9 2.7 3.8 2.4 1.5 5.4 1.7 8 .8 3.4-1 6-3.6 7.4-6.8.3-.5.9-.8 1.5-.7.6.1 1.1.5 1.2 1.1.2 1.2.9 2.3 2 2.8.4.2 1 .1 1.3-.2.3-.3.4-.8.2-1.3-1.1-2.2-1-2.9-4.7-3.5zm-8.2-2.5c.7 0 1.3.6 1.3 1.3s-.6 1.3-1.3 1.3-1.3-.6-1.3-1.3.6-1.3 1.3-1.3z" />
+                                </svg>
+                                DeepSeek 引擎
+                              </span>
                               {aiEngine === 'deepseek' && <Check className="w-3.5 h-3.5 text-[#5B7B6D]" />}
                             </div>
                             <p className="text-[10px] text-[#6E7C75] font-serif mt-0.5">DeepSeek-V3 深度文本推理</p>
                           </button>
                         </div>
 
+                        {/* Gemini / Standard API Key Input */}
+                        {aiEngine === 'gemini' && (
+                          <div className="p-2.5 rounded-2xl bg-white/90 dark:bg-black/40 border border-[#5B7B6D]/20 dark:border-white/15 space-y-1">
+                            <label className="text-[10px] font-bold block opacity-90">Gemini API 密钥（选填）：</label>
+                            <input
+                              type="password"
+                              value={aiApiKey}
+                              onChange={(e) => {
+                                setAiApiKey(e.target.value);
+                                localStorage.setItem('shinian_gemini_key', e.target.value);
+                              }}
+                              placeholder="AIzaSy..."
+                              className="w-full p-2 rounded-xl border border-[#5B7B6D]/20 dark:border-white/15 bg-[#FAF8F5] dark:bg-black/30 focus:outline-none font-mono text-[10px]"
+                            />
+                          </div>
+                        )}
+
                         {/* DeepSeek API Key Input */}
                         {aiEngine === 'deepseek' && (
-                          <div className="p-2.5 rounded-2xl bg-white/90 border border-[#5B7B6D]/20 space-y-1">
-                            <label className="text-[10px] text-[#2B332E] font-bold block">DeepSeek API Key：</label>
+                          <div className="p-2.5 rounded-2xl bg-white/90 dark:bg-black/40 border border-[#5B7B6D]/20 dark:border-white/15 space-y-1">
+                            <label className="text-[10px] font-bold block opacity-90">DeepSeek API 密钥：</label>
                             <input
                               type="password"
                               value={deepSeekKey}
@@ -2466,10 +3074,42 @@ export default function App() {
                                 localStorage.setItem('shinian_deepseek_key', e.target.value);
                               }}
                               placeholder="sk-..."
-                              className="w-full p-2 rounded-xl border border-[#5B7B6D]/20 bg-[#FAF8F5] focus:outline-none font-mono text-[10px]"
+                              className="w-full p-2 rounded-xl border border-[#5B7B6D]/20 dark:border-white/15 bg-[#FAF8F5] dark:bg-black/30 focus:outline-none font-mono text-[10px]"
                             />
                           </div>
                         )}
+
+                        {/* Custom API Server Base URL */}
+                        <div className="p-2.5 rounded-2xl bg-white/90 dark:bg-black/40 border border-[#5B7B6D]/20 dark:border-white/15 space-y-1">
+                          <div className="flex items-center justify-between">
+                            <label className="text-[10px] font-bold block opacity-90">云端服务节点：</label>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                localStorage.removeItem('shinian_api_server_url');
+                                showToast('已恢复预设官方云端节点');
+                              }}
+                              className="text-[9px] text-[#5B7B6D] dark:text-[#A0B0A7] hover:underline cursor-pointer"
+                            >
+                              恢复预设
+                            </button>
+                          </div>
+                          <input
+                            type="text"
+                            defaultValue={localStorage.getItem('shinian_api_server_url') || ''}
+                            onBlur={(e) => {
+                              const val = e.target.value.trim();
+                              if (val) {
+                                localStorage.setItem('shinian_api_server_url', val);
+                                showToast('已保存云端服务节点');
+                              } else {
+                                localStorage.removeItem('shinian_api_server_url');
+                              }
+                            }}
+                            placeholder="默认已预设官方云端解析节点"
+                            className="w-full p-2 rounded-xl border border-[#5B7B6D]/20 dark:border-white/15 bg-[#FAF8F5] dark:bg-black/30 focus:outline-none font-mono text-[10px]"
+                          />
+                        </div>
                       </motion.div>
                     )}
                   </>
@@ -2477,7 +3117,8 @@ export default function App() {
               </AnimatePresence>
             </div>
           </div>
-        </div>
+        </motion.div>
+      </div>
 
         {/* Refactored Literary Paper Themed Toast Notification */}
         <ThemedToast toast={toast} theme={currentTheme} isDarkMode={isDarkMode} />
@@ -2527,8 +3168,8 @@ export default function App() {
           </div>
         )}
 
-        {/* Main Content Area: Flows seamlessly underneath the floating Apple Liquid Glass dock */}
-        <main ref={mainContentRef} id="main-content-scroll" className="flex-1 overflow-y-auto custom-scrollbar p-4 pt-16 sm:pt-20 pb-28 sm:pb-32 space-y-4 overscroll-contain">
+        {/* Main Content Area: Elevated layer above ambient glow with robust CSS clearance for floating island */}
+        <main ref={mainContentRef} id="main-content-scroll" className="flex-1 overflow-y-auto custom-scrollbar p-4 main-content-clearance pb-28 sm:pb-32 space-y-4 overscroll-contain relative z-10">
 
           {/* Home Tab */}
           {activeTab === 'home' && (
@@ -2846,64 +3487,35 @@ export default function App() {
               transition={{ duration: 0.28, ease: [0.25, 0.1, 0.25, 1] }}
               className="space-y-4"
             >
-              {/* Group Filter Status Banner */}
-              {selectedPersonGroup !== 'all' && (
-                <div className="p-3 bg-[#E88765]/10 rounded-2xl border border-[#E88765]/25 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 text-xs text-[#E88765] font-sans shadow-2xs">
-                  <div className="flex items-center gap-2 font-medium leading-normal">
-                    <FolderOpen className="w-3.5 h-3.5 text-[#E88765] shrink-0" />
-                    <span>
-                      正在浏览【<strong className="font-bold text-[#2B332E]">{selectedPersonGroup}</strong>】分组
-                      <span className="opacity-75 font-normal ml-1">（共 {filteredPeople.length} 位好友）</span>
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-2 shrink-0 self-end sm:self-auto">
-                    <button
-                      onClick={() => setIsGroupPickerOpen(true)}
-                      className="text-[11px] font-semibold text-[#5B7B6D] bg-white/95 hover:bg-white px-2.5 py-1 rounded-xl border border-[#5B7B6D]/20 flex items-center gap-1 shadow-2xs transition-all active:scale-95"
-                    >
-                      <Users className="w-3 h-3 text-[#E88765]" /> 换分组
-                    </button>
-                    <button
-                      onClick={() => {
-                        setSelectedPersonGroup('all');
-                        showToast('已切换至全部好友全览');
-                      }}
-                      className="text-[11px] font-bold text-[#E88765] hover:underline flex items-center gap-1 px-1.5 py-1"
-                    >
-                      <RotateCcw className="w-3 h-3" /> 全部好友
-                    </button>
-                  </div>
-                </div>
-              )}
-
               {/* People Cards Grid - Japanese Literary Portrait Memoir Cards */}
               {filteredPeople.length === 0 ? (
-                <div className="bg-white p-8 rounded-3xl border border-dashed border-[#5B7B6D]/20 text-center space-y-3 shadow-2xs">
-                  <div className="w-12 h-12 rounded-full bg-[#FAF8F5] border border-[#5B7B6D]/20 text-[#5B7B6D] flex items-center justify-center mx-auto text-xl">
-                    👥
+                <div className="bg-white dark:bg-[#161D19]/90 p-8 rounded-3xl border border-dashed border-[#5B7B6D]/20 dark:border-white/15 text-center space-y-3 shadow-2xs">
+                  <div className="w-12 h-12 rounded-full bg-[#FAF8F5] dark:bg-white/10 border border-[#5B7B6D]/20 dark:border-white/15 text-[#5B7B6D] dark:text-[#A0B0A7] flex items-center justify-center mx-auto shadow-2xs">
+                    <Users className="w-6 h-6" style={{ color: isDarkMode ? (currentTheme.dark?.primary || currentTheme.primary) : currentTheme.primary }} />
                   </div>
-                  <h3 className="font-bold text-[#2B332E] text-sm font-serif">
+                  <h3 className="font-bold text-[#2B332E] dark:text-[#FAF8F5] text-sm font-serif">
                     {selectedPersonGroup !== 'all' ? `「${selectedPersonGroup}」分组暂无好友` : '暂无好友记录'}
                   </h3>
-                  <p className="text-xs text-[#6E7C75]">
-                    {selectedPersonGroup !== 'all'
-                      ? '可点击好友卡片编辑资料将其归入此分组，或切换回全部好友'
-                      : '轻触右上角「添加人物」即可开启拾人纪实'}
-                  </p>
                   <div className="flex justify-center gap-2 pt-1 font-sans">
                     {selectedPersonGroup !== 'all' && (
                       <button
                         type="button"
                         onClick={() => setSelectedPersonGroup('all')}
-                        className="px-4 py-1.5 bg-[#F2EFE9] text-[#5B7B6D] text-xs rounded-xl font-medium shadow-2xs hover:bg-[#E8E4DC]"
+                        className="px-4 py-1.5 bg-[#F2EFE9] dark:bg-white/10 text-[#5B7B6D] dark:text-[#FAF8F5] text-xs rounded-xl font-medium shadow-2xs hover:bg-[#E8E4DC] dark:hover:bg-white/20 transition-all"
                       >
                         查看全部好友
                       </button>
                     )}
                     <button
                       type="button"
-                      onClick={() => setActiveModal('addPerson')}
-                      className="px-4 py-1.5 bg-[#5B7B6D] text-white text-xs rounded-xl font-medium shadow-2xs hover:bg-[#3E564B]"
+                      onClick={() => {
+                        if (selectedPersonGroup !== 'all') {
+                          setFormPersonGroup(selectedPersonGroup);
+                        }
+                        setActiveModal('addPerson');
+                      }}
+                      className="px-4 py-1.5 text-white text-xs rounded-xl font-medium shadow-2xs transition-all active:scale-95"
+                      style={{ backgroundColor: currentTheme.primary }}
                     >
                       添加人物
                     </button>
@@ -2998,23 +3610,15 @@ export default function App() {
 
                       {/* Bottom Footer: Minimal Meta & Page Turn Hint */}
                       <div className="flex items-center justify-between text-[11px] text-[#6E7C75]/75 font-sans pt-1 border-t border-[#F2EFE9]">
-                        <div className="flex items-center gap-2.5 min-w-0">
-                          {person.birthday && (
-                            <span className="flex items-center gap-1 truncate">
+                        <div className="flex items-center gap-2 min-w-0">
+                          {person.birthday && person.birthday !== '未填写' && (
+                            <span className="flex items-center gap-1 truncate text-[10px]">
                               🎂 {person.birthday}
                             </span>
                           )}
-                          {person.zodiac && (
-                            <span className="flex items-center gap-1 shrink-0">
-                              ✨ {person.zodiac}
-                            </span>
-                          )}
-                          <span className="shrink-0 font-mono">
-                            📖 {person.impressions?.length || 0} 则印记
-                          </span>
                         </div>
 
-                        <div className="text-[11px] text-[#5B7B6D] font-medium flex items-center gap-0.5 opacity-60 group-hover:opacity-100 group-hover:translate-x-0.5 transition-all shrink-0">
+                        <div className="text-[11px] text-[#5B7B6D] font-medium flex items-center gap-0.5 opacity-70 group-hover:opacity-100 group-hover:translate-x-0.5 transition-all shrink-0">
                           <span>翻看手账</span>
                           <ChevronRight className="w-3.5 h-3.5" />
                         </div>
@@ -3133,14 +3737,14 @@ export default function App() {
 
                 {/* Clean 2-Column Info Grid */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs font-sans">
-                  {/* 生日星座 */}
-                  {(selectedPerson.birthday || selectedPerson.zodiac) && (
+                  {/* 好友生日 */}
+                  {selectedPerson.birthday && (
                     <div className="p-3.5 rounded-2xl bg-[#FAF8F5] border border-[#5B7B6D]/10 flex items-center gap-3">
                       <span className="text-base p-2 rounded-xl bg-white border border-[#5B7B6D]/10 shrink-0">🎂</span>
                       <div className="min-w-0 flex-1">
-                        <span className="text-[10px] text-[#6E7C75] block">生日 · 星座</span>
+                        <span className="text-[10px] text-[#6E7C75] block">好友生日</span>
                         <span className="font-semibold text-[#2B332E] block truncate">
-                          {selectedPerson.birthday || '未填生日'} {selectedPerson.zodiac ? `(${selectedPerson.zodiac})` : ''}
+                          {selectedPerson.birthday || '未填生日'}
                         </span>
                       </div>
                     </div>
@@ -3275,58 +3879,29 @@ export default function App() {
               transition={{ duration: 0.28, ease: [0.25, 0.1, 0.25, 1] }}
               className="space-y-4"
             >
-              {/* Year Filter Status Banner */}
-              {selectedYear !== 'all' && (
-                <div className="p-3 bg-[#5B7B6D]/10 rounded-2xl border border-[#5B7B6D]/20 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 text-xs text-[#5B7B6D] font-sans shadow-2xs">
-                  <div className="flex items-center gap-2 font-medium leading-normal">
-                    <Filter className="w-3.5 h-3.5 text-[#E88765] shrink-0" />
-                    <span>
-                      正在筛选【<strong className="font-bold text-[#E88765]">{selectedYear} 年</strong>】长篇篇章
-                      <span className="opacity-75 font-normal ml-1">（共 {data.stories.filter(story => getYearFromDate(story.date) === selectedYear).length} 篇）</span>
-                    </span>
+              {data.stories.filter(story => selectedYear === 'all' || getYearFromDate(story.date) === selectedYear).length === 0 ? (
+                <div className="bg-white dark:bg-[#161D19]/90 p-8 rounded-3xl border border-dashed border-[#5B7B6D]/20 dark:border-white/15 text-center space-y-3 shadow-2xs">
+                  <div className="w-12 h-12 mx-auto rounded-full bg-[#FAF8F5] dark:bg-white/10 flex items-center justify-center border border-[#5B7B6D]/20 dark:border-white/15 shadow-2xs">
+                    <BookOpen className="w-6 h-6" style={{ color: isDarkMode ? (currentTheme.dark?.primary || currentTheme.primary) : currentTheme.primary }} />
                   </div>
-                  <div className="flex items-center gap-2 shrink-0 self-end sm:self-auto">
-                    <button
-                      onClick={() => setIsYearPickerOpen(true)}
-                      className="text-[11px] font-semibold text-[#5B7B6D] bg-white/95 hover:bg-white px-2.5 py-1 rounded-xl border border-[#5B7B6D]/20 flex items-center gap-1 shadow-2xs transition-all active:scale-95"
-                    >
-                      <CalendarRange className="w-3 h-3 text-[#E88765]" /> 换年份
-                    </button>
+                  <h3 className="font-bold text-[#2B332E] dark:text-[#FAF8F5] text-sm font-serif">
+                    {selectedYear !== 'all' ? `「${selectedYear} 年暂无档案记录」` : '暂无长篇章节记录'}
+                  </h3>
+                  <p className="text-xs text-[#6E7C75] dark:text-[#A0B0A7] font-serif">
+                    {selectedYear !== 'all' ? '岁序常易，此年暂未留存瞬间' : '写下属于你们的长卷故事与岁月记忆'}
+                  </p>
+                  <div className="flex justify-center gap-2 pt-1 font-sans">
                     <button
                       onClick={() => {
-                        setSelectedYear('all');
-                        showToast('已切换至全景时光');
+                        if (selectedYear !== 'all') {
+                          setFormStoryDate(`${selectedYear}-01-01`);
+                        }
+                        setActiveModal('addStory');
                       }}
-                      className="text-[11px] font-bold text-[#E88765] hover:underline flex items-center gap-1 px-1.5 py-1"
+                      className="text-xs px-3.5 py-1.5 text-white rounded-xl font-medium transition-all active:scale-95"
+                      style={{ backgroundColor: currentTheme.primary }}
                     >
-                      <RotateCcw className="w-3 h-3" /> 全景时光
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {data.stories.filter(story => selectedYear === 'all' || getYearFromDate(story.date) === selectedYear).length === 0 ? (
-                <div className="bg-white p-8 rounded-2xl border border-dashed border-[#5B7B6D]/20 text-center space-y-3">
-                  <div className="w-10 h-10 mx-auto rounded-full bg-[#FAF8F5] flex items-center justify-center text-[#5B7B6D]">
-                    <BookOpen className="w-5 h-5 opacity-60" />
-                  </div>
-                  <div className="text-xs text-[#6E7C75] font-serif">
-                    {selectedYear === 'all' ? '暂无长篇章节记录' : `暂无 ${selectedYear} 年的故事章节`}
-                  </div>
-                  <div className="flex justify-center gap-2 pt-1 font-sans">
-                    {selectedYear !== 'all' && (
-                      <button
-                        onClick={() => setSelectedYear('all')}
-                        className="text-xs px-3 py-1.5 bg-[#F2EFE9] text-[#5B7B6D] rounded-xl hover:bg-[#E8E4DC] font-medium"
-                      >
-                        查看全部篇章
-                      </button>
-                    )}
-                    <button
-                      onClick={() => setActiveModal('addStory')}
-                      className="text-xs px-3 py-1.5 bg-[#5B7B6D] text-white rounded-xl hover:bg-[#3E564B] font-medium"
-                    >
-                      新增章节
+                      {selectedYear !== 'all' ? `＋ 记录 ${selectedYear} 年首篇长章` : '新增章节'}
                     </button>
                   </div>
                 </div>
@@ -3338,15 +3913,26 @@ export default function App() {
                       <div
                         key={story.id}
                         onClick={() => setReaderStory(story)}
-                        className="bg-white p-4 rounded-2xl border border-[#5B7B6D]/15 shadow-sm cursor-pointer hover:border-[#E88765]/50 transition-all flex justify-between items-center group"
+                        className="relative isolate overflow-hidden bg-white dark:bg-[#18231E] rounded-3xl p-4.5 border border-[#5B7B6D]/20 hover:border-[#5B7B6D]/50 shadow-2xs hover:shadow-md transition-all duration-300 cursor-pointer flex justify-between items-center group active:scale-[0.99]"
                       >
+                        {/* Decorative corner accent stamp */}
+                        <div className="absolute top-0 right-0 w-16 h-16 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-[#E88765]/10 via-transparent to-transparent pointer-events-none" />
                         <div className="flex-1 min-w-0 mr-3">
                           <div className="flex items-center gap-2">
-                            <span className="text-[10px] text-[#E88765] font-bold uppercase tracking-wider font-sans">{story.chapter}</span>
-                            <span className="text-[10px] text-[#6E7C75]/60 font-sans">{story.date}</span>
+                            <span
+                              className="text-[10px] font-bold uppercase tracking-wider font-sans px-2.5 py-0.5 rounded-full"
+                              style={{
+                                backgroundColor: isDarkMode ? `${currentTheme.primary}25` : `${currentTheme.primary}12`,
+                                color: isDarkMode ? (currentTheme.dark?.accent || currentTheme.accent) : currentTheme.primary,
+                                border: `1px solid ${isDarkMode ? `${currentTheme.primary}40` : `${currentTheme.primary}25`}`
+                              }}
+                            >
+                              {story.chapter}
+                            </span>
+                            <span className="text-[10px] text-[#6E7C75] dark:text-[#A7B4AD] font-mono">{story.date}</span>
                           </div>
-                          <h3 className="font-bold text-[#2B332E] text-base group-hover:text-[#E88765] transition-colors font-serif">{story.title}</h3>
-                          <p className="text-xs text-[#6E7C75] line-clamp-2 mt-1 leading-relaxed font-serif">{story.content}</p>
+                          <h3 className="font-bold text-[#2B332E] dark:text-[#FAF8F5] text-base group-hover:text-[#5B7B6D] transition-colors font-serif mt-1">{story.title}</h3>
+                          <p className="text-xs text-[#526058] dark:text-[#C2CDC7] line-clamp-2 mt-1 leading-relaxed font-serif">{story.content}</p>
                         </div>
                         <div className="flex items-center gap-1">
                           <button
@@ -3478,58 +4064,29 @@ export default function App() {
               transition={{ duration: 0.28, ease: [0.25, 0.1, 0.25, 1] }}
               className="space-y-4"
             >
-              {/* Year Filter Status Banner */}
-              {selectedYear !== 'all' && (
-                <div className="p-3 bg-[#5B7B6D]/10 rounded-2xl border border-[#5B7B6D]/20 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 text-xs text-[#5B7B6D] font-sans shadow-2xs">
-                  <div className="flex items-center gap-2 font-medium leading-normal">
-                    <Filter className="w-3.5 h-3.5 text-[#E88765] shrink-0" />
-                    <span>
-                      正在筛选【<strong className="font-bold text-[#E88765]">{selectedYear} 年</strong>】旧物藏品
-                      <span className="opacity-75 font-normal ml-1">（共 {data.artifacts.filter(item => getYearFromDate(item.date) === selectedYear).length} 件）</span>
-                    </span>
+              {data.artifacts.filter(item => selectedYear === 'all' || getYearFromDate(item.date) === selectedYear).length === 0 ? (
+                <div className="bg-white dark:bg-[#161D19]/90 p-8 rounded-3xl border border-dashed border-[#5B7B6D]/20 dark:border-white/15 text-center space-y-3 shadow-2xs">
+                  <div className="w-12 h-12 mx-auto rounded-full bg-[#FAF8F5] dark:bg-white/10 flex items-center justify-center border border-[#5B7B6D]/20 dark:border-white/15 shadow-2xs">
+                    <Package className="w-6 h-6" style={{ color: isDarkMode ? (currentTheme.dark?.primary || currentTheme.primary) : currentTheme.primary }} />
                   </div>
-                  <div className="flex items-center gap-2 shrink-0 self-end sm:self-auto">
-                    <button
-                      onClick={() => setIsYearPickerOpen(true)}
-                      className="text-[11px] font-semibold text-[#5B7B6D] bg-white/95 hover:bg-white px-2.5 py-1 rounded-xl border border-[#5B7B6D]/20 flex items-center gap-1 shadow-2xs transition-all active:scale-95"
-                    >
-                      <CalendarRange className="w-3 h-3 text-[#E88765]" /> 换年份
-                    </button>
+                  <h3 className="font-bold text-[#2B332E] dark:text-[#FAF8F5] text-sm font-serif">
+                    {selectedYear !== 'all' ? `「${selectedYear} 年暂无档案记录」` : '暂无旧物藏品记录'}
+                  </h3>
+                  <p className="text-xs text-[#6E7C75] dark:text-[#A0B0A7] font-serif">
+                    {selectedYear !== 'all' ? '岁序常易，此年暂未留存瞬间' : '一件旧物，封存一段岁月温度'}
+                  </p>
+                  <div className="flex justify-center gap-2 pt-1 font-sans">
                     <button
                       onClick={() => {
-                        setSelectedYear('all');
-                        showToast('已切换至全景时光');
+                        if (selectedYear !== 'all') {
+                          setFormArtifactDate(`${selectedYear}-01-01`);
+                        }
+                        setActiveModal('addArtifact');
                       }}
-                      className="text-[11px] font-bold text-[#E88765] hover:underline flex items-center gap-1 px-1.5 py-1"
+                      className="text-xs px-3.5 py-1.5 text-white rounded-xl font-medium transition-all active:scale-95"
+                      style={{ backgroundColor: currentTheme.primary }}
                     >
-                      <RotateCcw className="w-3 h-3" /> 全景时光
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {data.artifacts.filter(item => selectedYear === 'all' || getYearFromDate(item.date) === selectedYear).length === 0 ? (
-                <div className="bg-white p-8 rounded-2xl border border-dashed border-[#5B7B6D]/20 text-center space-y-3">
-                  <div className="w-10 h-10 mx-auto rounded-full bg-[#FAF8F5] flex items-center justify-center text-[#5B7B6D]">
-                    <Package className="w-5 h-5 opacity-60" />
-                  </div>
-                  <div className="text-xs text-[#6E7C75] font-serif">
-                    {selectedYear === 'all' ? '暂无旧物藏品记录' : `暂无 ${selectedYear} 年的旧物藏品`}
-                  </div>
-                  <div className="flex justify-center gap-2 pt-1 font-sans">
-                    {selectedYear !== 'all' && (
-                      <button
-                        onClick={() => setSelectedYear('all')}
-                        className="text-xs px-3 py-1.5 bg-[#F2EFE9] text-[#5B7B6D] rounded-xl hover:bg-[#E8E4DC] font-medium"
-                      >
-                        查看全部旧物
-                      </button>
-                    )}
-                    <button
-                      onClick={() => setActiveModal('addArtifact')}
-                      className="text-xs px-3 py-1.5 bg-[#5B7B6D] text-white rounded-xl hover:bg-[#3E564B] font-medium"
-                    >
-                      收藏新物
+                      {selectedYear !== 'all' ? `＋ 记录 ${selectedYear} 年首件旧物` : '收藏新物'}
                     </button>
                   </div>
                 </div>
@@ -3545,44 +4102,65 @@ export default function App() {
                         viewport={{ once: true, margin: '-20px' }}
                         transition={{ duration: 0.35, delay: Math.min(idx * 0.04, 0.2), ease: 'easeOut' }}
                         onClick={() => setSelectedArtifact(item)}
-                        className="bg-white p-3 rounded-2xl border border-[#5B7B6D]/15 shadow-sm flex flex-col justify-between cursor-pointer hover:border-[#E88765]/50 hover:shadow-md transition-all group"
+                        className="relative isolate overflow-hidden bg-white dark:bg-[#18231E] p-3.5 rounded-3xl border border-[#5B7B6D]/20 hover:border-[#5B7B6D]/50 shadow-2xs hover:shadow-md transition-all duration-300 flex flex-col justify-between cursor-pointer group active:scale-[0.98]"
                       >
-                        <div>
-                          <div className="h-28 w-full rounded-xl overflow-hidden mb-2 bg-[#F2EFE9] border border-[#5B7B6D]/10 group-hover:opacity-95 transition-opacity">
-                            <img src={item.image} alt={item.name} className="w-full h-full object-cover" />
+                        {/* Decorative corner accent stamp */}
+                        <div className="absolute top-0 right-0 w-14 h-14 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-[#E88765]/10 via-transparent to-transparent pointer-events-none" />
+
+                        <div className="relative z-10">
+                          {/* Polaroid Stack or Single Media Container */}
+                          <div className="relative h-28 w-full mb-2">
+                            {item.images && item.images.length > 1 && (
+                              <div className="absolute inset-0 rounded-2xl bg-[#F2EFE9] dark:bg-black/40 border border-[#5B7B6D]/15 dark:border-white/10 rotate-2 translate-x-1 translate-y-0.5 pointer-events-none" />
+                            )}
+                            <div className="relative h-full w-full rounded-2xl overflow-hidden bg-[#FAF8F5] dark:bg-black/30 border border-[#5B7B6D]/15 dark:border-white/10 group-hover:opacity-95 transition-opacity shadow-2xs">
+                              <img src={item.image} alt={item.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+                              {item.images && item.images.length > 1 && (
+                                <span className="absolute bottom-1.5 right-1.5 px-2 py-0.5 rounded-full bg-black/60 backdrop-blur-xs text-white text-[9px] font-sans font-medium flex items-center gap-1 shadow-sm">
+                                  <ImageIcon className="w-2.5 h-2.5" />
+                                  <span>{item.images.length}张</span>
+                                </span>
+                              )}
+                            </div>
                           </div>
-                          <h3 className="font-bold text-[#2B332E] text-sm group-hover:text-[#E88765] transition-colors font-serif">{item.name}</h3>
-                          <p className="text-[10px] text-[#E88765] font-semibold mt-0.5 font-sans">{item.date}</p>
-                          <p className="text-xs text-[#6E7C75] line-clamp-2 mt-1 leading-relaxed font-serif">{item.story}</p>
+
+                          <h3 className="font-bold text-[#2B332E] dark:text-[#FAF8F5] text-sm group-hover:text-[#5B7B6D] transition-colors font-serif truncate">{item.name}</h3>
+                          <p className="text-[10px] text-[#5B7B6D] dark:text-[#A7B4AD] font-semibold mt-0.5 font-sans">{item.date}</p>
+                          <p className="text-xs text-[#526058] dark:text-[#C2CDC7] line-clamp-2 mt-1 leading-relaxed font-serif">{item.story}</p>
                         </div>
-                        <div className="flex justify-between items-center mt-2 pt-2 border-t border-[#F2EFE9]">
+                        <div className="flex justify-between items-center mt-2 pt-2 border-t border-[#F2EFE9] dark:border-white/10 relative z-10">
                           <button
+                            type="button"
                             onClick={(e) => {
                               e.stopPropagation();
                               handlePlayTts(`${item.name}。${item.story}`);
                             }}
-                            className="text-[#5B7B6D] hover:text-[#E88765] text-xs flex items-center gap-1 font-sans"
+                            className="text-xs font-sans font-medium flex items-center gap-1 transition-all active:scale-95 cursor-pointer py-1 px-1.5 rounded-xl hover:bg-black/5 dark:hover:bg-white/5"
+                            style={{ color: isDarkMode ? (currentTheme.dark?.accent || currentTheme.accent || currentTheme.primary) : currentTheme.primary }}
                           >
-                            <Volume2 className="w-3 h-3" /> 听旧物
+                            <Volume2 className="w-3.5 h-3.5" />
+                            <span>听回忆</span>
                           </button>
-                          <div className="flex items-center gap-1.5">
+                          <div className="flex items-center gap-1">
                             <button
+                              type="button"
                               onClick={(e) => {
                                 e.stopPropagation();
                                 requestDelete('artifacts', item.id, item.name);
                               }}
-                              className="text-[#6E7C75]/40 hover:text-red-500 p-1"
+                              className="p-1.5 text-[#6E7C75]/40 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 rounded-xl transition-all cursor-pointer"
                               title="删除旧物"
                             >
                               <Trash2 className="w-3.5 h-3.5" />
                             </button>
                             <button
+                              type="button"
                               onClick={(e) => {
                                 e.stopPropagation();
                                 setShareMemoirItem({ type: 'artifact', data: item });
                                 setIsShareModalOpen(true);
                               }}
-                              className="text-[#5B7B6D] hover:text-[#E88765] p-1 flex items-center gap-0.5 text-xs font-sans"
+                              className="p-1.5 text-[#5B7B6D] hover:text-white hover:bg-[#5B7B6D] dark:text-[#A7B4AD] dark:hover:text-white rounded-xl transition-all cursor-pointer"
                               title="生成旧物珍藏海报"
                             >
                               <Share2 className="w-3.5 h-3.5" />
@@ -3762,9 +4340,11 @@ export default function App() {
         {/* Universal Creation & Settings Modals */}
         {activeModal && (
           <div className="absolute inset-0 bg-[#2B332E]/40 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 animate-fadeIn">
-            <div className={`bg-[#FAF8F5] w-full ${isKeyboardVisible ? 'max-h-[96%] pb-12' : 'max-h-[85%]'} overflow-y-auto p-5 rounded-t-3xl sm:rounded-3xl border border-[#5B7B6D]/20 shadow-2xl space-y-4 transition-all duration-200`}>
-              <div className="flex justify-between items-center border-b border-[#5B7B6D]/10 pb-3">
-                <h3 className="font-bold text-[#2B332E] text-base flex items-center gap-2 font-serif">
+            <div className={`bg-[#FAF8F5] dark:bg-[#141B18] text-[#2B332E] dark:text-[#FAF8F5] w-full max-w-lg ${isKeyboardVisible ? 'max-h-[96%] pb-12' : 'max-h-[88%]'} overflow-y-auto p-5 sm:p-6 rounded-t-[32px] sm:rounded-3xl border border-[#5B7B6D]/15 dark:border-white/15 shadow-2xl space-y-4 transition-all duration-200 paper-texture`}>
+              {/* Apple Sheet Pull Indicator */}
+              <div className="w-10 h-1 bg-black/15 dark:bg-white/20 rounded-full mx-auto -mt-1 mb-2 sm:hidden" />
+              <div className="flex justify-between items-center border-b border-black/5 dark:border-white/10 pb-3">
+                <h3 className="font-bold text-base flex items-center gap-2 font-serif" style={{ color: currentTheme.primary }}>
                   {activeModal === 'addTimeline' && '新建时光节点'}
                   {activeModal === 'addPerson' && '添加人物档案'}
                   {activeModal === 'addStory' && '新增故事章节'}
@@ -3773,12 +4353,15 @@ export default function App() {
                   {activeModal === 'backup' && '数据管理与私人安全设置'}
                   {activeModal === 'summaryReportModal' && '《拾年》时光总结报告'}
                 </h3>
-                <button onClick={() => setActiveModal(null)} className="text-[#6E7C75] hover:text-[#2B332E]">
+                <button
+                  onClick={() => setActiveModal(null)}
+                  className="p-1 rounded-full text-[#6E7C75] hover:text-[#2B332E] dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/10 transition-colors"
+                >
                   <X className="w-4 h-4" />
                 </button>
               </div>
 
-              {/* Modal 1: Timeline Item Form */}
+              {/* Modal 1: Timeline Item Form (Apple Segmented Card Flow) */}
               {activeModal === 'addTimeline' && (
                 <form id="timelineForm" onSubmit={(e) => {
                   e.preventDefault();
@@ -3802,9 +4385,19 @@ export default function App() {
                   setFormTimelineVideoPoster('');
                   setFormTimelineMediaType('image');
                   setFormTimelineDate(new Date().toISOString().slice(0, 10));
-                }} className="space-y-3.5 text-xs font-sans">
+                }} className="space-y-4 text-xs font-sans">
 
-                  {/* Local Media Uploader (支持老照片与珍藏短视频，自动提取首帧 Poster) */}
+                  {/* Title Header Input */}
+                  <div>
+                    <input
+                      name="title"
+                      required
+                      placeholder="定格一个瞬间标题..."
+                      className="w-full text-base sm:text-lg font-serif font-bold bg-transparent border-b border-black/10 dark:border-white/10 pb-2 text-[#2B332E] dark:text-[#FAF8F5] focus:outline-none placeholder-[#6E7C75]/40"
+                    />
+                  </div>
+
+                  {/* Local Media Uploader */}
                   <LocalMediaUploader
                     value={formTimelineMediaType === 'video' ? formTimelineVideo : formTimelineImage}
                     poster={formTimelineVideoPoster}
@@ -3830,14 +4423,37 @@ export default function App() {
                     allowVideo={true}
                   />
 
-                  <div>
-                    <label className="text-[10px] text-[#6E7C75] block mb-1">记忆标题 <span className="text-[#E88765] font-bold">* 必填</span></label>
-                    <input name="title" required placeholder="如：毕业季海边日落、第一次租房..." className="w-full p-3 rounded-xl border border-[#5B7B6D]/20 bg-white focus:outline-none focus:border-[#5B7B6D]" />
+                  {/* Content Narrative Card */}
+                  <div className="bg-white/80 dark:bg-white/[0.04] p-3 rounded-2xl border border-black/5 dark:border-white/10 space-y-1.5 shadow-2xs">
+                    <div className="flex justify-between items-center px-0.5">
+                      <label className="text-[11px] font-serif font-medium text-[#526058] dark:text-[#A7B4AD]">记忆详述</label>
+                      <button
+                        type="button"
+                        onClick={() => handleAiPolishText('textarea[name="content"]', (val) => {
+                          const area = document.querySelector('textarea[name="content"]') as HTMLTextAreaElement;
+                          if (area) area.value = val;
+                        })}
+                        disabled={isAiPolishLoading}
+                        className="text-[11px] font-serif hover:underline flex items-center gap-1 transition-opacity"
+                        style={{ color: currentTheme.primary }}
+                      >
+                        <Feather className="w-3 h-3" /> {isAiPolishLoading ? '润色中...' : '文墨润色'}
+                      </button>
+                    </div>
+                    <textarea
+                      name="content"
+                      required
+                      rows={3}
+                      placeholder="写下当时的感受、心境与难忘的细节..."
+                      className="w-full p-2 bg-transparent text-[#2B332E] dark:text-[#FAF8F5] font-serif leading-relaxed text-xs focus:outline-none resize-none placeholder-[#6E7C75]/40"
+                    />
                   </div>
 
-                  <div className="grid grid-cols-2 gap-2">
-                    <div>
-                      <label className="text-[10px] text-[#6E7C75] block mb-1">记录日期 <span className="text-[#E88765] font-bold">* 必填</span></label>
+                  {/* Segmented Metadata Card (Date, Location, Tag) */}
+                  <div className="bg-white/80 dark:bg-white/[0.04] rounded-2xl border border-black/5 dark:border-white/10 divide-y divide-black/5 dark:divide-white/10 shadow-2xs">
+                    {/* Date Row */}
+                    <div className="flex items-center justify-between p-3">
+                      <span className="text-[11px] font-serif text-[#6E7C75] dark:text-[#A7B4AD] shrink-0">记录日期</span>
                       <button
                         type="button"
                         onClick={() => {
@@ -3849,45 +4465,42 @@ export default function App() {
                             onConfirm: (val) => setFormTimelineDate(val)
                           });
                         }}
-                        className="w-full p-3 rounded-xl border border-[#5B7B6D]/20 bg-white hover:bg-[#FAF8F5] focus:outline-none focus:border-[#5B7B6D] text-left flex items-center justify-between text-xs transition-colors shadow-2xs"
+                        className="font-mono text-xs text-[#2B332E] dark:text-[#FAF8F5] font-bold flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#FAF8F5] dark:bg-white/10 border border-[#5B7B6D]/25 hover:border-[#5B7B6D] transition-all cursor-pointer shadow-2xs active:scale-95"
                       >
-                        <span className="font-mono text-xs text-[#2B332E] font-medium truncate">
-                          {formTimelineDate || new Date().toISOString().slice(0, 10)}
-                        </span>
-                        <Calendar className="w-3.5 h-3.5 text-[#5B7B6D]/70 shrink-0 ml-1" />
+                        <Calendar className="w-3.5 h-3.5 text-[#5B7B6D]" />
+                        <span>{formTimelineDate || new Date().toISOString().slice(0, 10)}</span>
                       </button>
                       <input type="hidden" name="date" value={formTimelineDate || new Date().toISOString().slice(0, 10)} />
                     </div>
-                    <div>
-                      <label className="text-[10px] text-[#6E7C75] block mb-1">地点 (选填)</label>
-                      <input name="location" placeholder="如：威海火炬八街、校园老图书馆" className="w-full p-3 rounded-xl border border-[#5B7B6D]/20 bg-white focus:outline-none focus:border-[#5B7B6D]" />
+
+                    {/* Location Row */}
+                    <div className="flex items-center justify-between p-3 gap-2">
+                      <span className="text-[11px] font-serif text-[#6E7C75] dark:text-[#A7B4AD] shrink-0">发生地点</span>
+                      <input
+                        name="location"
+                        placeholder="选填，如：校园老图书馆"
+                        className="text-right text-xs bg-transparent text-[#2B332E] dark:text-[#FAF8F5] focus:outline-none placeholder-[#6E7C75]/40 flex-1 font-serif"
+                      />
+                    </div>
+
+                    {/* Tag Row */}
+                    <div className="flex items-center justify-between p-3 gap-2">
+                      <span className="text-[11px] font-serif text-[#6E7C75] dark:text-[#A7B4AD] shrink-0">标签分类</span>
+                      <input
+                        name="tag"
+                        placeholder="选填，如：青春、旅途"
+                        className="text-right text-xs bg-transparent text-[#2B332E] dark:text-[#FAF8F5] focus:outline-none placeholder-[#6E7C75]/40 flex-1 font-serif"
+                      />
                     </div>
                   </div>
 
-                  <div>
-                    <label className="text-[10px] text-[#6E7C75] block mb-1">标签分类 (选填)</label>
-                    <input name="tag" placeholder="如：青春、旅途、奋斗、家庭" className="w-full p-3 rounded-xl border border-[#5B7B6D]/20 bg-white focus:outline-none focus:border-[#5B7B6D]" />
-                  </div>
-
-                  <div className="space-y-1">
-                    <div className="flex justify-between items-center px-1">
-                      <label className="text-[10px] text-[#6E7C75]">记忆故事与描述 <span className="text-[#E88765] font-bold">* 必填</span>：</label>
-                      <button
-                        type="button"
-                        onClick={() => handleAiPolishText('textarea[name="content"]', (val) => {
-                          const area = document.querySelector('textarea[name="content"]') as HTMLTextAreaElement;
-                          if (area) area.value = val;
-                        })}
-                        disabled={isAiPolishLoading}
-                        className="text-[10px] text-[#E88765] hover:underline flex items-center gap-0.5"
-                      >
-                        <Feather className="w-3 h-3" /> {isAiPolishLoading ? '润色中...' : '文墨 AI 润色故事'}
-                      </button>
-                    </div>
-                    <textarea name="content" required rows={3} placeholder="写下当时的感受、心境与难忘的细节..." className="w-full p-3 rounded-xl border border-[#5B7B6D]/20 bg-white focus:outline-none focus:border-[#5B7B6D]" />
-                  </div>
-
-                  <button type="submit" className="w-full py-3 bg-[#5B7B6D] text-white font-bold rounded-xl shadow-sm hover:bg-[#3E564B] transition-all">存入拾光轴</button>
+                  <button
+                    type="submit"
+                    className="w-full py-3 text-white font-serif font-bold text-xs rounded-2xl shadow-xs transition-all active:scale-[0.98] cursor-pointer"
+                    style={{ backgroundColor: currentTheme.primary }}
+                  >
+                    定格时光瞬间
+                  </button>
                 </form>
               )}
 
@@ -3947,283 +4560,173 @@ export default function App() {
                   setFormPersonGroup('未分组');
                 }} className="space-y-4 text-xs font-sans">
 
-                  {/* Section 1: 必填核心档案 */}
-                  <div className="bg-white p-3.5 rounded-2xl border border-[#E88765]/30 shadow-2xs space-y-3">
-                    <div className="flex items-center justify-between pb-2 border-b border-[#5B7B6D]/10">
-                      <h4 className="font-bold text-[#2B332E] text-xs font-serif flex items-center gap-1.5">
-                        <span className="w-1.5 h-3.5 bg-[#E88765] rounded-full inline-block"></span>
-                        核心档案
-                      </h4>
-                      <span className="text-[10px] text-[#E88765] bg-[#FDF0EB] px-2 py-0.5 rounded-full font-medium border border-[#E88765]/20">
-                        * 必填项
-                      </span>
-                    </div>
-
-                    {/* Local Avatar Uploader */}
+                  {/* Header: Pure Minimalist Avatar Frame & Centered Name Input */}
+                  <div className="flex flex-col items-center gap-2 pt-1">
                     <LocalImageUploader
                       value={formPersonAvatar}
                       onChange={setFormPersonAvatar}
                       mode="avatar"
-                      label="人物头像"
                       required={true}
                     />
-
-                    <div>
-                      <label className="text-[11px] font-medium text-[#2B332E] block mb-1">
-                        姓名 / 称谓 <span className="text-[#E88765] font-bold">* 必填</span>
-                      </label>
+                    <div className="w-full text-center">
                       <input
                         name="name"
                         required
-                        placeholder="如：陆青寻、林夏、老林、陈老师"
-                        className="w-full p-2.5 rounded-xl border border-[#5B7B6D]/20 bg-[#FAF8F5] focus:bg-white focus:outline-none focus:border-[#E88765] transition-colors"
+                        placeholder="好友姓名或称谓..."
+                        className="w-full text-center text-xl font-serif font-bold bg-transparent border-b-2 border-stone-200/90 dark:border-white/10 pb-1 text-[#2B332E] dark:text-[#FAF8F5] focus:outline-none placeholder-[#6E7C75]/50"
                       />
                     </div>
+                  </div>
 
-                    <div>
-                      <div className="flex justify-between items-center mb-1">
-                        <label className="text-[11px] font-medium text-[#2B332E]">
-                          与我的关系 <span className="text-[#E88765] font-bold">* 必填</span>
-                        </label>
-                        <span className="text-[10px] text-[#6E7C75]">可点击下方标签快捷选择</span>
-                      </div>
+                  {/* Card 1: 身名与岁月坐标 (Identity, Group & Milestones) */}
+                  <div className="bg-white/90 dark:bg-white/[0.04] rounded-2xl border border-black/5 dark:border-white/10 divide-y divide-black/5 dark:divide-white/10 shadow-2xs">
+                    {/* Relationship Row */}
+                    <div className="flex items-center justify-between p-3 gap-2">
+                      <span className="text-[11px] font-serif text-[#6E7C75] dark:text-[#A7B4AD] shrink-0">身份关系</span>
                       <input
                         name="relationship"
                         required
                         value={formPersonRel}
                         onChange={(e) => setFormPersonRel(e.target.value)}
-                        placeholder="如：挚友、大学室友、高中闺蜜、父母、恩师"
-                        className="w-full p-2.5 rounded-xl border border-[#5B7B6D]/20 bg-[#FAF8F5] focus:bg-white focus:outline-none focus:border-[#E88765] transition-colors mb-2"
+                        placeholder="输入关系"
+                        className="w-28 sm:w-32 text-right text-xs bg-stone-50/90 dark:bg-black/20 p-2 rounded-xl border border-stone-200/80 dark:border-white/10 text-[#2B332E] dark:text-[#FAF8F5] focus:outline-none placeholder-[#6E7C75]/50 font-serif"
                       />
-                      <div className="flex flex-wrap gap-1.5">
-                        {['挚友', '发小', '高中同窗', '大学室友', '父母家人', '恩师', '同行伙伴'].map((rel) => (
-                          <button
-                            key={rel}
-                            type="button"
-                            onClick={() => setFormPersonRel(rel)}
-                            className={`text-[10px] px-2.5 py-1 rounded-lg border transition-all ${
-                              formPersonRel === rel
-                                ? 'bg-[#5B7B6D] text-white border-[#5B7B6D]'
-                                : 'bg-[#FAF8F5] text-[#6E7C75] border-[#5B7B6D]/15 hover:border-[#5B7B6D]/40'
-                            }`}
-                          >
-                            {rel}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Section 2: 分组归类与基本信息 */}
-                  <div className="bg-white p-3.5 rounded-2xl border border-[#5B7B6D]/15 shadow-2xs space-y-3">
-                    <div className="flex items-center justify-between pb-2 border-b border-[#5B7B6D]/10">
-                      <h4 className="font-bold text-[#2B332E] text-xs font-serif flex items-center gap-1.5">
-                        <span className="w-1.5 h-3.5 bg-[#5B7B6D] rounded-full inline-block"></span>
-                        分组归类与基本信息
-                      </h4>
-                      <span className="text-[10px] text-[#6E7C75] bg-stone-100 px-2 py-0.5 rounded-full font-medium">
-                        选填
-                      </span>
                     </div>
 
-                    <div>
-                      <label className="text-[10px] text-[#6E7C75] block mb-1">好友分组</label>
-                      <div className="flex flex-wrap gap-1.5 mb-1.5">
-                        {Array.from(new Set([...customGroups, '未分组'])).map(grp => (
-                          <button
-                            key={grp}
-                            type="button"
-                            onClick={() => setFormPersonGroup(grp)}
-                            className={`text-[10px] px-2.5 py-1 rounded-lg border transition-all ${
-                              formPersonGroup === grp
-                                ? 'bg-[#5B7B6D] text-white border-[#5B7B6D]'
-                                : 'bg-[#FAF8F5] text-[#6E7C75] border-[#5B7B6D]/15 hover:border-[#5B7B6D]/40'
-                            }`}
-                          >
-                            {grp}
-                          </button>
-                        ))}
-                      </div>
+                    {/* Group Row */}
+                    <div className="flex items-center justify-between p-3">
+                      <span className="text-[11px] font-serif text-[#6E7C75] dark:text-[#A7B4AD] shrink-0">所属分组</span>
+                      <button
+                        type="button"
+                        onClick={() => setFormGroupPickerTarget('add')}
+                        className="font-mono text-xs text-[#2B332E] dark:text-[#FAF8F5] font-bold flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-stone-100/80 dark:bg-white/10 border border-stone-200 dark:border-white/10 hover:border-primary transition-all cursor-pointer shadow-2xs active:scale-95"
+                      >
+                        <Folder className="w-3.5 h-3.5 text-[#5B7B6D]" />
+                        <span>{formPersonGroup || '未分组'}</span>
+                        <ChevronDown className="w-3 h-3 text-[#6E7C75]" />
+                      </button>
+                      <input type="hidden" name="group" value={formPersonGroup || '未分组'} />
+                    </div>
+
+                    {/* Known Date Row */}
+                    <div className="flex items-center justify-between p-3">
+                      <span className="text-[11px] font-serif text-[#6E7C75] dark:text-[#A7B4AD] shrink-0">相识时日</span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setDatePickerConfig({
+                            isOpen: true,
+                            title: '选择相识起始日期',
+                            value: addPersonKnownDate || '2021-09-01',
+                            mode: 'full',
+                            onConfirm: (val) => setAddPersonKnownDate(val)
+                          });
+                        }}
+                        className="font-mono text-xs text-[#2B332E] dark:text-[#FAF8F5] font-bold flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-stone-100/80 dark:bg-white/10 border border-stone-200 dark:border-white/10 hover:border-primary transition-all cursor-pointer shadow-2xs active:scale-95"
+                      >
+                        <Calendar className="w-3.5 h-3.5 text-[#5B7B6D]" />
+                        <span>{addPersonKnownDate || '2021-09-01'}</span>
+                      </button>
+                      <input type="hidden" name="knownDate" value={addPersonKnownDate || '2021-09-01'} />
+                    </div>
+
+                    {/* Birthday Row */}
+                    <div className="flex items-center justify-between p-3">
+                      <span className="text-[11px] font-serif text-[#6E7C75] dark:text-[#A7B4AD] shrink-0">好友生辰</span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setDatePickerConfig({
+                            isOpen: true,
+                            title: '选择好友生日',
+                            value: addPersonBirthday || '',
+                            mode: 'month-day',
+                            onConfirm: (val) => setAddPersonBirthday(val)
+                          });
+                        }}
+                        className="font-mono text-xs text-[#2B332E] dark:text-[#FAF8F5] font-bold flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-stone-100/80 dark:bg-white/10 border border-stone-200 dark:border-white/10 hover:border-primary transition-all cursor-pointer shadow-2xs active:scale-95"
+                      >
+                        <Calendar className="w-3.5 h-3.5 text-[#E88765]" />
+                        <span>{addPersonBirthday || '选填生日'}</span>
+                      </button>
+                      <input type="hidden" name="birthday" value={addPersonBirthday || ''} />
+                    </div>
+
+                    {/* Know Where Row */}
+                    <div className="flex items-center justify-between p-3 gap-2">
+                      <span className="text-[11px] font-serif text-[#6E7C75] dark:text-[#A7B4AD] shrink-0">初遇地点</span>
                       <input
-                        name="group"
-                        value={formPersonGroup}
-                        onChange={(e) => setFormPersonGroup(e.target.value)}
-                        placeholder="或输入自定义分组名称"
-                        className="w-full p-2.5 rounded-xl border border-[#5B7B6D]/20 bg-[#FAF8F5] focus:bg-white focus:outline-none focus:border-[#5B7B6D]"
-                      />
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-2.5">
-                      <div>
-                        <label className="text-[10px] text-[#6E7C75] block mb-1">
-                          相识起始日期
-                        </label>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setDatePickerConfig({
-                              isOpen: true,
-                              title: '选择相识起始日期',
-                              value: addPersonKnownDate || '2021-09-01',
-                              mode: 'full',
-                              onConfirm: (val) => {
-                                setAddPersonKnownDate(val);
-                              }
-                            });
-                          }}
-                          className="w-full p-2.5 rounded-xl border border-[#5B7B6D]/20 bg-[#FAF8F5] hover:bg-white focus:outline-none focus:border-[#5B7B6D] text-left flex items-center justify-between text-xs transition-colors"
-                        >
-                          <span className="font-mono text-xs text-[#2B332E] truncate">
-                            {addPersonKnownDate || '2021-09-01'}
-                          </span>
-                          <Calendar className="w-3.5 h-3.5 text-[#5B7B6D]/60 shrink-0 ml-1" />
-                        </button>
-                        <input
-                          type="hidden"
-                          name="knownDate"
-                          value={addPersonKnownDate || '2021-09-01'}
-                        />
-                      </div>
-                      <div>
-                        <label className="text-[10px] text-[#6E7C75] block mb-1">
-                          生日 (弹窗选择)
-                        </label>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setDatePickerConfig({
-                              isOpen: true,
-                              title: '选择好友生日',
-                              value: addPersonBirthday || '',
-                              mode: 'month-day',
-                              onConfirm: (val) => {
-                                setAddPersonBirthday(val);
-                              }
-                            });
-                          }}
-                          className="w-full p-2.5 rounded-xl border border-[#5B7B6D]/20 bg-[#FAF8F5] hover:bg-white focus:outline-none focus:border-[#5B7B6D] text-left flex items-center justify-between text-xs transition-colors"
-                        >
-                          <span className={`truncate ${addPersonBirthday ? 'text-[#2B332E] font-medium' : 'text-[#6E7C75]/60'}`}>
-                            {addPersonBirthday || '点击选择生日'}
-                          </span>
-                          <Calendar className="w-3.5 h-3.5 text-[#E88765]/70 shrink-0 ml-1" />
-                        </button>
-                        <input
-                          type="hidden"
-                          name="birthday"
-                          value={addPersonBirthday || ''}
-                        />
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-2.5">
-                      <div>
-                        <label className="text-[10px] text-[#6E7C75] block mb-1">认识地点</label>
-                        <input
-                          name="knowWhere"
-                          placeholder="如：老校区林荫路、大一画室"
-                          className="w-full p-2.5 rounded-xl border border-[#5B7B6D]/20 bg-[#FAF8F5] focus:bg-white focus:outline-none focus:border-[#5B7B6D]"
-                        />
-                      </div>
-                      <div>
-                        <label className="text-[10px] text-[#6E7C75] block mb-1">喜欢的颜色</label>
-                        <input name="color" placeholder="如：奶油白、青草绿、松烟青瓷" className="w-full p-2.5 rounded-xl border border-[#5B7B6D]/20 bg-[#FAF8F5] focus:bg-white focus:outline-none focus:border-[#5B7B6D]" />
-                      </div>
-                    </div>
-
-                    <div>
-                      <label className="text-[10px] text-[#6E7C75] block mb-1">兴趣爱好</label>
-                      <input name="hobbies" placeholder="如：胶片摄影、烘焙甜品、骑行" className="w-full p-2.5 rounded-xl border border-[#5B7B6D]/20 bg-[#FAF8F5] focus:bg-white focus:outline-none focus:border-[#5B7B6D]" />
-                    </div>
-                  </div>
-
-                  {/* Section 3: 社交与联系方式 (选填) */}
-                  <div className="bg-white p-3.5 rounded-2xl border border-[#5B7B6D]/15 shadow-2xs space-y-3">
-                    <div className="flex items-center justify-between pb-2 border-b border-[#5B7B6D]/10">
-                      <h4 className="font-bold text-[#2B332E] text-xs font-serif flex items-center gap-1.5">
-                        <span className="w-1.5 h-3.5 bg-[#5B7B6D] rounded-full inline-block"></span>
-                        社交与联系方式
-                      </h4>
-                      <span className="text-[10px] text-[#6E7C75] bg-stone-100 px-2 py-0.5 rounded-full font-medium">
-                        选填
-                      </span>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-2.5">
-                      <div>
-                        <label className="text-[10px] text-[#6E7C75] block mb-1">微信号</label>
-                        <input
-                          name="wechat"
-                          placeholder="如：wx_summer07"
-                          className="w-full p-2.5 rounded-xl border border-[#5B7B6D]/20 bg-[#FAF8F5] focus:bg-white focus:outline-none focus:border-[#5B7B6D]"
-                        />
-                      </div>
-                      <div>
-                        <label className="text-[10px] text-[#6E7C75] block mb-1">QQ 号</label>
-                        <input
-                          name="qq"
-                          placeholder="如：83920194"
-                          className="w-full p-2.5 rounded-xl border border-[#5B7B6D]/20 bg-[#FAF8F5] focus:bg-white focus:outline-none focus:border-[#5B7B6D]"
-                        />
-                      </div>
-                    </div>
-
-                    <div>
-                      <label className="text-[10px] text-[#6E7C75] block mb-1">手机 / 电话</label>
-                      <input
-                        name="phone"
-                        placeholder="如：13812349201"
-                        className="w-full p-2.5 rounded-xl border border-[#5B7B6D]/20 bg-[#FAF8F5] focus:bg-white focus:outline-none focus:border-[#5B7B6D]"
+                        name="knowWhere"
+                        placeholder="选填，如：新沂一中"
+                        className="w-40 sm:w-44 text-right text-xs bg-stone-50/90 dark:bg-black/20 p-2 rounded-xl border border-stone-200/80 dark:border-white/10 text-[#2B332E] dark:text-[#FAF8F5] focus:outline-none placeholder-[#6E7C75]/50 font-serif"
                       />
                     </div>
                   </div>
 
-                  {/* Section 4: 一句话总结与初识印象 */}
-                  <div className="bg-white p-3.5 rounded-2xl border border-[#5B7B6D]/15 shadow-2xs space-y-3">
-                    <div className="flex items-center justify-between pb-2 border-b border-[#5B7B6D]/10">
-                      <h4 className="font-bold text-[#2B332E] text-xs font-serif flex items-center gap-1.5">
-                        <span className="w-1.5 h-3.5 bg-[#8C6D52] rounded-full inline-block"></span>
-                        人物介绍与初识印象
-                      </h4>
-                      <span className="text-[10px] text-[#6E7C75] bg-stone-100 px-2 py-0.5 rounded-full font-medium">
-                        选填
-                      </span>
-                    </div>
-
-                    <div>
-                      <label className="text-[10px] text-[#6E7C75] block mb-1">一句话人物总结</label>
-                      <input name="bio" placeholder="如：一起在晚自习后看过无数次晚霞的知心挚友" className="w-full p-2.5 rounded-xl border border-[#5B7B6D]/20 bg-[#FAF8F5] focus:bg-white focus:outline-none focus:border-[#5B7B6D]" />
-                    </div>
-
-                    <div>
-                      <label className="text-[10px] text-[#6E7C75] block mb-1">初识或目前记忆印象</label>
-                      <textarea name="impression" rows={2} placeholder="如：还记得大一军训休息时递来的那瓶冰橘子汽水，眼睛笑起来像弯月..." className="w-full p-2.5 rounded-xl border border-[#5B7B6D]/20 bg-[#FAF8F5] focus:bg-white focus:outline-none focus:border-[#5B7B6D]" />
-                    </div>
+                  {/* Card 3: 寄语与初识印象 (Bio & Impression) */}
+                  <div className="bg-white/90 dark:bg-white/[0.04] p-3.5 rounded-2xl border border-black/5 dark:border-white/10 space-y-2 shadow-2xs">
+                    <span className="text-[11px] font-serif font-medium text-[#526058] dark:text-[#A7B4AD]">一句话总结与初识印象</span>
+                    <input
+                      name="bio"
+                      placeholder="选填，如：知心挚友，同路前行"
+                      className="w-full p-2.5 text-xs font-serif rounded-xl border border-stone-200/80 dark:border-white/10 bg-stone-50/90 dark:bg-black/20 text-[#2B332E] dark:text-[#FAF8F5] focus:outline-none placeholder-[#6E7C75]/50"
+                    />
+                    <textarea
+                      name="impression"
+                      rows={2}
+                      placeholder="初识温存细节或深刻回忆（选填）..."
+                      className="w-full p-2.5 text-xs font-serif rounded-xl border border-stone-200/80 dark:border-white/10 bg-stone-50/90 dark:bg-black/20 text-[#2B332E] dark:text-[#FAF8F5] focus:outline-none resize-none placeholder-[#6E7C75]/50"
+                    />
                   </div>
 
-                  <button type="submit" className="w-full py-3 bg-[#5B7B6D] text-white font-bold rounded-xl shadow-sm hover:bg-[#3E564B] transition-all">
+                  <button
+                    type="submit"
+                    className="w-full py-3 text-white font-serif font-bold text-xs rounded-2xl shadow-xs transition-all active:scale-[0.98] cursor-pointer"
+                    style={{ backgroundColor: currentTheme.primary }}
+                  >
                     建立人物档案
                   </button>
                 </form>
               )}
 
-              {/* Modal 3: Add Story */}
+              {/* Modal 3: Add Story (Apple Segmented Form Sheet) */}
               {activeModal === 'addStory' && (
                 <form onSubmit={(e) => {
                   e.preventDefault();
                   const fd = new FormData(e.currentTarget);
                   addItem('stories', {
                     id: 's-' + Date.now(),
-                    chapter: fd.get('chapter') as string,
+                    chapter: (fd.get('chapter') as string) || '第一篇',
                     title: fd.get('title') as string,
                     content: fd.get('content') as string,
                     date: formStoryDate || (fd.get('date') as string) || new Date().toISOString().slice(0, 10)
                   });
                   setFormStoryDate(new Date().toISOString().slice(0, 10));
-                }} className="space-y-3 text-xs font-sans">
-                  <div className="grid grid-cols-2 gap-2">
-                    <input name="chapter" required placeholder="章节序号 (例: 第一章)" className="p-3 rounded-xl border border-[#5B7B6D]/20 bg-white focus:outline-none focus:border-[#5B7B6D]" />
-                    <div>
+                }} className="space-y-4 text-xs font-sans">
+                  {/* Hero Title Input */}
+                  <div>
+                    <input
+                      name="title"
+                      required
+                      placeholder="篇章题名 (如: 梧桐树下的午后)..."
+                      className="w-full text-base sm:text-lg font-serif font-bold bg-transparent border-b border-black/10 dark:border-white/10 pb-2 text-[#2B332E] dark:text-[#FAF8F5] focus:outline-none placeholder-[#6E7C75]/40"
+                    />
+                  </div>
+
+                  {/* Segmented Metadata Card */}
+                  <div className="bg-white/80 dark:bg-white/[0.04] rounded-2xl border border-black/5 dark:border-white/10 divide-y divide-black/5 dark:divide-white/10 shadow-2xs">
+                    <div className="flex items-center justify-between p-3 gap-2">
+                      <span className="text-[11px] font-serif text-[#6E7C75] dark:text-[#A7B4AD] shrink-0">章节归序</span>
+                      <input
+                        name="chapter"
+                        required
+                        defaultValue="第一章"
+                        placeholder="例: 第一章、序章"
+                        className="text-right text-xs bg-transparent text-[#2B332E] dark:text-[#FAF8F5] focus:outline-none placeholder-[#6E7C75]/40 flex-1 font-serif"
+                      />
+                    </div>
+                    <div className="flex items-center justify-between p-3">
+                      <span className="text-[11px] font-serif text-[#6E7C75] dark:text-[#A7B4AD] shrink-0">记录日期</span>
                       <button
                         type="button"
                         onClick={() => {
@@ -4235,21 +4738,19 @@ export default function App() {
                             onConfirm: (val) => setFormStoryDate(val)
                           });
                         }}
-                        className="w-full p-3 rounded-xl border border-[#5B7B6D]/20 bg-white hover:bg-[#FAF8F5] focus:outline-none focus:border-[#5B7B6D] text-left flex items-center justify-between text-xs transition-colors shadow-2xs"
+                        className="font-mono text-xs text-[#2B332E] dark:text-[#FAF8F5] font-bold flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#FAF8F5] dark:bg-white/10 border border-[#5B7B6D]/25 hover:border-[#5B7B6D] transition-all cursor-pointer shadow-2xs active:scale-95"
                       >
-                        <span className="font-mono text-xs text-[#2B332E] font-medium truncate">
-                          {formStoryDate || new Date().toISOString().slice(0, 10)}
-                        </span>
-                        <Calendar className="w-3.5 h-3.5 text-[#5B7B6D]/70 shrink-0 ml-1" />
+                        <Calendar className="w-3.5 h-3.5 text-[#5B7B6D]" />
+                        <span>{formStoryDate || new Date().toISOString().slice(0, 10)}</span>
                       </button>
                       <input type="hidden" name="date" value={formStoryDate || new Date().toISOString().slice(0, 10)} />
                     </div>
                   </div>
-                  <input name="title" required placeholder="章节标题" className="w-full p-3 rounded-xl border border-[#5B7B6D]/20 bg-white focus:outline-none focus:border-[#5B7B6D]" />
 
-                  <div className="space-y-1">
-                    <div className="flex justify-between items-center px-1">
-                      <label className="text-[10px] text-[#6E7C75]">正文内容：</label>
+                  {/* Segmented Narrative Textarea */}
+                  <div className="bg-white/80 dark:bg-white/[0.04] p-3 rounded-2xl border border-black/5 dark:border-white/10 space-y-1.5 shadow-2xs">
+                    <div className="flex justify-between items-center px-0.5">
+                      <label className="text-[11px] font-serif font-medium text-[#526058] dark:text-[#A7B4AD]">正文笔墨</label>
                       <button
                         type="button"
                         onClick={() => handleAiPolishText('textarea[name="content"]', (val) => {
@@ -4257,96 +4758,153 @@ export default function App() {
                           if (area) area.value = val;
                         })}
                         disabled={isAiPolishLoading}
-                        className="text-[10px] text-[#E88765] hover:underline flex items-center gap-0.5"
+                        className="text-[11px] font-serif hover:underline flex items-center gap-1 transition-opacity"
+                        style={{ color: currentTheme.primary }}
                       >
-                        <Wand2 className="w-3 h-3" /> {isAiPolishLoading ? '润色中...' : '✨ AI 润色正文'}
+                        <Feather className="w-3 h-3" /> {isAiPolishLoading ? '润色中...' : '文墨润色'}
                       </button>
                     </div>
-                    <textarea name="content" required rows={6} placeholder="正文内容..." className="w-full p-3 rounded-xl border border-[#5B7B6D]/20 bg-white font-serif focus:outline-none focus:border-[#5B7B6D]" />
+                    <textarea
+                      name="content"
+                      required
+                      rows={5}
+                      placeholder="落墨篇章，长叙岁月深处的温存故事..."
+                      className="w-full p-2 bg-transparent text-[#2B332E] dark:text-[#FAF8F5] font-serif leading-relaxed text-xs focus:outline-none resize-none placeholder-[#6E7C75]/40"
+                    />
                   </div>
 
-                  <button type="submit" className="w-full py-3 bg-[#5B7B6D] text-white font-bold rounded-xl shadow-sm hover:bg-[#3E564B] transition-all">收入拾忆篇</button>
+                  <button
+                    type="submit"
+                    className="w-full py-3 text-white font-serif font-bold text-xs rounded-2xl shadow-xs transition-all active:scale-[0.98] cursor-pointer"
+                    style={{ backgroundColor: currentTheme.primary }}
+                  >
+                    收入拾忆篇
+                  </button>
                 </form>
               )}
 
-              {/* Modal 4: Add Artifact */}
+              {/* Modal 4: Add Artifact (Apple Segmented Form Sheet) */}
               {activeModal === 'addArtifact' && (
                 <form onSubmit={(e) => {
                   e.preventDefault();
                   const fd = new FormData(e.currentTarget);
+                  const artifactName = (fd.get('name') as string)?.trim() || '未命名旧物';
+                  const primaryImage = formArtifactImage || formArtifactImages[0] || (formArtifactVideoPoster ? formArtifactVideoPoster : 'https://images.unsplash.com/photo-1517604931442-7e0c8ed2963c?w=500&auto=format&fit=crop&q=80');
+
                   addItem('artifacts', {
                     id: 'a-' + Date.now(),
-                    name: fd.get('name') as string,
+                    name: artifactName,
                     date: formArtifactDate || (fd.get('date') as string) || new Date().toISOString().slice(0, 10),
-                    story: fd.get('story') as string,
-                    image: formArtifactImage || 'https://images.unsplash.com/photo-1517604931442-7e0c8ed2963c?w=500&auto=format&fit=crop&q=80'
+                    story: (fd.get('story') as string) || '',
+                    image: primaryImage,
+                    images: formArtifactImages.length > 0 ? formArtifactImages : undefined,
+                    video: formArtifactVideo,
+                    videoPoster: formArtifactVideoPoster,
+                    mediaType: formArtifactMediaType
                   });
-                  setFormArtifactImage('');
-                  setFormArtifactDate(new Date().toISOString().slice(0, 10));
-                }} className="space-y-3.5 text-xs font-sans">
 
-                  <LocalImageUploader
-                    value={formArtifactImage}
-                    onChange={setFormArtifactImage}
-                    label="旧物照片 (本地上传)"
-                    helperText="上传纪念物、老物件实物照片，支持离线永久保存"
-                    aspectRatio="video"
-                    extraAction={
+                  // Reset states
+                  setFormArtifactImage('');
+                  setFormArtifactImages([]);
+                  setFormArtifactVideo(undefined);
+                  setFormArtifactVideoPoster(undefined);
+                  setFormArtifactMediaType('image');
+                  setFormArtifactDate(new Date().toISOString().slice(0, 10));
+                  setActiveModal(null);
+                  showToast('旧物已成功入藏拾物阁 ✨');
+                }} className="space-y-4 text-xs font-sans">
+
+                  {/* Hero Title Input */}
+                  <div>
+                    <input
+                      name="name"
+                      required
+                      placeholder="旧物称谓 (如: 理光GR相机、毕业明信片)..."
+                      className="w-full text-base sm:text-lg font-serif font-bold bg-transparent border-b border-black/10 dark:border-white/10 pb-2 text-[#2B332E] dark:text-[#FAF8F5] focus:outline-none placeholder-[#6E7C75]/50"
+                    />
+                  </div>
+
+                  {/* Multi-Media Uploader: Multi-photos & Short Video */}
+                  <ArtifactMediaUploader
+                    image={formArtifactImage}
+                    images={formArtifactImages}
+                    video={formArtifactVideo}
+                    videoPoster={formArtifactVideoPoster}
+                    mediaType={formArtifactMediaType}
+                    onChange={(media) => {
+                      setFormArtifactImage(media.image);
+                      setFormArtifactImages(media.images);
+                      setFormArtifactVideo(media.video);
+                      setFormArtifactVideoPoster(media.videoPoster);
+                      setFormArtifactMediaType(media.mediaType);
+                    }}
+                    onGenerateAiImage={(callback) => {
+                      const name = (document.querySelector('input[name="name"]') as HTMLInputElement)?.value || '古老纪念物';
+                      handleGenerateAiImage(name, callback);
+                    }}
+                    isAiGenLoading={isAiGenImageLoading}
+                  />
+
+                  {/* Segmented Metadata Card */}
+                  <div className="bg-white/90 dark:bg-white/[0.04] rounded-2xl border border-black/5 dark:border-white/10 divide-y divide-black/5 dark:divide-white/10 shadow-2xs">
+                    <div className="flex items-center justify-between p-3.5">
+                      <span className="text-[11px] font-serif text-[#6E7C75] dark:text-[#A7B4AD] shrink-0">获得或纪念时日</span>
                       <button
                         type="button"
                         onClick={() => {
-                          const name = (document.querySelector('input[name="name"]') as HTMLInputElement)?.value || '古老纪念物';
-                          handleGenerateAiImage(name, (url) => {
-                            setFormArtifactImage(url);
+                          setDatePickerConfig({
+                            isOpen: true,
+                            title: '选择旧物获得/纪念日期',
+                            value: formArtifactDate || new Date().toISOString().slice(0, 10),
+                            mode: 'full',
+                            onConfirm: (val) => setFormArtifactDate(val)
                           });
                         }}
-                        disabled={isAiGenImageLoading}
-                        className="text-[11px] text-[#E88765] hover:text-[#D46C49] flex items-center gap-1 font-medium transition-colors"
+                        className="font-mono text-xs text-[#2B332E] dark:text-[#FAF8F5] font-bold flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#FAF8F5] dark:bg-white/10 border border-[#5B7B6D]/25 hover:border-[#5B7B6D] transition-all cursor-pointer shadow-2xs active:scale-95"
                       >
-                        <Wand2 className="w-3 h-3" />
-                        {isAiGenImageLoading ? '绘图中...' : '🎨 AI 生成旧物画'}
+                        <Calendar className="w-3.5 h-3.5 text-[#5B7B6D]" />
+                        <span>{formArtifactDate || new Date().toISOString().slice(0, 10)}</span>
                       </button>
-                    }
-                  />
-
-                  <div>
-                    <label className="text-[10px] text-[#6E7C75] block mb-1">物品名称 <span className="text-[#E88765] font-bold">* 必填</span></label>
-                    <input name="name" required placeholder="如：理光GR胶片机、毕业明信片、第一台随身听" className="w-full p-3 rounded-xl border border-[#5B7B6D]/20 bg-white focus:outline-none focus:border-[#5B7B6D]" />
+                      <input type="hidden" name="date" value={formArtifactDate || new Date().toISOString().slice(0, 10)} />
+                    </div>
                   </div>
 
-                  <div>
-                    <label className="text-[10px] text-[#6E7C75] block mb-1">获得/纪念日期 <span className="text-[#E88765] font-bold">* 必填</span></label>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setDatePickerConfig({
-                          isOpen: true,
-                          title: '选择旧物获得/纪念日期',
-                          value: formArtifactDate || new Date().toISOString().slice(0, 10),
-                          mode: 'full',
-                          onConfirm: (val) => setFormArtifactDate(val)
-                        });
-                      }}
-                      className="w-full p-3 rounded-xl border border-[#5B7B6D]/20 bg-white hover:bg-[#FAF8F5] focus:outline-none focus:border-[#5B7B6D] text-left flex items-center justify-between text-xs transition-colors shadow-2xs"
-                    >
-                      <span className="font-mono text-xs text-[#2B332E] font-medium truncate">
-                        {formArtifactDate || new Date().toISOString().slice(0, 10)}
-                      </span>
-                      <Calendar className="w-3.5 h-3.5 text-[#E88765] shrink-0 ml-1" />
-                    </button>
-                    <input type="hidden" name="date" value={formArtifactDate || new Date().toISOString().slice(0, 10)} />
+                  {/* Segmented Narrative Textarea */}
+                  <div className="bg-white/90 dark:bg-white/[0.04] p-3.5 rounded-2xl border border-black/5 dark:border-white/10 space-y-2 shadow-2xs">
+                    <div className="flex justify-between items-center px-0.5">
+                      <label className="text-[11px] font-serif font-medium text-[#526058] dark:text-[#A7B4AD]">物品回忆与纪念意义</label>
+                      <button
+                        type="button"
+                        onClick={() => handleAiPolishText('textarea[name="story"]', (val) => {
+                          const area = document.querySelector('textarea[name="story"]') as HTMLTextAreaElement;
+                          if (area) area.value = val;
+                        })}
+                        disabled={isAiPolishLoading}
+                        className="text-[11px] font-serif hover:underline flex items-center gap-1 transition-opacity text-[#5B7B6D]"
+                      >
+                        <Feather className="w-3 h-3" /> {isAiPolishLoading ? '润色中...' : '文墨润色'}
+                      </button>
+                    </div>
+                    <textarea
+                      name="story"
+                      required
+                      rows={4}
+                      placeholder="写下这件旧物与你之间的专属故事与温存回忆..."
+                      className="w-full p-3 bg-[#FAF8F5] dark:bg-black/20 rounded-xl border border-[#5B7B6D]/20 dark:border-white/10 text-[#2B332E] dark:text-[#FAF8F5] font-serif leading-relaxed text-xs focus:outline-none resize-none placeholder-[#6E7C75]/50 focus:border-[#5B7B6D]"
+                    />
                   </div>
 
-                  <div>
-                    <label className="text-[10px] text-[#6E7C75] block mb-1">物品背后的回忆与意义 <span className="text-[#E88765] font-bold">* 必填</span></label>
-                    <textarea name="story" required rows={3} placeholder="写下这件旧物与你之间的专属故事与温存回忆..." className="w-full p-3 rounded-xl border border-[#5B7B6D]/20 bg-white focus:outline-none focus:border-[#5B7B6D]" />
-                  </div>
-
-                  <button type="submit" className="w-full py-3 bg-[#5B7B6D] text-white font-bold rounded-xl shadow-sm hover:bg-[#3E564B] transition-all">展出旧物</button>
+                  <button
+                    type="submit"
+                    className="w-full py-3 text-white font-serif font-bold text-xs rounded-2xl shadow-xs transition-all active:scale-[0.98] cursor-pointer"
+                    style={{ backgroundColor: currentTheme.primary }}
+                  >
+                    展出旧物
+                  </button>
                 </form>
               )}
 
-              {/* Modal 5: Add Letter */}
+              {/* Modal 5: Add Letter (Apple Segmented Form Sheet) */}
               {activeModal === 'addLetter' && (
                 <form onSubmit={(e) => {
                   e.preventDefault();
@@ -4365,32 +4923,61 @@ export default function App() {
                   setFormLetterUnlockDate('2030-01-01');
                   setActiveModal(null);
                   setSealingRitualData({ title, unlockDate });
-                }} className="space-y-3 text-xs font-sans">
-                  <input name="title" required placeholder="信件标题" className="w-full p-3 rounded-xl border border-[#5B7B6D]/20 bg-white focus:outline-none focus:border-[#5B7B6D]" />
-                  <div className="space-y-1">
-                    <label className="text-[10px] text-[#6E7C75]">设定的未来开启日期：</label>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setDatePickerConfig({
-                          isOpen: true,
-                          title: '设定未来寄信开启日期',
-                          value: formLetterUnlockDate || '2030-01-01',
-                          mode: 'full',
-                          onConfirm: (val) => setFormLetterUnlockDate(val)
-                        });
-                      }}
-                      className="w-full p-3 rounded-xl border border-[#5B7B6D]/20 bg-white hover:bg-[#FAF8F5] focus:outline-none focus:border-[#5B7B6D] text-left flex items-center justify-between text-xs transition-colors shadow-2xs"
-                    >
-                      <span className="font-mono text-xs text-[#2B332E] font-medium truncate">
-                        {formLetterUnlockDate || '2030-01-01'}
-                      </span>
-                      <Calendar className="w-3.5 h-3.5 text-[#5B7B6D]/70 shrink-0 ml-1" />
-                    </button>
-                    <input type="hidden" name="unlockDate" value={formLetterUnlockDate || '2030-01-01'} />
+                }} className="space-y-4 text-xs font-sans">
+
+                  {/* Hero Title Input */}
+                  <div>
+                    <input
+                      name="title"
+                      required
+                      placeholder="时光信笺标题 (如: 致三十岁的自己)..."
+                      className="w-full text-base sm:text-lg font-serif font-bold bg-transparent border-b border-black/10 dark:border-white/10 pb-2 text-[#2B332E] dark:text-[#FAF8F5] focus:outline-none placeholder-[#6E7C75]/40"
+                    />
                   </div>
-                  <textarea name="content" required rows={4} placeholder="写给未来的话语..." className="w-full p-3 rounded-xl border border-[#5B7B6D]/20 bg-white focus:outline-none focus:border-[#5B7B6D]" />
-                  <button type="submit" className="w-full py-3 bg-[#5B7B6D] text-white font-bold rounded-xl shadow-sm hover:bg-[#3E564B] transition-all">封存胶囊</button>
+
+                  {/* Segmented Metadata Card */}
+                  <div className="bg-white/80 dark:bg-white/[0.04] rounded-2xl border border-black/5 dark:border-white/10 divide-y divide-black/5 dark:divide-white/10 shadow-2xs">
+                    <div className="flex items-center justify-between p-3">
+                      <span className="text-[11px] font-serif text-[#6E7C75] dark:text-[#A7B4AD] shrink-0">未来开启时日</span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setDatePickerConfig({
+                            isOpen: true,
+                            title: '设定未来寄信开启日期',
+                            value: formLetterUnlockDate || '2030-01-01',
+                            mode: 'full',
+                            onConfirm: (val) => setFormLetterUnlockDate(val)
+                          });
+                        }}
+                        className="font-mono text-xs text-[#2B332E] dark:text-[#FAF8F5] flex items-center gap-1 hover:opacity-80 transition-opacity"
+                      >
+                        <span>{formLetterUnlockDate || '2030-01-01'}</span>
+                        <Calendar className="w-3.5 h-3.5 opacity-60" style={{ color: currentTheme.primary }} />
+                      </button>
+                      <input type="hidden" name="unlockDate" value={formLetterUnlockDate || '2030-01-01'} />
+                    </div>
+                  </div>
+
+                  {/* Segmented Narrative Textarea */}
+                  <div className="bg-white/80 dark:bg-white/[0.04] p-3 rounded-2xl border border-black/5 dark:border-white/10 space-y-1.5 shadow-2xs">
+                    <label className="text-[11px] font-serif font-medium text-[#526058] dark:text-[#A7B4AD] block px-0.5">见字如晤 · 寄信内容</label>
+                    <textarea
+                      name="content"
+                      required
+                      rows={5}
+                      placeholder="写给未来的期许、秘密与此刻的心境..."
+                      className="w-full p-2 bg-transparent text-[#2B332E] dark:text-[#FAF8F5] font-serif leading-relaxed text-xs focus:outline-none resize-none placeholder-[#6E7C75]/40"
+                    />
+                  </div>
+
+                  <button
+                    type="submit"
+                    className="w-full py-3 text-white font-serif font-bold text-xs rounded-2xl shadow-xs transition-all active:scale-[0.98] cursor-pointer"
+                    style={{ backgroundColor: currentTheme.primary }}
+                  >
+                    封存时光胶囊
+                  </button>
                 </form>
               )}
 
@@ -4398,16 +4985,22 @@ export default function App() {
           </div>
         )}
 
-        {/* Modal for Editing Person Profile */}
+        {/* Modal for Editing Person Profile (Apple Segmented Form Sheet) */}
         {isEditingPerson && selectedPerson && (
-          <div className="absolute inset-0 bg-[#2B332E]/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fadeIn font-sans">
-            <div className="bg-[#FAF8F5] w-full max-w-sm max-h-[90vh] overflow-y-auto p-5 rounded-3xl border border-[#5B7B6D]/20 shadow-2xl space-y-3.5 text-xs">
-              <div className="flex justify-between items-center border-b border-[#5B7B6D]/10 pb-2">
-                <h3 className="font-bold text-[#2B332E] text-sm font-serif flex items-center gap-1.5">
-                  <UserPlus className="w-4 h-4 text-[#5B7B6D]" />
-                  修改【{selectedPerson.name}】档案
+          <div className="absolute inset-0 bg-[#2B332E]/40 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 animate-fadeIn font-sans">
+            <div className={`bg-[#FAF8F5] dark:bg-[#141B18] text-[#2B332E] dark:text-[#FAF8F5] w-full max-w-lg ${isKeyboardVisible ? 'max-h-[96%] pb-12' : 'max-h-[88%]'} overflow-y-auto p-5 sm:p-6 rounded-t-[32px] sm:rounded-3xl border border-black/10 dark:border-white/15 shadow-2xl space-y-4 transition-all duration-200 paper-texture`}>
+              {/* Apple Sheet Pull Indicator */}
+              <div className="w-10 h-1 bg-black/15 dark:bg-white/20 rounded-full mx-auto -mt-1 mb-2 sm:hidden" />
+              <div className="flex justify-between items-center border-b border-black/5 dark:border-white/10 pb-3">
+                <h3 className="font-bold text-base flex items-center gap-2 font-serif" style={{ color: currentTheme.primary }}>
+                  <UserPlus className="w-4 h-4" />
+                  <span>编辑【{selectedPerson.name}】档案</span>
                 </h3>
-                <button onClick={() => setIsEditingPerson(false)} className="text-[#6E7C75] hover:text-[#2B332E]">
+                <button
+                  type="button"
+                  onClick={() => setIsEditingPerson(false)}
+                  className="p-1 rounded-full text-[#6E7C75] hover:text-[#2B332E] dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/10 transition-colors"
+                >
                   <X className="w-4 h-4" />
                 </button>
               </div>
@@ -4458,265 +5051,165 @@ export default function App() {
                     '认识地点': knowWhereVal
                   }
                 });
-              }} className="space-y-3.5">
+              }} className="space-y-4 text-xs font-sans">
 
-                {/* Section 1: 核心必填档案 */}
-                <div className="bg-white p-3.5 rounded-2xl border border-[#E88765]/30 shadow-2xs space-y-3">
-                  <div className="flex items-center justify-between pb-2 border-b border-[#5B7B6D]/10">
-                    <h4 className="font-bold text-[#2B332E] text-xs font-serif flex items-center gap-1.5">
-                      <span className="w-1.5 h-3.5 bg-[#E88765] rounded-full inline-block"></span>
-                      核心档案
-                    </h4>
-                    <span className="text-[10px] text-[#E88765] bg-[#FDF0EB] px-2 py-0.5 rounded-full font-medium border border-[#E88765]/20">
-                      * 必填项
-                    </span>
-                  </div>
-
-                  {/* Local Avatar Uploader */}
+                {/* Hero Avatar & Name Section */}
+                <div className="flex flex-col items-center gap-2 pt-1">
                   <LocalImageUploader
                     value={editPersonAvatar || selectedPerson.avatar}
                     onChange={setEditPersonAvatar}
                     mode="avatar"
-                    label="人物头像"
                     required={true}
                   />
-
-                  <div>
-                    <label className="text-[11px] font-medium text-[#2B332E] block mb-1">
-                      姓名 / 称谓 <span className="text-[#E88765] font-bold">* 必填</span>
-                    </label>
+                  <div className="w-full text-center">
                     <input
                       name="name"
                       defaultValue={selectedPerson.name}
                       required
-                      placeholder="如：陆青寻、林夏、老林、陈老师"
-                      className="w-full p-2.5 rounded-xl border border-[#5B7B6D]/20 bg-[#FAF8F5] focus:bg-white focus:outline-none focus:border-[#E88765] transition-colors"
+                      placeholder="姓名或称谓..."
+                      className="w-full text-center text-xl font-serif font-bold bg-transparent border-b-2 border-stone-200/90 dark:border-white/10 pb-1 text-[#2B332E] dark:text-[#FAF8F5] focus:outline-none placeholder-[#6E7C75]/50"
                     />
                   </div>
+                </div>
 
-                  <div>
-                    <div className="flex justify-between items-center mb-1">
-                      <label className="text-[11px] font-medium text-[#2B332E]">
-                        与我的关系 <span className="text-[#E88765] font-bold">* 必填</span>
-                      </label>
-                      <span className="text-[10px] text-[#6E7C75]">可点击下方标签快捷选择</span>
-                    </div>
+                {/* Card 1: 身名与岁月坐标 (Identity, Group & Milestones) */}
+                <div className="bg-white/90 dark:bg-white/[0.04] rounded-2xl border border-black/5 dark:border-white/10 divide-y divide-black/5 dark:divide-white/10 shadow-2xs">
+                  {/* Relationship Row */}
+                  <div className="flex items-center justify-between p-3 gap-2">
+                    <span className="text-[11px] font-serif text-[#6E7C75] dark:text-[#A7B4AD] shrink-0">身份关系</span>
                     <input
                       name="relationship"
                       required
                       value={editPersonRel || selectedPerson.relationship}
                       onChange={(e) => setEditPersonRel(e.target.value)}
-                      placeholder="如：挚友、大学室友、高中闺蜜、父母、恩师"
-                      className="w-full p-2.5 rounded-xl border border-[#5B7B6D]/20 bg-[#FAF8F5] focus:bg-white focus:outline-none focus:border-[#E88765] transition-colors mb-2"
+                      placeholder="输入关系"
+                      className="w-28 sm:w-32 text-right text-xs bg-stone-50/90 dark:bg-black/20 p-2 rounded-xl border border-stone-200/80 dark:border-white/10 text-[#2B332E] dark:text-[#FAF8F5] focus:outline-none placeholder-[#6E7C75]/50 font-serif"
                     />
-                    <div className="flex flex-wrap gap-1.5">
-                      {['挚友', '发小', '高中同窗', '大学室友', '父母家人', '恩师', '同行伙伴'].map((rel) => (
-                        <button
-                          key={rel}
-                          type="button"
-                          onClick={() => setEditPersonRel(rel)}
-                          className={`text-[10px] px-2.5 py-1 rounded-lg border transition-all ${
-                            (editPersonRel || selectedPerson.relationship) === rel
-                              ? 'bg-[#5B7B6D] text-white border-[#5B7B6D]'
-                              : 'bg-[#FAF8F5] text-[#6E7C75] border-[#5B7B6D]/15 hover:border-[#5B7B6D]/40'
-                          }`}
-                        >
-                          {rel}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Section 2: 分组归类与基本信息 */}
-                <div className="bg-white p-3.5 rounded-2xl border border-[#5B7B6D]/15 shadow-2xs space-y-3">
-                  <div className="flex items-center justify-between pb-2 border-b border-[#5B7B6D]/10">
-                    <h4 className="font-bold text-[#2B332E] text-xs font-serif flex items-center gap-1.5">
-                      <span className="w-1.5 h-3.5 bg-[#5B7B6D] rounded-full inline-block"></span>
-                      分组归类与基本信息
-                    </h4>
-                    <span className="text-[10px] text-[#6E7C75] bg-stone-100 px-2 py-0.5 rounded-full font-medium">
-                      选填
-                    </span>
                   </div>
 
-                  <div>
-                    <label className="text-[10px] text-[#6E7C75] block mb-1">好友分组</label>
-                    <div className="flex flex-wrap gap-1.5 mb-1.5">
-                      {Array.from(new Set([...customGroups, '未分组'])).map(grp => (
-                        <button
-                          key={grp}
-                          type="button"
-                          onClick={() => setEditPersonGroup(grp)}
-                          className={`text-[10px] px-2.5 py-1 rounded-lg border transition-all ${
-                            (editPersonGroup || selectedPerson.group || '未分组') === grp
-                              ? 'bg-[#5B7B6D] text-white border-[#5B7B6D]'
-                              : 'bg-[#FAF8F5] text-[#6E7C75] border-[#5B7B6D]/15 hover:border-[#5B7B6D]/40'
-                          }`}
-                        >
-                          {grp}
-                        </button>
-                      ))}
-                    </div>
+                  {/* Group Row */}
+                  <div className="flex items-center justify-between p-3">
+                    <span className="text-[11px] font-serif text-[#6E7C75] dark:text-[#A7B4AD] shrink-0">所属分组</span>
+                    <button
+                      type="button"
+                      onClick={() => setFormGroupPickerTarget('edit')}
+                      className="font-mono text-xs text-[#2B332E] dark:text-[#FAF8F5] font-bold flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-stone-100/80 dark:bg-white/10 border border-stone-200 dark:border-white/10 hover:border-primary transition-all cursor-pointer shadow-2xs active:scale-95"
+                    >
+                      <Folder className="w-3.5 h-3.5 text-[#5B7B6D]" />
+                      <span>{editPersonGroup || selectedPerson.group || '未分组'}</span>
+                      <ChevronDown className="w-3 h-3 text-[#6E7C75]" />
+                    </button>
+                    <input type="hidden" name="group" value={editPersonGroup || selectedPerson.group || '未分组'} />
+                  </div>
+
+                  {/* Known Date Row */}
+                  <div className="flex items-center justify-between p-3">
+                    <span className="text-[11px] font-serif text-[#6E7C75] dark:text-[#A7B4AD] shrink-0">相识时日</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setDatePickerConfig({
+                          isOpen: true,
+                          title: `设置与【${selectedPerson.name}】相识日期`,
+                          value: editPersonKnownDate || selectedPerson.knownDate || '2021-09-01',
+                          mode: 'full',
+                          onConfirm: (val) => setEditPersonKnownDate(val)
+                        });
+                      }}
+                      className="font-mono text-xs text-[#2B332E] dark:text-[#FAF8F5] font-bold flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-stone-100/80 dark:bg-white/10 border border-stone-200 dark:border-white/10 hover:border-primary transition-all cursor-pointer shadow-2xs active:scale-95"
+                    >
+                      <Calendar className="w-3.5 h-3.5 text-[#5B7B6D]" />
+                      <span>{editPersonKnownDate || selectedPerson.knownDate || '2021-09-01'}</span>
+                    </button>
+                    <input type="hidden" name="knownDate" value={editPersonKnownDate || selectedPerson.knownDate || '2021-09-01'} />
+                  </div>
+
+                  {/* Birthday Row */}
+                  <div className="flex items-center justify-between p-3">
+                    <span className="text-[11px] font-serif text-[#6E7C75] dark:text-[#A7B4AD] shrink-0">好友生辰</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setDatePickerConfig({
+                          isOpen: true,
+                          title: `设置【${selectedPerson.name}】的生日`,
+                          value: editPersonBirthday || (selectedPerson.birthday !== '未填写' ? selectedPerson.birthday : ''),
+                          mode: 'month-day',
+                          onConfirm: (val) => setEditPersonBirthday(val)
+                        });
+                      }}
+                      className="font-mono text-xs text-[#2B332E] dark:text-[#FAF8F5] font-bold flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-stone-100/80 dark:bg-white/10 border border-stone-200 dark:border-white/10 hover:border-primary transition-all cursor-pointer shadow-2xs active:scale-95"
+                    >
+                      <Calendar className="w-3.5 h-3.5 text-[#E88765]" />
+                      <span>{editPersonBirthday || (selectedPerson.birthday !== '未填写' ? selectedPerson.birthday : '选填生日')}</span>
+                    </button>
+                    <input type="hidden" name="birthday" value={editPersonBirthday || (selectedPerson.birthday !== '未填写' ? selectedPerson.birthday : '')} />
+                  </div>
+
+                  {/* Know Where Row */}
+                  <div className="flex items-center justify-between p-3 gap-2">
+                    <span className="text-[11px] font-serif text-[#6E7C75] dark:text-[#A7B4AD] shrink-0">初遇地点</span>
                     <input
-                      name="group"
-                      value={editPersonGroup || selectedPerson.group || '未分组'}
-                      onChange={(e) => setEditPersonGroup(e.target.value)}
-                      placeholder="或输入自定义分组名称"
-                      className="w-full p-2.5 rounded-xl border border-[#5B7B6D]/20 bg-[#FAF8F5] focus:bg-white focus:outline-none focus:border-[#5B7B6D]"
+                      name="knowWhere"
+                      defaultValue={selectedPerson.customFields?.['认识地点'] || ''}
+                      placeholder="选填，如：新沂一中"
+                      className="w-40 sm:w-44 text-right text-xs bg-stone-50/90 dark:bg-black/20 p-2 rounded-xl border border-stone-200/80 dark:border-white/10 text-[#2B332E] dark:text-[#FAF8F5] focus:outline-none placeholder-[#6E7C75]/50 font-serif"
                     />
                   </div>
 
-                  <div className="grid grid-cols-2 gap-2.5">
-                    <div>
-                      <label className="text-[10px] text-[#6E7C75] block mb-1">
-                        相识起始日期
-                      </label>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setDatePickerConfig({
-                            isOpen: true,
-                            title: `设置与【${selectedPerson.name}】相识日期`,
-                            value: editPersonKnownDate || selectedPerson.knownDate || '2021-09-01',
-                            mode: 'full',
-                            onConfirm: (val) => {
-                              setEditPersonKnownDate(val);
-                            }
-                          });
-                        }}
-                        className="w-full p-2.5 rounded-xl border border-[#5B7B6D]/20 bg-[#FAF8F5] hover:bg-white focus:outline-none focus:border-[#5B7B6D] text-left flex items-center justify-between text-xs transition-colors"
-                      >
-                        <span className="font-mono text-xs text-[#2B332E] truncate">
-                          {editPersonKnownDate || selectedPerson.knownDate || '2021-09-01'}
-                        </span>
-                        <Calendar className="w-3.5 h-3.5 text-[#5B7B6D]/60 shrink-0 ml-1" />
-                      </button>
-                      <input
-                        type="hidden"
-                        name="knownDate"
-                        value={editPersonKnownDate || selectedPerson.knownDate || '2021-09-01'}
-                      />
-                    </div>
-                    <div>
-                      <label className="text-[10px] text-[#6E7C75] block mb-1">
-                        生日 (弹窗选择)
-                      </label>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setDatePickerConfig({
-                            isOpen: true,
-                            title: `设置【${selectedPerson.name}】的生日`,
-                            value: editPersonBirthday || (selectedPerson.birthday !== '未填写' ? selectedPerson.birthday : ''),
-                            mode: 'month-day',
-                            onConfirm: (val) => {
-                              setEditPersonBirthday(val);
-                            }
-                          });
-                        }}
-                        className="w-full p-2.5 rounded-xl border border-[#5B7B6D]/20 bg-[#FAF8F5] hover:bg-white focus:outline-none focus:border-[#5B7B6D] text-left flex items-center justify-between text-xs transition-colors"
-                      >
-                        <span className={`truncate ${editPersonBirthday || selectedPerson.birthday !== '未填写' ? 'text-[#2B332E] font-medium' : 'text-[#6E7C75]/60'}`}>
-                          {editPersonBirthday || (selectedPerson.birthday !== '未填写' ? selectedPerson.birthday : '点击选择生日')}
-                        </span>
-                        <Calendar className="w-3.5 h-3.5 text-[#E88765]/70 shrink-0 ml-1" />
-                      </button>
-                      <input
-                        type="hidden"
-                        name="birthday"
-                        value={editPersonBirthday || (selectedPerson.birthday !== '未填写' ? selectedPerson.birthday : '')}
-                      />
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-2.5">
-                    <div>
-                      <label className="text-[10px] text-[#6E7C75] block mb-1">认识地点</label>
-                      <input
-                        name="knowWhere"
-                        defaultValue={selectedPerson.customFields?.['认识地点'] || ''}
-                        placeholder="如：老校区林荫路、大一画室"
-                        className="w-full p-2.5 rounded-xl border border-[#5B7B6D]/20 bg-[#FAF8F5] focus:bg-white focus:outline-none focus:border-[#5B7B6D]"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-[10px] text-[#6E7C75] block mb-1">喜欢的颜色</label>
-                      <input name="color" defaultValue={selectedPerson.color} placeholder="如：奶油白、青草绿、松烟青瓷" className="w-full p-2.5 rounded-xl border border-[#5B7B6D]/20 bg-[#FAF8F5] focus:bg-white focus:outline-none focus:border-[#5B7B6D]" />
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="text-[10px] text-[#6E7C75] block mb-1">兴趣爱好</label>
-                    <input name="hobbies" defaultValue={selectedPerson.hobbies !== '未填写' ? selectedPerson.hobbies : ''} placeholder="如：胶片摄影、烘焙甜品、骑行" className="w-full p-2.5 rounded-xl border border-[#5B7B6D]/20 bg-[#FAF8F5] focus:bg-white focus:outline-none focus:border-[#5B7B6D]" />
+                  {/* Hobbies Row */}
+                  <div className="flex items-center justify-between p-3 gap-2">
+                    <span className="text-[11px] font-serif text-[#6E7C75] dark:text-[#A7B4AD] shrink-0">兴趣偏好</span>
+                    <input
+                      name="hobbies"
+                      defaultValue={selectedPerson.hobbies !== '未填写' ? selectedPerson.hobbies : ''}
+                      placeholder="选填如摄影旅行"
+                      className="w-40 sm:w-44 text-right text-xs bg-stone-50/90 dark:bg-black/20 p-2 rounded-xl border border-stone-200/80 dark:border-white/10 text-[#2B332E] dark:text-[#FAF8F5] focus:outline-none placeholder-[#6E7C75]/50 font-serif"
+                    />
                   </div>
                 </div>
 
-                {/* Section 3: 社交与联系方式 (选填) */}
-                <div className="bg-white p-3.5 rounded-2xl border border-[#5B7B6D]/15 shadow-2xs space-y-3">
-                  <div className="flex items-center justify-between pb-2 border-b border-[#5B7B6D]/10">
-                    <h4 className="font-bold text-[#2B332E] text-xs font-serif flex items-center gap-1.5">
-                      <span className="w-1.5 h-3.5 bg-[#5B7B6D] rounded-full inline-block"></span>
-                      社交与联系方式
-                    </h4>
-                    <span className="text-[10px] text-[#6E7C75] bg-stone-100 px-2 py-0.5 rounded-full font-medium">
-                      选填
-                    </span>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-2.5">
-                    <div>
-                      <label className="text-[10px] text-[#6E7C75] block mb-1">微信号</label>
-                      <input
-                        name="wechat"
-                        defaultValue={selectedPerson.wechat || ''}
-                        placeholder="如：wx_summer07"
-                        className="w-full p-2.5 rounded-xl border border-[#5B7B6D]/20 bg-[#FAF8F5] focus:bg-white focus:outline-none focus:border-[#5B7B6D]"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-[10px] text-[#6E7C75] block mb-1">QQ 号</label>
-                      <input
-                        name="qq"
-                        defaultValue={selectedPerson.qq || ''}
-                        placeholder="如：83920194"
-                        className="w-full p-2.5 rounded-xl border border-[#5B7B6D]/20 bg-[#FAF8F5] focus:bg-white focus:outline-none focus:border-[#5B7B6D]"
-                      />
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="text-[10px] text-[#6E7C75] block mb-1">手机 / 电话</label>
+                {/* Card 3: 社交信息与总结寄语 (Contacts & Bio) */}
+                <div className="bg-white/90 dark:bg-white/[0.04] p-3.5 rounded-2xl border border-black/5 dark:border-white/10 space-y-2.5 shadow-2xs">
+                  <div className="grid grid-cols-2 gap-2">
+                    <input
+                      name="wechat"
+                      defaultValue={selectedPerson.wechat || ''}
+                      placeholder="微信号 (选填)"
+                      className="w-full p-2.5 text-xs font-serif rounded-xl border border-stone-200/80 dark:border-white/10 bg-stone-50/90 dark:bg-black/20 text-[#2B332E] dark:text-[#FAF8F5] focus:outline-none placeholder-[#6E7C75]/50"
+                    />
                     <input
                       name="phone"
                       defaultValue={selectedPerson.phone || ''}
-                      placeholder="如：13812349201"
-                      className="w-full p-2.5 rounded-xl border border-[#5B7B6D]/20 bg-[#FAF8F5] focus:bg-white focus:outline-none focus:border-[#5B7B6D]"
+                      placeholder="联系电话 (选填)"
+                      className="w-full p-2.5 text-xs font-serif rounded-xl border border-stone-200/80 dark:border-white/10 bg-stone-50/90 dark:bg-black/20 text-[#2B332E] dark:text-[#FAF8F5] focus:outline-none placeholder-[#6E7C75]/50"
                     />
                   </div>
+                  <textarea
+                    name="bio"
+                    defaultValue={selectedPerson.bio}
+                    rows={2}
+                    placeholder="人物总结寄语 (如: 晚自习后看过无数次晚霞的知心挚友)..."
+                    className="w-full p-2.5 text-xs font-serif rounded-xl border border-stone-200/80 dark:border-white/10 bg-stone-50/90 dark:bg-black/20 text-[#2B332E] dark:text-[#FAF8F5] focus:outline-none resize-none placeholder-[#6E7C75]/50"
+                  />
                 </div>
 
-                {/* Section 4: 一句话人物总结 */}
-                <div className="bg-white p-3.5 rounded-2xl border border-[#5B7B6D]/15 shadow-2xs space-y-3">
-                  <div className="flex items-center justify-between pb-2 border-b border-[#5B7B6D]/10">
-                    <h4 className="font-bold text-[#2B332E] text-xs font-serif flex items-center gap-1.5">
-                      <span className="w-1.5 h-3.5 bg-[#8C6D52] rounded-full inline-block"></span>
-                      一句话人物总结
-                    </h4>
-                    <span className="text-[10px] text-[#6E7C75] bg-stone-100 px-2 py-0.5 rounded-full font-medium">
-                      选填
-                    </span>
-                  </div>
-
-                  <div>
-                    <label className="text-[10px] text-[#6E7C75] block mb-1">人物总结</label>
-                    <textarea name="bio" defaultValue={selectedPerson.bio} rows={2} placeholder="如：一起在晚自习后看过无数次晚霞的知心挚友" className="w-full p-2.5 rounded-xl border border-[#5B7B6D]/20 bg-[#FAF8F5] focus:bg-white focus:outline-none focus:border-[#5B7B6D]" />
-                  </div>
-                </div>
-
-                <div className="flex gap-2 pt-2">
-                  <button type="button" onClick={() => setIsEditingPerson(false)} className="flex-1 py-2.5 rounded-xl border border-[#5B7B6D]/20 bg-white text-[#6E7C75] font-medium">取消</button>
-                  <button type="submit" className="flex-1 py-2.5 rounded-xl bg-[#5B7B6D] text-white font-bold hover:bg-[#3E564B] transition-all shadow-xs">保存更新</button>
+                {/* Footer Buttons */}
+                <div className="flex gap-2.5 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => setIsEditingPerson(false)}
+                    className="flex-1 py-3 rounded-2xl border border-black/10 dark:border-white/10 bg-white/70 dark:bg-white/[0.05] text-[#6E7C75] dark:text-[#A7B4AD] font-serif font-semibold text-xs hover:bg-black/5 transition-all active:scale-[0.98] cursor-pointer"
+                  >
+                    取消
+                  </button>
+                  <button
+                    type="submit"
+                    className="flex-1 py-3 rounded-2xl text-white font-serif font-bold text-xs shadow-xs transition-all active:scale-[0.98] cursor-pointer"
+                    style={{ backgroundColor: currentTheme.primary }}
+                  >
+                    保存档案
+                  </button>
                 </div>
               </form>
             </div>
@@ -4726,60 +5219,267 @@ export default function App() {
         {/* Selected Artifact Detail Modal */}
         {selectedArtifact && (
           <div className="absolute inset-0 bg-[#2B332E]/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fadeIn">
-            <div className="bg-[#FAF8F5] w-full max-h-[90%] overflow-y-auto p-5 rounded-3xl border border-[#5B7B6D]/20 shadow-2xl space-y-4 relative">
-              <div className="flex justify-between items-center border-b border-[#5B7B6D]/10 pb-3">
-                <span className="text-xs font-bold text-[#E88765] flex items-center gap-1 font-sans">
-                  <Calendar className="w-3 h-3" /> {selectedArtifact.date}
-                </span>
-                <div className="flex items-center gap-2">
+            <div className="bg-white dark:bg-[#1A221E] w-full max-w-lg max-h-[90%] overflow-y-auto p-5 sm:p-6 rounded-3xl border border-[#5B7B6D]/20 shadow-2xl space-y-4 relative paper-texture">
+              <div className="flex justify-between items-center border-b border-[#5B7B6D]/10 dark:border-white/10 pb-3">
+                <div
+                  className="flex items-center gap-1.5 text-base sm:text-lg font-bold font-mono tracking-tight"
+                  style={{ color: isDarkMode ? (currentTheme.dark?.primary || currentTheme.dark?.accent || currentTheme.primary) : currentTheme.primary }}
+                >
+                  <Calendar className="w-4.5 h-4.5" />
+                  <span>{selectedArtifact.date}</span>
+                </div>
+                <div className="flex items-center gap-1.5">
                   <button
+                    type="button"
                     onClick={() => handlePlayTts(`${selectedArtifact.name}。${selectedArtifact.story}`)}
-                    className="px-2.5 py-1 bg-[#FDF0EB] text-[#E88765] rounded-full text-xs font-medium flex items-center gap-1 hover:bg-[#E88765] hover:text-white transition-all font-sans"
+                    className="px-3 py-1 rounded-full text-xs font-medium flex items-center gap-1 transition-all font-sans cursor-pointer shadow-2xs"
+                    style={{
+                      backgroundColor: `${currentTheme.primary}15`,
+                      color: currentTheme.primary
+                    }}
                   >
                     <Volume2 className="w-3 h-3" /> 听回忆
                   </button>
                   <button
+                    type="button"
                     onClick={() => {
-                      requestDelete('artifacts', selectedArtifact.id, selectedArtifact.name);
+                      setEditingArtifact(selectedArtifact);
+                      setEditArtifactDate(selectedArtifact.date || new Date().toISOString().slice(0, 10));
+                      setEditArtifactImage(selectedArtifact.image || '');
+                      setEditArtifactImages(selectedArtifact.images || (selectedArtifact.image ? [selectedArtifact.image] : []));
+                      setEditArtifactVideo(selectedArtifact.video);
+                      setEditArtifactVideoPoster(selectedArtifact.videoPoster);
+                      setEditArtifactMediaType(selectedArtifact.mediaType || (selectedArtifact.video ? 'video' : 'image'));
+                      setSelectedArtifact(null);
                     }}
-                    className="p-1.5 text-[#6E7C75]/50 hover:text-red-500 rounded-lg hover:bg-red-50 transition-all"
-                    title="删除旧物"
+                    className="p-1.5 text-[#5B7B6D] hover:text-[#3E564B] dark:text-[#A7B4AD] dark:hover:text-white rounded-xl hover:bg-black/5 transition-all cursor-pointer"
+                    title="编辑此旧物"
                   >
-                    <Trash2 className="w-4 h-4" />
+                    <Edit3 className="w-4 h-4" />
                   </button>
-                  <button
-                    onClick={() => {
-                      setShareMemoirItem({ type: 'artifact', data: selectedArtifact });
-                      setIsShareModalOpen(true);
-                    }}
-                    className="p-1.5 text-[#5B7B6D] hover:text-[#E88765] rounded-lg hover:bg-[#5B7B6D]/10 transition-all"
-                    title="生成旧物海报分享"
-                  >
-                    <Share2 className="w-4 h-4" />
-                  </button>
-                  <button onClick={() => setSelectedArtifact(null)} className="p-1 text-[#6E7C75] hover:text-[#2B332E]">
+                  <button onClick={() => setSelectedArtifact(null)} className="p-1 text-[#6E7C75] hover:text-[#2B332E] dark:hover:text-white cursor-pointer rounded-xl hover:bg-black/5">
                     <X className="w-5 h-5" />
                   </button>
                 </div>
               </div>
 
-              <div className="h-60 w-full rounded-2xl overflow-hidden bg-[#F2EFE9] border border-[#5B7B6D]/15 shadow-sm">
-                <img src={selectedArtifact.image} alt={selectedArtifact.name} className="w-full h-full object-cover" />
-              </div>
+              {/* Media Display: Video or Multi-Photo Gallery */}
+              {selectedArtifact.video ? (
+                <div className="w-full rounded-2xl overflow-hidden shadow-sm aspect-video">
+                  <VintageVideoPlayer
+                    src={selectedArtifact.video}
+                    poster={selectedArtifact.videoPoster}
+                    title={selectedArtifact.name}
+                    date={selectedArtifact.date}
+                    className="w-full h-full"
+                  />
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <div className="h-64 w-full rounded-2xl overflow-hidden bg-[#FAF8F5] dark:bg-black/30 border border-[#5B7B6D]/15 shadow-sm">
+                    <img
+                      src={selectedArtifactImagePreview || selectedArtifact.image}
+                      alt={selectedArtifact.name}
+                      className="w-full h-full object-cover transition-all duration-300"
+                    />
+                  </div>
+                  {/* Photo Switcher Row if multiple photos */}
+                  {selectedArtifact.images && selectedArtifact.images.length > 1 && (
+                    <div className="flex items-center gap-2 overflow-x-auto custom-scrollbar py-1">
+                      {selectedArtifact.images.map((imgUrl, idx) => {
+                        const isCurrent = (selectedArtifactImagePreview || selectedArtifact.image) === imgUrl;
+                        return (
+                          <button
+                            key={idx}
+                            type="button"
+                            onClick={() => setSelectedArtifactImagePreview(imgUrl)}
+                            className={`w-13 h-13 rounded-xl overflow-hidden shrink-0 border-2 transition-all cursor-pointer ${
+                              isCurrent
+                                ? 'border-[#5B7B6D] ring-2 ring-[#5B7B6D]/30 scale-105 shadow-xs'
+                                : 'border-[#5B7B6D]/15 opacity-70 hover:opacity-100'
+                            }`}
+                          >
+                            <img src={imgUrl} alt={`缩略图 ${idx + 1}`} className="w-full h-full object-cover" />
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
 
-              <div className="space-y-2">
-                <h2 className="text-xl font-bold text-[#2B332E] font-serif">{selectedArtifact.name}</h2>
-                <div className="text-xs text-[#2B332E] leading-relaxed font-serif whitespace-pre-line p-3.5 bg-white rounded-xl border border-[#5B7B6D]/10 shadow-inner">
-                  {selectedArtifact.story}
+              <div className="space-y-3">
+                <h2 className="text-xl sm:text-2xl font-bold text-[#2B332E] dark:text-[#FAF8F5] font-serif">{selectedArtifact.name}</h2>
+                <div className="p-4.5 bg-[#FAF8F5] dark:bg-black/20 rounded-2xl border border-[#5B7B6D]/15 dark:border-white/10 shadow-2xs">
+                  <p className="text-xs sm:text-sm text-[#2B332E] dark:text-[#FAF8F5] leading-relaxed font-serif whitespace-pre-line select-text">
+                    {selectedArtifact.story}
+                  </p>
                 </div>
               </div>
 
               <button
                 onClick={() => setSelectedArtifact(null)}
-                className="w-full py-2.5 bg-[#5B7B6D] text-white font-bold rounded-xl shadow-sm hover:bg-[#3E564B] transition-all text-xs font-sans"
+                className="w-full py-3 bg-[#5B7B6D] text-white font-bold font-serif rounded-2xl shadow-xs hover:bg-[#3E564B] transition-all text-xs cursor-pointer active:scale-[0.98]"
               >
                 关闭旧物展台
               </button>
+            </div>
+          </div>
+        )}
+
+        {/* Artifact Edit Modal (Apple Segmented Form Sheet) */}
+        {editingArtifact && (
+          <div className="absolute inset-0 bg-[#2B332E]/40 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 animate-fadeIn">
+            <div className="bg-white dark:bg-[#1E2822] w-full max-w-lg max-h-[92%] sm:max-h-[88%] rounded-t-3xl sm:rounded-3xl border border-stone-200/90 dark:border-white/10 shadow-2xl flex flex-col overflow-hidden text-xs font-sans">
+              {/* Sheet Pull Indicator for Mobile */}
+              <div className="w-10 h-1 bg-stone-300 dark:bg-white/20 rounded-full mx-auto mt-2 sm:hidden shrink-0" />
+
+              {/* Header */}
+              <div className="p-4 sm:p-5 border-b border-black/5 dark:border-white/10 flex justify-between items-center shrink-0">
+                <div className="flex items-center gap-2">
+                  <div
+                    className="w-2.5 h-2.5 rounded-full"
+                    style={{ backgroundColor: currentTheme.primary }}
+                  />
+                  <h3 className="font-bold text-base text-[#2B332E] dark:text-[#FAF8F5] font-serif">
+                    编辑【{editingArtifact.name}】旧物档案
+                  </h3>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setEditingArtifact(null)}
+                  className="w-7 h-7 rounded-full bg-black/5 dark:bg-white/10 flex items-center justify-center text-[#6E7C75] dark:text-[#A7B4AD] hover:text-[#2B332E] dark:hover:text-white transition-colors cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* Form Content */}
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  const fd = new FormData(e.currentTarget);
+                  const updatedName = (fd.get('name') as string)?.trim() || editingArtifact.name;
+                  const updatedStory = (fd.get('story') as string) || '';
+                  const primaryImage = editArtifactImage || editArtifactImages[0] || editingArtifact.image;
+
+                  const updated: Artifact = {
+                    ...editingArtifact,
+                    name: updatedName,
+                    date: editArtifactDate || editingArtifact.date,
+                    story: updatedStory,
+                    image: primaryImage,
+                    images: editArtifactImages.length > 0 ? editArtifactImages : undefined,
+                    video: editArtifactVideo,
+                    videoPoster: editArtifactVideoPoster,
+                    mediaType: editArtifactMediaType
+                  };
+
+                  handleUpdateArtifact(updated);
+                }}
+                className="p-4 sm:p-6 overflow-y-auto custom-scrollbar space-y-4 flex-1"
+              >
+                {/* Hero Title Input */}
+                <div>
+                  <label className="text-[11px] font-serif text-[#6E7C75] dark:text-[#A7B4AD] block mb-1">旧物名称</label>
+                  <input
+                    name="name"
+                    required
+                    defaultValue={editingArtifact.name}
+                    placeholder="旧物称谓 (如: 理光GR相机、毕业明信片)..."
+                    className="w-full text-base sm:text-lg font-serif font-bold bg-transparent border-b border-black/10 dark:border-white/10 pb-2 text-[#2B332E] dark:text-[#FAF8F5] focus:outline-none placeholder-[#6E7C75]/50"
+                  />
+                </div>
+
+                {/* Media Uploader */}
+                <ArtifactMediaUploader
+                  image={editArtifactImage}
+                  images={editArtifactImages}
+                  video={editArtifactVideo}
+                  videoPoster={editArtifactVideoPoster}
+                  mediaType={editArtifactMediaType}
+                  onChange={(media) => {
+                    setEditArtifactImage(media.image);
+                    setEditArtifactImages(media.images);
+                    setEditArtifactVideo(media.video);
+                    setEditArtifactVideoPoster(media.videoPoster);
+                    setEditArtifactMediaType(media.mediaType);
+                  }}
+                  onGenerateAiImage={(callback) => {
+                    const name = (document.querySelector('input[name="name"]') as HTMLInputElement)?.value || editingArtifact.name;
+                    handleGenerateAiImage(name, callback);
+                  }}
+                  isAiGenLoading={isAiGenImageLoading}
+                />
+
+                {/* Date Setting Card */}
+                <div className="bg-white/90 dark:bg-white/[0.04] rounded-2xl border border-black/5 dark:border-white/10 divide-y divide-black/5 dark:divide-white/10 shadow-2xs">
+                  <div className="flex items-center justify-between p-3.5">
+                    <span className="text-[11px] font-serif text-[#6E7C75] dark:text-[#A7B4AD] shrink-0">获得或纪念时日</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setDatePickerConfig({
+                          isOpen: true,
+                          title: '修改旧物获得/纪念日期',
+                          value: editArtifactDate || editingArtifact.date || new Date().toISOString().slice(0, 10),
+                          mode: 'full',
+                          onConfirm: (val) => setEditArtifactDate(val)
+                        });
+                      }}
+                      className="font-mono text-xs text-[#2B332E] dark:text-[#FAF8F5] font-bold flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#FAF8F5] dark:bg-white/10 border border-[#5B7B6D]/25 hover:border-[#5B7B6D] transition-all cursor-pointer shadow-2xs active:scale-95"
+                    >
+                      <Calendar className="w-3.5 h-3.5 text-[#5B7B6D]" />
+                      <span>{editArtifactDate || editingArtifact.date}</span>
+                    </button>
+                    <input type="hidden" name="date" value={editArtifactDate || editingArtifact.date} />
+                  </div>
+                </div>
+
+                {/* Story Textarea */}
+                <div className="bg-white/90 dark:bg-white/[0.04] p-3.5 rounded-2xl border border-black/5 dark:border-white/10 space-y-2 shadow-2xs">
+                  <div className="flex justify-between items-center px-0.5">
+                    <label className="text-[11px] font-serif font-medium text-[#526058] dark:text-[#A7B4AD]">物品回忆与纪念意义</label>
+                    <button
+                      type="button"
+                      onClick={() => handleAiPolishText('textarea[name="story"]', (val) => {
+                        const area = document.querySelector('textarea[name="story"]') as HTMLTextAreaElement;
+                        if (area) area.value = val;
+                      })}
+                      disabled={isAiPolishLoading}
+                      className="text-[11px] font-serif hover:underline flex items-center gap-1 transition-opacity text-[#5B7B6D]"
+                    >
+                      <Feather className="w-3 h-3" /> {isAiPolishLoading ? '润色中...' : '文墨润色'}
+                    </button>
+                  </div>
+                  <textarea
+                    name="story"
+                    required
+                    rows={4}
+                    defaultValue={editingArtifact.story}
+                    placeholder="写下这件旧物与你之间的专属故事与温存回忆..."
+                    className="w-full p-3 bg-[#FAF8F5] dark:bg-black/20 rounded-xl border border-[#5B7B6D]/20 dark:border-white/10 text-[#2B332E] dark:text-[#FAF8F5] font-serif leading-relaxed text-xs focus:outline-none resize-none placeholder-[#6E7C75]/50 focus:border-[#5B7B6D]"
+                  />
+                </div>
+
+                {/* Footer Buttons */}
+                <div className="flex gap-2.5 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setEditingArtifact(null)}
+                    className="flex-1 py-3 rounded-2xl border border-black/10 dark:border-white/10 bg-white/70 dark:bg-white/[0.05] text-[#6E7C75] dark:text-[#A7B4AD] font-serif font-semibold text-xs hover:bg-black/5 transition-all active:scale-[0.98] cursor-pointer"
+                  >
+                    取消
+                  </button>
+                  <button
+                    type="submit"
+                    className="flex-1 py-3 rounded-2xl text-white font-serif font-bold text-xs shadow-xs transition-all active:scale-[0.98] cursor-pointer"
+                    style={{ backgroundColor: currentTheme.primary }}
+                  >
+                    保存旧物更新
+                  </button>
+                </div>
+              </form>
             </div>
           </div>
         )}
@@ -5162,15 +5862,22 @@ export default function App() {
           </div>
         )}
 
-        {/* Story Edit Modal */}
+        {/* Story Edit Modal (Apple Segmented Form Sheet) */}
         {editingStory && (
           <div className="absolute inset-0 bg-[#2B332E]/40 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 animate-fadeIn">
-            <div className="bg-[#FAF8F5] w-full max-h-[90%] overflow-y-auto p-5 rounded-t-3xl sm:rounded-3xl border border-[#5B7B6D]/20 shadow-2xl space-y-4">
-              <div className="flex justify-between items-center border-b border-[#5B7B6D]/10 pb-3">
-                <h3 className="font-bold text-[#2B332E] text-base flex items-center gap-2 font-serif">
-                  <Edit3 className="w-4 h-4 text-[#5B7B6D]" /> 编辑故事篇章
+            <div className={`bg-[#FAF8F5] dark:bg-[#141B18] text-[#2B332E] dark:text-[#FAF8F5] w-full max-w-lg ${isKeyboardVisible ? 'max-h-[96%] pb-12' : 'max-h-[88%]'} overflow-y-auto p-5 sm:p-6 rounded-t-[32px] sm:rounded-3xl border border-black/10 dark:border-white/15 shadow-2xl space-y-4 transition-all duration-200 paper-texture`}>
+              {/* Apple Sheet Pull Indicator */}
+              <div className="w-10 h-1 bg-black/15 dark:bg-white/20 rounded-full mx-auto -mt-1 mb-2 sm:hidden" />
+              <div className="flex justify-between items-center border-b border-black/5 dark:border-white/10 pb-3">
+                <h3 className="font-bold text-base flex items-center gap-2 font-serif" style={{ color: currentTheme.primary }}>
+                  <Edit3 className="w-4 h-4" />
+                  <span>修改故事篇章</span>
                 </h3>
-                <button onClick={() => setEditingStory(null)} className="text-[#6E7C75] hover:text-[#2B332E]">
+                <button
+                  type="button"
+                  onClick={() => setEditingStory(null)}
+                  className="p-1 rounded-full text-[#6E7C75] hover:text-[#2B332E] dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/10 transition-colors"
+                >
                   <X className="w-4 h-4" />
                 </button>
               </div>
@@ -5185,20 +5892,32 @@ export default function App() {
                   date: editStoryDate || (fd.get('date') as string) || new Date().toISOString().slice(0, 10),
                   content: (fd.get('editStoryContent') as string)?.trim() || ''
                 });
-              }} className="space-y-3.5 text-xs font-sans">
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <label className="text-[10px] text-[#6E7C75] block mb-1">篇章卷次 / 序号：</label>
+              }} className="space-y-4 text-xs font-sans">
+                {/* Hero Title Input */}
+                <div>
+                  <input
+                    name="title"
+                    required
+                    defaultValue={editingStory.title}
+                    placeholder="篇章题名..."
+                    className="w-full text-base sm:text-lg font-serif font-bold bg-transparent border-b border-black/10 dark:border-white/10 pb-2 text-[#2B332E] dark:text-[#FAF8F5] focus:outline-none placeholder-[#6E7C75]/40"
+                  />
+                </div>
+
+                {/* Segmented Metadata Card */}
+                <div className="bg-white/80 dark:bg-white/[0.04] rounded-2xl border border-black/5 dark:border-white/10 divide-y divide-black/5 dark:divide-white/10 shadow-2xs">
+                  <div className="flex items-center justify-between p-3 gap-2">
+                    <span className="text-[11px] font-serif text-[#6E7C75] dark:text-[#A7B4AD] shrink-0">篇章卷次</span>
                     <input
                       name="chapter"
                       required
                       defaultValue={editingStory.chapter}
                       placeholder="例如: 第一章 · 初见"
-                      className="w-full p-3 rounded-xl border border-[#5B7B6D]/20 bg-white focus:outline-none focus:border-[#5B7B6D]"
+                      className="text-right text-xs bg-transparent text-[#2B332E] dark:text-[#FAF8F5] focus:outline-none placeholder-[#6E7C75]/40 flex-1 font-serif"
                     />
                   </div>
-                  <div>
-                    <label className="text-[10px] text-[#6E7C75] block mb-1">故事所属日期：</label>
+                  <div className="flex items-center justify-between p-3">
+                    <span className="text-[11px] font-serif text-[#6E7C75] dark:text-[#A7B4AD] shrink-0">故事所属时日</span>
                     <button
                       type="button"
                       onClick={() => {
@@ -5210,12 +5929,10 @@ export default function App() {
                           onConfirm: (val) => setEditStoryDate(val)
                         });
                       }}
-                      className="w-full p-3 rounded-xl border border-[#5B7B6D]/20 bg-white hover:bg-[#FAF8F5] focus:outline-none focus:border-[#5B7B6D] text-left flex items-center justify-between text-xs transition-colors shadow-2xs"
+                      className="font-mono text-xs text-[#2B332E] dark:text-[#FAF8F5] font-bold flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#FAF8F5] dark:bg-white/10 border border-[#5B7B6D]/25 hover:border-[#5B7B6D] transition-all cursor-pointer shadow-2xs active:scale-95"
                     >
-                      <span className="font-mono text-xs text-[#2B332E] font-medium truncate">
-                        {editStoryDate || editingStory.date || new Date().toISOString().slice(0, 10)}
-                      </span>
-                      <Calendar className="w-3.5 h-3.5 text-[#5B7B6D]/70 shrink-0 ml-1" />
+                      <Calendar className="w-3.5 h-3.5 text-[#5B7B6D]" />
+                      <span>{editStoryDate || editingStory.date || new Date().toISOString().slice(0, 10)}</span>
                     </button>
                     <input
                       type="hidden"
@@ -5225,20 +5942,10 @@ export default function App() {
                   </div>
                 </div>
 
-                <div>
-                  <label className="text-[10px] text-[#6E7C75] block mb-1">篇章标题：</label>
-                  <input
-                    name="title"
-                    required
-                    defaultValue={editingStory.title}
-                    placeholder="章节标题"
-                    className="w-full p-3 rounded-xl border border-[#5B7B6D]/20 bg-white focus:outline-none focus:border-[#5B7B6D]"
-                  />
-                </div>
-
-                <div className="space-y-1">
-                  <div className="flex justify-between items-center px-1">
-                    <label className="text-[10px] text-[#6E7C75]">篇章正文内容：</label>
+                {/* Segmented Narrative Textarea */}
+                <div className="bg-white/80 dark:bg-white/[0.04] p-3 rounded-2xl border border-black/5 dark:border-white/10 space-y-1.5 shadow-2xs">
+                  <div className="flex justify-between items-center px-0.5">
+                    <label className="text-[11px] font-serif font-medium text-[#526058] dark:text-[#A7B4AD]">篇章正文</label>
                     <button
                       type="button"
                       onClick={() => handleAiPolishText('textarea[name="editStoryContent"]', (val) => {
@@ -5246,9 +5953,10 @@ export default function App() {
                         if (area) area.value = val;
                       })}
                       disabled={isAiPolishLoading}
-                      className="text-[10px] text-[#E88765] hover:underline flex items-center gap-0.5"
+                      className="text-[11px] font-serif hover:underline flex items-center gap-1 transition-opacity"
+                      style={{ color: currentTheme.primary }}
                     >
-                      <Feather className="w-3 h-3" /> {isAiPolishLoading ? '润色中...' : '文墨 AI 润色正文'}
+                      <Feather className="w-3 h-3" /> {isAiPolishLoading ? '润色中...' : '文墨润色'}
                     </button>
                   </div>
                   <textarea
@@ -5257,21 +5965,23 @@ export default function App() {
                     rows={8}
                     defaultValue={editingStory.content}
                     placeholder="在此编辑正文故事..."
-                    className="w-full p-3 rounded-xl border border-[#5B7B6D]/20 bg-white font-serif leading-relaxed focus:outline-none focus:border-[#5B7B6D]"
+                    className="w-full p-2 bg-transparent text-[#2B332E] dark:text-[#FAF8F5] font-serif leading-relaxed text-xs focus:outline-none resize-none placeholder-[#6E7C75]/40"
                   />
                 </div>
 
-                <div className="flex gap-2 pt-1">
+                {/* Footer Buttons */}
+                <div className="flex gap-2.5 pt-1">
                   <button
                     type="button"
                     onClick={() => setEditingStory(null)}
-                    className="flex-1 py-3 bg-[#F2EFE9] text-[#6E7C75] font-semibold rounded-xl hover:bg-[#E8E4DC] transition-all"
+                    className="flex-1 py-3 rounded-2xl border border-black/10 dark:border-white/10 bg-white/70 dark:bg-white/[0.05] text-[#6E7C75] dark:text-[#A7B4AD] font-serif font-semibold text-xs hover:bg-black/5 transition-all active:scale-[0.98] cursor-pointer"
                   >
                     取消
                   </button>
                   <button
                     type="submit"
-                    className="flex-1 py-3 bg-[#5B7B6D] text-white font-bold rounded-xl shadow-sm hover:bg-[#3E564B] transition-all active:scale-[0.99]"
+                    className="flex-1 py-3 rounded-2xl text-white font-serif font-bold text-xs shadow-xs transition-all active:scale-[0.98] cursor-pointer"
+                    style={{ backgroundColor: currentTheme.primary }}
                   >
                     保存篇章修改
                   </button>
@@ -5471,6 +6181,38 @@ export default function App() {
               isDarkMode={isDarkMode}
             />
           )}
+          {formGroupPickerTarget && (
+            <PersonGroupSelectModal
+              isOpen={true}
+              onClose={() => setFormGroupPickerTarget(null)}
+              selectedGroup={formGroupPickerTarget === 'add' ? formPersonGroup : (editPersonGroup || selectedPerson?.group || '未分组')}
+              onSelectGroup={(grp) => {
+                const targetGrp = grp === 'all' ? '未分组' : grp;
+                if (formGroupPickerTarget === 'add') {
+                  setFormPersonGroup(targetGrp);
+                } else if (formGroupPickerTarget === 'edit') {
+                  setEditPersonGroup(targetGrp);
+                }
+                setFormGroupPickerTarget(null);
+                showToast(`已选定所属分组「${targetGrp}」`);
+              }}
+              people={data.people}
+              allGroupsList={allGroupsList}
+              onAddGroup={(newG) => {
+                handleAddGroup(newG);
+                if (formGroupPickerTarget === 'add') {
+                  setFormPersonGroup(newG);
+                } else if (formGroupPickerTarget === 'edit') {
+                  setEditPersonGroup(newG);
+                }
+                setFormGroupPickerTarget(null);
+                showToast(`已新建并选定分组「${newG}」`);
+              }}
+              onDeleteGroup={handleDeleteGroup}
+              theme={currentTheme}
+              isDarkMode={isDarkMode}
+            />
+          )}
         </AnimatePresence>
 
         {/* Chrono Year Picker Bottom Sheet Modal */}
@@ -5558,37 +6300,41 @@ function SplashScreen({ theme, onDismiss }: SplashScreenProps) {
       animate={{ opacity: 1 }}
       exit={{
         opacity: 0,
-        scale: 1.02,
-        transition: { duration: 0.6, ease: [0.22, 1, 0.36, 1] }
+        scale: 1.03,
+        filter: 'blur(8px)',
+        transition: { duration: 0.5, ease: [0.16, 1, 0.3, 1] }
       }}
-      style={{ willChange: 'opacity, transform' }}
-      className="fixed inset-0 z-[9999] w-screen h-screen flex flex-col items-center justify-center p-6 bg-[#FAF8F5] overflow-hidden select-none cursor-pointer transform-gpu"
-      onClick={onDismiss}
+      style={{ willChange: 'opacity, transform, filter', backgroundColor: theme.canvas }}
+      className="fixed inset-0 z-[9999] w-screen h-screen flex flex-col items-center justify-center p-6 overflow-hidden select-none cursor-pointer transform-gpu"
+      onClick={() => {
+        sound.playHapticClick(900);
+        onDismiss();
+      }}
     >
       {/* Background Ambient Fluid Glows (100% Identical to Fullscreen Zen Clock) */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
         <div
-          className="absolute -top-32 -left-32 w-[30rem] h-[30rem] rounded-full opacity-35 filter blur-3xl transition-colors duration-700"
+          className="absolute -top-32 -left-32 w-[32rem] h-[32rem] rounded-full opacity-35 filter blur-3xl transition-colors duration-700"
           style={{ backgroundColor: theme.primary }}
         />
         <div
-          className="absolute -bottom-32 -right-32 w-[30rem] h-[30rem] rounded-full opacity-25 filter blur-3xl transition-colors duration-700"
+          className="absolute -bottom-32 -right-32 w-[32rem] h-[32rem] rounded-full opacity-25 filter blur-3xl transition-colors duration-700"
           style={{ backgroundColor: theme.accent }}
         />
-        <div className="absolute inset-0 paper-texture opacity-30" />
+        <div className="absolute inset-0 paper-texture opacity-25" />
       </div>
 
       {/* Center Display: Pure Minimalist Logo & Typography */}
       <div className="relative z-10 flex flex-col items-center justify-center text-center space-y-6">
         {/* Artistic Calligraphy Logo */}
         <motion.div
-          initial={{ opacity: 0, scale: 0.92, y: 8 }}
+          initial={{ opacity: 0, scale: 0.9, y: 12 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
-          transition={{ duration: 0.7, ease: [0.22, 1, 0.36, 1] }}
+          transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1] }}
           className="relative"
         >
           <div
-            className="absolute inset-0 blur-2xl opacity-30 -z-10 scale-150"
+            className="absolute inset-0 blur-3xl opacity-35 -z-10 scale-150 transition-colors duration-500"
             style={{ backgroundColor: theme.primary }}
           />
           <h1
@@ -5604,9 +6350,9 @@ function SplashScreen({ theme, onDismiss }: SplashScreenProps) {
 
         {/* Poetic Subtitles */}
         <motion.div
-          initial={{ opacity: 0, y: 6 }}
+          initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6, delay: 0.2, ease: [0.22, 1, 0.36, 1] }}
+          transition={{ duration: 0.7, delay: 0.18, ease: [0.16, 1, 0.3, 1] }}
           className="space-y-2"
         >
           <p
@@ -6191,6 +6937,232 @@ function ChronoYearPickerModal({
               <RotateCcw className="w-3 h-3" /> 重置为全景时光
             </button>
           )}
+        </div>
+      </motion.div>
+    </div>
+  );
+}
+
+// ----------------------------------------------------
+// Apple Liquid Glass Person Group Selection Modal (Matches Top Nav Extension Bar Style)
+// ----------------------------------------------------
+
+interface PersonGroupSelectModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  selectedGroup: string;
+  onSelectGroup: (group: string) => void;
+  people: Person[];
+  allGroupsList: string[];
+  onAddGroup: (groupName: string) => void;
+  onDeleteGroup: (groupName: string) => void;
+  theme: HealingTheme;
+  isDarkMode?: boolean;
+}
+
+function PersonGroupSelectModal({
+  isOpen,
+  onClose,
+  selectedGroup,
+  onSelectGroup,
+  people,
+  allGroupsList,
+  onAddGroup,
+  onDeleteGroup,
+  theme,
+  isDarkMode = false
+}: PersonGroupSelectModalProps) {
+  const [newGroupInput, setNewGroupInput] = useState('');
+  const [groupToDelete, setGroupToDelete] = useState<string | null>(null);
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 select-none animate-fadeIn">
+      {/* Dim backdrop */}
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        transition={{ duration: 0.2 }}
+        onClick={onClose}
+        className="absolute inset-0 bg-[#2B332E]/45 backdrop-blur-xs"
+      />
+
+      {/* Apple Liquid Glass Card */}
+      <motion.div
+        initial={{ scale: 0.94, opacity: 0, y: 8 }}
+        animate={{ scale: 1, opacity: 1, y: 0 }}
+        exit={{ scale: 0.94, opacity: 0, y: 8 }}
+        transition={{ duration: 0.22, ease: [0.32, 0.72, 0, 1] }}
+        className={`relative w-full max-w-xs apple-liquid-glass rounded-3xl p-4 shadow-2xl border z-10 font-sans space-y-3 ${
+          isDarkMode
+            ? 'bg-[#141B18]/94 border-white/15 text-[#FAF8F5]'
+            : 'bg-white/92 border-white/85 text-[#2B332E]'
+        }`}
+      >
+        {/* Header */}
+        <div className={`flex items-center justify-between pb-2 border-b ${
+          isDarkMode ? 'border-white/10' : 'border-black/5'
+        }`}>
+          <div className="flex items-center gap-2">
+            <div
+              className="p-1.5 rounded-xl flex items-center justify-center shadow-2xs"
+              style={{ backgroundColor: `${theme.primary}20`, color: theme.primary }}
+            >
+              <Folder className="w-3.5 h-3.5" />
+            </div>
+            <h4 className="text-xs font-bold font-serif tracking-wide">选择所属分组</h4>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="p-1 text-[#6E7C75]/60 hover:text-[#2B332E] dark:hover:text-white rounded-full hover:bg-black/5 cursor-pointer"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+
+        {/* Group List */}
+        <div className="max-h-52 overflow-y-auto custom-scrollbar space-y-1 py-0.5">
+          {allGroupsList.map((groupName) => {
+            const isSelected = (selectedGroup || '未分组') === groupName;
+            const count = people.filter(p => (p.group || '未分组') === groupName).length;
+
+            return (
+              <button
+                key={groupName}
+                type="button"
+                onClick={() => {
+                  sound.playHapticClick(1200);
+                  onSelectGroup(groupName);
+                }}
+                className={`w-full px-3 py-2 rounded-2xl flex items-center justify-between text-xs transition-all active:scale-[0.98] cursor-pointer group ${
+                  isSelected
+                    ? isDarkMode
+                      ? 'bg-white/15 font-semibold text-white'
+                      : 'bg-black/5 font-semibold text-[#2B332E]'
+                    : isDarkMode
+                      ? 'text-white/70 hover:bg-white/5 hover:text-white'
+                      : 'text-[#526058] hover:bg-black/[0.03] hover:text-[#2B332E]'
+                }`}
+              >
+                <div className="flex items-center gap-2 truncate mr-1">
+                  <div
+                    className={`w-1.5 h-1.5 rounded-full transition-all shrink-0 ${
+                      isSelected ? 'scale-100' : 'scale-0 opacity-0'
+                    }`}
+                    style={{ backgroundColor: theme.primary }}
+                  />
+                  <span className="font-serif truncate">{groupName}</span>
+                </div>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  {groupName !== '未分组' && (
+                    <span
+                      role="button"
+                      tabIndex={0}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        sound.playWaterDrop(600);
+                        setGroupToDelete(groupName);
+                      }}
+                      className="p-1 rounded-lg text-[#6E7C75]/60 hover:text-red-500 hover:bg-red-500/10 active:scale-90 transition-all cursor-pointer"
+                      title="删除此分组"
+                    >
+                      <Trash2 className="w-3 h-3" />
+                    </span>
+                  )}
+                  <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded-md ${
+                    isSelected
+                      ? isDarkMode ? 'bg-white/20 text-white' : 'bg-black/10 text-[#2B332E]'
+                      : isDarkMode ? 'bg-white/5 text-white/50' : 'bg-black/5 text-[#6E7C75]'
+                  }`}>
+                    {count} 人
+                  </span>
+                  {isSelected && (
+                    <Check className="w-3.5 h-3.5" style={{ color: theme.primary }} />
+                  )}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Delete Confirmation mini prompt if triggered */}
+        {groupToDelete && (
+          <div className={`p-2.5 rounded-2xl border text-xs space-y-2 animate-fadeIn ${
+            isDarkMode ? 'bg-red-950/40 border-red-500/30 text-red-200' : 'bg-red-50 border-red-200 text-red-700'
+          }`}>
+            <p className="font-serif text-[11px]">
+              确认删除分组「{groupToDelete}」吗？
+            </p>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setGroupToDelete(null)}
+                className="flex-1 py-1 rounded-xl bg-white/80 dark:bg-white/10 text-[10px] font-serif hover:bg-black/5 cursor-pointer"
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  onDeleteGroup(groupToDelete);
+                  setGroupToDelete(null);
+                }}
+                className="flex-1 py-1 rounded-xl bg-red-600 text-white text-[10px] font-serif font-bold hover:bg-red-700 cursor-pointer"
+              >
+                删除
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Bottom Action: Integrated Compact "+ 添加好友分组" */}
+        <div className={`pt-2 mt-1.5 border-t box-border ${
+          isDarkMode ? 'border-white/10' : 'border-black/5'
+        }`}>
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              const val = newGroupInput.trim();
+              if (val) {
+                onAddGroup(val);
+                setNewGroupInput('');
+                onSelectGroup(val);
+              }
+            }}
+            className="flex items-center gap-1.5 w-full box-border"
+          >
+            <input
+              type="text"
+              value={newGroupInput}
+              onChange={(e) => setNewGroupInput(e.target.value)}
+              placeholder="新建分组..."
+              className={`min-w-0 flex-1 px-2.5 py-1.5 text-xs rounded-xl border font-serif outline-none transition-all box-border ${
+                isDarkMode
+                  ? 'bg-black/25 border-white/15 text-white placeholder-white/30 focus:border-white/40'
+                  : 'bg-white/90 border-black/10 text-[#2B332E] placeholder-[#6E7C75]/60 focus:border-black/30'
+              }`}
+            />
+            <button
+              type="submit"
+              disabled={!newGroupInput.trim()}
+              className={`px-3 py-1.5 rounded-xl text-xs font-serif font-medium flex items-center gap-1 transition-all shrink-0 cursor-pointer ${
+                newGroupInput.trim()
+                  ? 'text-white active:scale-95'
+                  : 'opacity-35 cursor-not-allowed text-[#6E7C75]'
+              }`}
+              style={{
+                backgroundColor: newGroupInput.trim()
+                  ? theme.primary
+                  : isDarkMode ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)'
+              }}
+            >
+              <Plus className="w-3 h-3" />
+              <span>添加</span>
+            </button>
+          </form>
         </div>
       </motion.div>
     </div>

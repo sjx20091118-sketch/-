@@ -48,7 +48,7 @@ export const PersonStoriesShelf: React.FC<PersonStoriesShelfProps> = ({
   };
 
   return (
-    <div className="bg-white p-5 sm:p-6 rounded-3xl border border-[#D9CFC1] shadow-2xs space-y-4">
+    <div className="bg-white dark:bg-[#1E2822] p-5 sm:p-6 rounded-3xl border border-[#5B7B6D]/20 dark:border-white/10 shadow-2xs space-y-4 relative z-10 isolate">
       {/* 标题栏与操作 */}
       <div className="flex justify-between items-center">
         <div className="flex items-center gap-2">
@@ -56,16 +56,16 @@ export const PersonStoriesShelf: React.FC<PersonStoriesShelfProps> = ({
             <BookOpen className="w-4 h-4" />
           </div>
           <div>
-            <h3 className="text-base font-serif font-bold text-[#2B332E] flex items-center gap-1.5">
+            <h3 className="text-base font-serif font-bold text-[#2B332E] dark:text-[#FAF8F5] flex items-center gap-1.5">
               <span>关联拾忆篇章</span>
-              <span className="text-xs font-mono text-[#6E7C75] font-normal">({boundStories.length})</span>
+              <span className="text-xs font-mono text-[#6E7C75] dark:text-[#A7B4AD] font-normal">({boundStories.length})</span>
             </h3>
           </div>
         </div>
         <button
           type="button"
           onClick={handleOpenPicker}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white border border-[#5B7B6D]/30 hover:border-[#5B7B6D] hover:bg-[#5B7B6D]/10 text-[#5B7B6D] transition-all text-xs font-serif font-medium shadow-2xs cursor-pointer active:scale-95"
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#FAF8F5] dark:bg-white/10 border border-[#5B7B6D]/30 hover:border-[#5B7B6D] hover:bg-[#5B7B6D]/10 text-[#5B7B6D] dark:text-[#A7B4AD] transition-all text-xs font-serif font-medium shadow-2xs cursor-pointer active:scale-95"
         >
           <Plus className="w-3.5 h-3.5" />
           <span>从拾忆篇拣选</span>
@@ -76,10 +76,10 @@ export const PersonStoriesShelf: React.FC<PersonStoriesShelfProps> = ({
       {boundStories.length === 0 ? (
         <div
           onClick={handleOpenPicker}
-          className="cursor-pointer border-2 border-dashed border-[#5B7B6D]/20 hover:border-[#E88765]/40 bg-[#FAF8F5]/60 hover:bg-[#FAF8F5] rounded-2xl p-6 text-center transition-all group"
+          className="cursor-pointer border-2 border-dashed border-[#5B7B6D]/20 hover:border-[#E88765]/40 bg-[#FAF8F5] hover:bg-[#FAF6F0] rounded-2xl p-6 text-center transition-all group"
         >
           <BookOpen className="w-8 h-8 text-[#5B7B6D]/40 group-hover:text-[#E88765] mx-auto mb-2 transition-colors" />
-          <p className="text-xs text-[#6E7C75] font-serif">
+          <p className="text-xs text-[#6E7C75] dark:text-[#A7B4AD] font-serif">
             暂未关联文章，轻触即可从「拾忆篇」拣选记录你们故事的文字
           </p>
         </div>
@@ -89,21 +89,21 @@ export const PersonStoriesShelf: React.FC<PersonStoriesShelfProps> = ({
             <div
               key={story.id}
               onClick={() => onReadStory(story)}
-              className="group p-4 rounded-2xl bg-[#FAF8F5] hover:bg-white border border-[#5B7B6D]/15 hover:border-[#5B7B6D]/40 shadow-2xs hover:shadow-xs transition-all cursor-pointer flex flex-col justify-between space-y-2.5"
+              className="group p-4 rounded-2xl bg-white dark:bg-[#141C18] hover:bg-white border border-[#5B7B6D]/15 dark:border-white/10 hover:border-[#5B7B6D]/40 shadow-2xs hover:shadow-sm transition-all cursor-pointer flex flex-col justify-between space-y-2.5"
             >
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-mono font-bold text-[#E88765] px-2 py-0.5 rounded-full bg-white border border-[#E88765]/20">
+                  <span className="text-[10px] font-mono font-bold text-[#E88765] px-2 py-0.5 rounded-full bg-[#FAF8F5] dark:bg-black/30 border border-[#E88765]/20">
                     {story.chapter}
                   </span>
-                  <span className="text-[10px] text-[#6E7C75] font-mono">
+                  <span className="text-[10px] text-[#6E7C75] dark:text-[#A7B4AD] font-mono">
                     {story.date}
                   </span>
                 </div>
-                <h4 className="text-sm font-serif font-bold text-[#2B332E] group-hover:text-[#5B7B6D] transition-colors truncate">
+                <h4 className="text-sm font-serif font-bold text-[#2B332E] dark:text-[#FAF8F5] group-hover:text-[#5B7B6D] transition-colors truncate">
                   {story.title}
                 </h4>
-                <p className="text-xs text-[#6E7C75] font-serif line-clamp-2 leading-relaxed">
+                <p className="text-xs text-[#526058] dark:text-[#C2CDC7] font-serif line-clamp-2 leading-relaxed">
                   {story.content}
                 </p>
               </div>

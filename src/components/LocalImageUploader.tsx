@@ -123,64 +123,22 @@ export const LocalImageUploader: React.FC<LocalImageUploaderProps> = ({
 
   if (mode === 'avatar') {
     return (
-      <div className={`space-y-2.5 font-sans ${className}`}>
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-1.5">
-            <span className="font-bold text-[#2B332E] text-xs font-serif">{label}</span>
-            {required ? (
-              <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#FDF0EB] text-[#E88765] border border-[#E88765]/30 font-semibold font-sans">
-                * 必填
-              </span>
-            ) : (
-              <span className="text-[10px] px-1.5 py-0.5 rounded bg-stone-100 text-stone-600 font-sans">
-                选填
-              </span>
-            )}
-          </div>
-          {subLabel && <span className="text-[10px] text-[#6E7C75]">{subLabel}</span>}
-        </div>
-
-        <div className="flex items-center gap-3.5 bg-white p-3 rounded-2xl border border-[#5B7B6D]/15 shadow-2xs">
-          {/* Avatar Preview / Blank Plus Placeholder */}
-          <div className="relative group shrink-0">
+      <div className={`flex flex-col items-center justify-center font-sans ${className}`}>
+        {/* Minimalist Pure Avatar Frame with Camera Icon Badge */}
+        <div className="relative group cursor-pointer" onClick={() => fileInputRef.current?.click()}>
+          <div className="w-20 h-20 sm:w-22 sm:h-22 rounded-3xl overflow-hidden border-2 border-[#E88765]/40 hover:border-[#E88765] dark:border-white/20 bg-white dark:bg-black/30 shadow-sm flex items-center justify-center transition-all group-hover:scale-105 active:scale-95">
             {value ? (
-              <div className="w-16 h-16 rounded-2xl overflow-hidden border-2 border-[#E88765]/40 shadow-xs bg-[#FAF8F5]">
-                <img src={value} alt="Avatar Preview" className="w-full h-full object-cover" />
-                <button
-                  type="button"
-                  onClick={() => fileInputRef.current?.click()}
-                  className="absolute inset-0 bg-black/40 rounded-2xl flex items-center justify-center text-white opacity-0 group-hover:opacity-100 transition-opacity"
-                  title="点击更换相片"
-                >
-                  <Camera className="w-4 h-4" />
-                </button>
-              </div>
+              <img src={value} alt="Avatar" className="w-full h-full object-cover" />
             ) : (
-              <button
-                type="button"
-                onClick={() => fileInputRef.current?.click()}
-                className="w-16 h-16 rounded-2xl border-2 border-dashed border-[#5B7B6D]/35 bg-[#FAF8F5] flex flex-col items-center justify-center text-[#5B7B6D] hover:border-[#E88765] hover:text-[#E88765] hover:bg-[#FDF0EB]/60 transition-all cursor-pointer shadow-2xs active:scale-95 group"
-                title="点击上传相片"
-              >
-                <Plus className="w-6 h-6 stroke-[2.2] group-hover:scale-110 transition-transform" />
-              </button>
+              <div className="flex flex-col items-center justify-center text-[#5B7B6D] dark:text-[#A7B4AD]">
+                <Camera className="w-7 h-7 stroke-[1.7] opacity-80 group-hover:opacity-100 transition-opacity" />
+              </div>
             )}
           </div>
 
-          {/* Action Buttons with elegant grouped capsule styling */}
-          <div className="flex-1 min-w-0 space-y-2">
-            <button
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={isProcessing}
-              className="w-full min-h-[38px] px-3.5 py-1.5 bg-[#5B7B6D] hover:bg-[#3E564B] active:bg-[#3E564B] text-white rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition-all shadow-2xs active:scale-98 select-none touch-manipulation cursor-pointer"
-            >
-              <Upload className="w-3.5 h-3.5" />
-              <span>{isProcessing ? '优化中...' : (value ? '更换本地相片' : '上传本地相片')}</span>
-            </button>
-            <p className="text-[10.5px] text-[#6E7C75]/90 leading-relaxed font-sans">
-              支持相册选取与即时拍照 · 离线压缩保存在本地
-            </p>
+          {/* Discreet Camera / Frame Badge on Bottom Corner */}
+          <div className="absolute -bottom-1 -right-1 w-7 h-7 rounded-full bg-[#5B7B6D] text-white flex items-center justify-center shadow-md border-2 border-white dark:border-[#141B18] group-hover:bg-[#E88765] transition-colors">
+            <Camera className="w-3.5 h-3.5 stroke-[2]" />
           </div>
         </div>
 

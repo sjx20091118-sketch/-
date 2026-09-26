@@ -15,6 +15,17 @@ const PORT = 3000;
 app.use(express.json({ limit: '35mb' }));
 app.use(express.urlencoded({ extended: true, limit: '35mb' }));
 
+// Enable CORS for mobile apps, Capacitor Android APKs, and external requests
+app.use((req, res, next) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(200);
+  }
+  next();
+});
+
 // Lazy Google Gemini client helper
 function getGeminiClient(customKey?: string) {
   const key = customKey || process.env.GEMINI_API_KEY;
@@ -35,57 +46,62 @@ function synthesizeMemoryResponse(prompt: string, memoryData: any): string {
   const artifacts = memoryData?.artifacts || [];
   const letters = memoryData?.letters || [];
 
-  // Match specific person
+  // Match specific person by name or nickname
   const matchedPerson = people.find((person: any) => 
     person.name && (lower.includes(person.name.toLowerCase()) || p.includes(person.name))
   );
 
   if (matchedPerson) {
     const imps = (matchedPerson.impressions || [])
-      .map((imp: any) => `【${imp.year || '时光切片'}】${imp.text}`)
+      .map((imp: any) => `• ${imp.year || '岁月'}年：${imp.text}`)
       .join('\n');
     const customLoc = matchedPerson.customFields?.['认识地点'] || '';
     const customMem = matchedPerson.customFields?.['共同记忆'] || '';
     
-    return `翻阅着关于 ${matchedPerson.name} 的泛黄档案，时光仿佛又轻轻荡漾开来。\n\n在你的记忆深处，她是你的「${matchedPerson.relationship || '挚友'}」${customLoc ? `，你们初识于${customLoc}` : ''}。${customMem ? `那些关于${customMem}的画面，依旧历历在目。` : ''}\n\n${imps ? `那些年你们共同镌刻的印记：\n${imps}\n\n` : ''}${matchedPerson.bio ? `正如档案里所写的：“${matchedPerson.bio}”。` : ''}无论时光如何流转，那些一起度过的青春与成长，都是岁月赠予你们最珍贵的礼物。`;
+    return `翻阅着关于【${matchedPerson.name}】的档案，那些温馨的光影便悄然浮现。\n\n在你的时光长卷里，她是你的「${matchedPerson.relationship || '挚友'}」${customLoc ? `，你们相识于${customLoc}` : ''}。${customMem ? `那些关于${customMem}的画面，依旧历历在目。` : ''}\n\n${matchedPerson.bio ? `档案中写道：“${matchedPerson.bio}”。\n` : ''}${imps ? `\n一路走来的印记：\n${imps}\n\n` : ''}这些真挚的陪伴与共度的时光，都是岁月赠予彼此最珍贵的礼物。你想细聊你们共同经历的哪一段故事？`;
   }
 
   // General People query
-  if (lower.includes('朋友') || lower.includes('同窗') || lower.includes('伙伴') || lower.includes('人') || lower.includes('知夏') || lower.includes('江川') || lower.includes('沈砚')) {
-    const names = people.map((p: any) => `「${p.name}」(${p.relationship || '朋友'}${p.customFields?.['认识地点'] ? ` · 结识于${p.customFields['认识地点']}` : ''})`).join('、');
-    return `在你的《拾年》拾人册中，静静安放着 ${people.length} 位重要同行者的温暖档案：\n${names || '江川、许知夏、沈砚'}。\n\n从高一教室窗边的半块橡皮、午间广播站递过来的蜂蜜柠檬水，到晚自习课桌下的解题草稿，每个人都在你的成长轨迹中留下了不可磨灭的温柔温度。时间在走，但彼此真诚相待的印记永远都在。`;
+  if (lower.includes('朋友') || lower.includes('同窗') || lower.includes('伙伴') || lower.includes('人') || lower.includes('谁') || lower.includes('好友')) {
+    const names = people.map((p: any) => `• 「${p.name}」(${p.relationship || '同路人'}${p.customFields?.['认识地点'] ? ` · 结识于${p.customFields['认识地点']}` : ''}${p.bio ? ` · ${p.bio}` : ''})`).join('\n');
+    return `在你的《拾年》拾人册中，记录着 ${people.length} 位重要的同路人：\n\n${names || '暂无人物档案'}\n\n每个人都在你的成长轨迹中留下了不可磨灭的温柔温度。时间在流淌，但彼此真诚相待的印记永远都在。你想重温哪一位朋友的故事？`;
   }
 
-  // Summer / Seasonal query
-  if (lower.includes('夏') || lower.includes('夏天') || lower.includes('当年') || lower.includes('往事') || lower.includes('旧事')) {
-    const summerEvents = timeline.filter((t: any) => (t.date || '').includes('-06-') || (t.date || '').includes('-07-') || (t.date || '').includes('-08-') || (t.content || '').includes('夏') || (t.title || '').includes('夏'));
-    const eventHighlight = summerEvents.length > 0 ? summerEvents.map((e: any) => `• ${e.date || ''} 《${e.title}》：${e.content || ''}`).join('\n') : '';
-    
-    return `翻开那年夏天的日记，满纸都是香樟树叶缝隙漏下的金黄光影与滚烫蝉鸣。\n\n${eventHighlight ? `记忆档案里关于夏天的瞬间：\n${eventHighlight}\n\n` : ''}晚风吹过操场看台，操场水花溅起校服衣角，那是无忧无虑且充满热望的年纪。哪怕多年之后回望，那阵夏日晚风依然能吹醒心底最纯粹的感动。`;
+  // Specific Artifact query
+  const matchedArtifact = artifacts.find((a: any) => a.name && (lower.includes(a.name.toLowerCase()) || p.includes(a.name)));
+  if (matchedArtifact) {
+    return `关于旧物【${matchedArtifact.name}】（获得/纪念日期：${matchedArtifact.date || '旧日'}）：\n\n“${matchedArtifact.story || '静默存放在拾物阁中的光阴标本。'}”\n\n物品虽不说话，却将那段时光的触感与温度悉心保存在了拾物阁里。`;
   }
 
-  // Rain / Rainy day query
-  if (lower.includes('雨') || lower.includes('雨天') || lower.includes('晚自习') || lower.includes('安静')) {
-    const rainyStories = stories.filter((s: any) => (s.content || '').includes('雨') || (s.title || '').includes('雨') || (s.tags || []).includes('雨'));
-    const storySnippet = rainyStories.length > 0 ? rainyStories.map((s: any) => `《${s.title}》：“${s.content?.slice(0, 100)}...”`).join('\n') : '';
-    
-    return `下雨的日子，总是最适合写下心事的时刻。\n\n窗外雨声淅淅沥沥，空气里弥漫着湿润的泥土与青草气息。${storySnippet ? `你在雨天写下的篇章：\n${storySnippet}\n\n` : ''}两个人撑一把透明伞一路踩着操场水花冲向小卖部，或是晚自习窗前静听雨打芭蕉。那些因雨水而变得缓慢的时光，早已化作你心底最静谧安详的港湾。`;
-  }
-
-  // Artifacts / Relics query
+  // Artifacts / Relics overview
   if (lower.includes('旧物') || lower.includes('物') || lower.includes('相机') || lower.includes('票根') || lower.includes('藏品') || lower.includes('信物')) {
-    const arts = artifacts.map((a: any) => `• 《${a.name}》(${a.category || '纪念物'}): ${a.story || ''}`).join('\n');
-    return `在你的「拾物阁」里，每一件旧物都如同一座微型的光阴标本：\n\n${arts || '旧胶片相机、磨损的钢笔、毕业旅行票根'}\n\n这些物品或许随着岁月褪去了初时的崭新，但它们所记录的每一次指尖触碰、每一个具体日子里的欢笑与心动，都在时光的长河里愈发温润明亮。`;
+    const arts = artifacts.map((a: any) => `• 《${a.name}》(${a.date || '岁月'}): ${a.story || ''}`).join('\n');
+    return `在你的「拾物阁」里，每一件旧物都如同一座微型的光阴标本：\n\n${arts || '暂无旧物记录'}\n\n这些物品或许随着岁月褪去了初时的崭新，但它们所记录的每一次指尖触碰、每一个具体日子里的欢笑与心动，都在时光的长河里愈发温润明亮。`;
   }
 
-  // Growth / Summary query
-  if (lower.includes('成长') || lower.includes('蜕变') || lower.includes('轨迹') || lower.includes('总结') || lower.includes('印记') || lower.includes('几年')) {
-    const topEvents = timeline.slice(0, 4).map((t: any) => `《${t.title}》(${t.date})`).join('、');
-    return `纵观你这些年沉淀在《拾年》里的心路历程，那是一条由无数平凡微光汇聚成的璀璨长河：\n\n从最初在 ${topEvents || '各个重要时光节点'} 中的青涩摸索，到如今能从容面对生活的每一次起伏。你在 ${timeline.length} 处人生节点中奔赴、在 ${people.length} 位挚友的陪伴中被治愈，在 ${stories.length} 篇随笔中向内探索。\n\n最珍贵的成长，不是变成了无坚不摧的模样，而是历经岁月后，依然保有一颗敏锐、温柔且热忱的心。`;
+  // Timeline / Growth / Specific Year query
+  const yearMatch = p.match(/\d{4}/)?.[0];
+  if (yearMatch) {
+    const yearEvents = timeline.filter((t: any) => (t.date || '').startsWith(yearMatch));
+    if (yearEvents.length > 0) {
+      const evs = yearEvents.map((t: any) => `• [${t.date}] 《${t.title}》：${t.content}`).join('\n');
+      return `定格在 ${yearMatch} 年的时光印记（共 ${yearEvents.length} 处）：\n\n${evs}\n\n那一年的光影与脚步，构成了你生命长河中不可或缺的篇章。`;
+    }
+  }
+
+  if (lower.includes('成长') || lower.includes('蜕变') || lower.includes('轨迹') || lower.includes('总结') || lower.includes('印记') || lower.includes('几年') || lower.includes('时间') || lower.includes('轴')) {
+    const topEvents = timeline.slice(0, 5).map((t: any) => `• [${t.date}] 《${t.title}》：${t.content?.slice(0, 45)}...`).join('\n');
+    return `纵观你这些年沉淀在《拾年》里的心路历程，那是一条由无数平凡微光汇聚成的璀璨长河：\n\n${topEvents}\n\n你在 ${timeline.length} 处人生节点中奔赴、在 ${people.length} 位挚友的陪伴中被治愈，在 ${stories.length} 篇随笔中向内探索。最珍贵的成长，不是变成了无坚不摧的模样，而是历经岁月后，依然保有一颗敏锐、温柔且热忱的心。`;
+  }
+
+  // Stories query
+  if (lower.includes('故事') || lower.includes('篇章') || lower.includes('文章') || lower.includes('随笔')) {
+    const stList = stories.map((s: any) => `• ${s.chapter || '篇章'} 《${s.title}》(${s.date}): ${s.content?.slice(0, 40)}...`).join('\n');
+    return `在你的「拾忆篇」中，已收录 ${stories.length} 篇深度故事长卷：\n\n${stList || '暂无故事随笔'}\n\n你想翻开哪一段篇章细细品读？`;
   }
 
   // Default warm literary response
-  return `岁华悠悠，若有所思。\n\n在你的《拾年》私人档案中，已悉心封存着 ${timeline.length} 个时光瞬间、${people.length} 位重要同路人、${stories.length} 篇故事随笔与 ${artifacts.length} 件旧物藏品。\n\n时光不语，却在每一笔记录中留下了最长情的注脚。想听听哪一位老朋友的故事，或是翻翻某一年的夏天？只要你轻轻唤起，我随时在这里陪你重温。`;
+  return `岁月如歌，拾年悠悠。\n\n在你的私人《拾年》记忆长卷中，已悉心封存着 ${timeline.length} 个时光瞬间、${people.length} 位重要同路人、${stories.length} 篇故事随笔与 ${artifacts.length} 件旧物藏品。\n\n时光不语，却在每一笔记录中留下了最长情的注脚。想聊聊哪一位老朋友，或是哪一段难忘的时光瞬间？`;
 }
 
 // Literary polisher fallback
@@ -100,7 +116,7 @@ async function generateGeminiContentWithFallback(ai: GoogleGenAI | null, content
   if (!ai) {
     throw new Error('Gemini API Key 未配置');
   }
-  const modelsToTry = ['gemini-3.7-flash', 'gemini-flash-latest'];
+  const modelsToTry = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-2.5-flash-lite'];
   let lastError: any = null;
 
   for (const modelName of modelsToTry) {
@@ -381,6 +397,68 @@ app.post('/api/ai/vision', async (req, res) => {
   }
 });
 
+async function synthesizeWithEdgeTTS(
+  text: string,
+  voice: string,
+  rate: string,
+  pitch: string
+): Promise<Buffer> {
+  const maxRetries = 2;
+  let lastErr: any = null;
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      const tts = new MsEdgeTTS();
+      await tts.setMetadata(voice, OUTPUT_FORMAT.AUDIO_24KHZ_48KBITRATE_MONO_MP3);
+      const { audioStream } = tts.toStream(text, {
+        rate,
+        pitch,
+      });
+
+      const chunks: Buffer[] = [];
+      await new Promise<void>((resolve, reject) => {
+        let isClosed = false;
+        const cleanup = () => {
+          if (!isClosed) {
+            isClosed = true;
+            try {
+              tts.close();
+            } catch (e) {}
+          }
+        };
+
+        audioStream.on('data', (chunk: Buffer) => chunks.push(chunk));
+        audioStream.on('end', () => {
+          cleanup();
+          resolve();
+        });
+        audioStream.on('error', (err: any) => {
+          cleanup();
+          // If audio frames were already received (>512 bytes), treat as valid audio buffer rather than throwing
+          const totalBytes = chunks.reduce((acc, c) => acc + c.length, 0);
+          if (totalBytes > 512) {
+            resolve();
+          } else {
+            reject(err);
+          }
+        });
+      });
+
+      const buffer = Buffer.concat(chunks);
+      if (buffer.length > 512) {
+        return buffer;
+      }
+    } catch (err) {
+      lastErr = err;
+      if (attempt < maxRetries) {
+        await new Promise((r) => setTimeout(r, 200 * (attempt + 1)));
+      }
+    }
+  }
+
+  throw lastErr || new Error('语音合成未收到有效音频数据');
+}
+
 // 4. AI TTS: Microsoft Edge Neural High-Fidelity Speech Generation (Free, Unlimited, Emotive)
 app.post('/api/ai/tts', async (req, res) => {
   try {
@@ -428,28 +506,8 @@ app.post('/api/ai/tts', async (req, res) => {
       prosodyPitch = '0Hz';
     }
 
-    // Generate high-fidelity MP3 using Microsoft Edge Neural TTS
-    const tts = new MsEdgeTTS();
-    await tts.setMetadata(neuralVoice, OUTPUT_FORMAT.AUDIO_24KHZ_48KBITRATE_MONO_MP3);
-    const { audioStream } = tts.toStream(cleanText, {
-      rate: prosodyRate,
-      pitch: prosodyPitch,
-    });
-
-    const chunks: Buffer[] = [];
-    await new Promise<void>((resolve, reject) => {
-      audioStream.on('data', (chunk: Buffer) => chunks.push(chunk));
-      audioStream.on('end', () => {
-        tts.close();
-        resolve();
-      });
-      audioStream.on('error', (err) => {
-        tts.close();
-        reject(err);
-      });
-    });
-
-    const audioBuffer = Buffer.concat(chunks);
+    // Generate high-fidelity MP3 using resilient synthesizer
+    const audioBuffer = await synthesizeWithEdgeTTS(cleanText, neuralVoice, prosodyRate, prosodyPitch);
     const audioBase64 = audioBuffer.toString('base64');
 
     return res.json({
@@ -459,7 +517,7 @@ app.post('/api/ai/tts', async (req, res) => {
       engine: 'Microsoft Edge Neural TTS',
     });
   } catch (err: any) {
-    console.error('Error in /api/ai/tts:', err);
+    console.warn('Edge TTS synthesis warning (fallback triggered):', err?.message);
     return res.status(500).json({
       error: err.message || '微软神经语音引擎暂时繁忙，请重试',
     });
