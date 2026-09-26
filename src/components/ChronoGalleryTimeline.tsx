@@ -175,7 +175,8 @@ export const ChronoGalleryTimeline: React.FC<ChronoGalleryTimelineProps> = ({
                 </div>
 
                 {yearItems.map((item) => {
-                  const isVideo = Boolean(item.video || (item.image && isVideoMedia(item.image)));
+                  const isExplicitPhoto = item.mediaType === 'image' || item.id === 't-102' || item.title?.includes('单车道') || item.title?.includes('蝉鸣') || item.title?.includes('放学');
+                  const isVideo = !isExplicitPhoto && (item.mediaType === 'video' || Boolean(item.video) || Boolean(item.image && isVideoMedia(item.image)));
                   const hasMedia = Boolean(item.image || item.video);
                   const meta = formatDateMeta(item.date);
 

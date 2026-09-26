@@ -75,7 +75,7 @@ import { MemoirCardStudioModal, UniversalShareSource } from './components/Memoir
 import { FullscreenZenClock } from './components/FullscreenZenClock';
 import { isVideoMedia } from './utils/mediaStorage';
 import { ThemedDatePickerModal } from './components/ThemedDatePickerModal';
-import { PersonAlbum } from './components/PersonAlbum';
+import { PersonAlbum, AlbumThumbnailMedia } from './components/PersonAlbum';
 import { PersonArtifactsShelf } from './components/PersonArtifactsShelf';
 import { PersonStoriesShelf } from './components/PersonStoriesShelf';
 import { SealingWaxRitual } from './components/SealingWaxRitual';
@@ -90,73 +90,11 @@ import { useKeyboardStatus } from './hooks/useKeyboardStatus';
 import TTSAudioEngine from './utils/audioUnlocker';
 import { exportZipArchive, parseBackupArchive } from './utils/zipBackup';
 import { buildApiUrl, callClientGeminiDirect, callClientDeepSeekDirect } from './services/apiConfig';
+import { EASTERN_VOICES, EasternVoiceOption, speakTextCascade, stopAllSpeech } from './services/voiceService';
+import { saveMediaBlob, resolveMediaUrl, isIndexedDbMedia } from './services/indexedDbMedia';
 
-export interface TtsVoiceOption {
-  id: string;
-  name: string;
-  gender: '女声' | '男声';
-  character: string;
-  desc: string;
-  tags: string[];
-  previewQuote: string;
-}
-
-export const TTS_VOICES: TtsVoiceOption[] = [
-  {
-    id: 'zh-CN-XiaoxiaoNeural',
-    name: '素问',
-    gender: '女声',
-    character: '清雅书卷 · 岁华温婉',
-    desc: '微软神经语音。温婉知性、咬字清亮细腻，如在暖阳下翻阅泛黄书信般娓娓道来',
-    tags: ['知性温婉', '书卷气', '深情叙事'],
-    previewQuote: '岁华清照，拾年归处。我是素问，愿用温婉的书卷之声，陪你静静回味泛黄岁月里的温柔。'
-  },
-  {
-    id: 'zh-CN-XiaoyiNeural',
-    name: '微澜',
-    gender: '女声',
-    character: '空灵澄澈 · 治愈微光',
-    desc: '微软神经语音。轻柔空灵、明澈纯净，带有抚慰人心的温暖微光与治愈共情力',
-    tags: ['治愈微光', '空灵轻柔', '抚慰心灵'],
-    previewQuote: '风过林梢，时光微澜。我是微澜，愿如同一缕清风，为你轻声抚慰记忆里的点滴微光。'
-  },
-  {
-    id: 'zh-CN-XiaoyouNeural',
-    name: '拾光小语',
-    gender: '女声',
-    character: '灵动甜润 · 亲和陪伴',
-    desc: '微软神经语音。活泼明亮、甜润亲和，如邻家小妹伴你在午后闲话家常与童年回忆',
-    tags: ['灵动甜美', '亲和陪伴', '生动自然'],
-    previewQuote: '记忆的小匣子打开啦！我是拾光小语，陪你一起发现那些藏在日常角落里的美好与欢笑。'
-  },
-  {
-    id: 'zh-CN-YunxiNeural',
-    name: '初阳',
-    gender: '男声',
-    character: '温润明朗 · 少年朝气',
-    desc: '微软神经语音。温润明朗、朝气蓬勃，如林间晨曦般唤起青春校园与明媚回忆',
-    tags: ['少年感', '温润明朗', '真挚阳光'],
-    previewQuote: '阳光正好，青春未央！我是初阳，愿用明朗温润的少年朝气，带你重温那些热烈璀璨的时光。'
-  },
-  {
-    id: 'zh-CN-YunjianNeural',
-    name: '松风',
-    gender: '男声',
-    character: '沉稳醇厚 · 岁月磁性',
-    desc: '微软神经语音。沉稳低回、岁月厚重，如老友围炉夜话般富有深沉的故事感',
-    tags: ['磁性沉稳', '岁月厚重', '围炉夜话'],
-    previewQuote: '岁月如酒，沉静从容。我是松风，愿以沉稳磁性的声音，如老友围炉夜话般为你讲述旧日光阴。'
-  },
-  {
-    id: 'zh-CN-YunyangNeural',
-    name: '朗川',
-    gender: '男声',
-    character: '专业开阔 · 纪实叙事',
-    desc: '微软神经语音。富有新闻质感、大气开阔，适宜记录人生大事件与时代印记',
-    tags: ['大气开阔', '纪实播音', '厚重力量'],
-    previewQuote: '记录时代洪流与个体记忆的交汇。我是朗川，愿以铿锵有力的叙事之声，为你的十年历程留存最真实的见证。'
-  }
-];
+export type TtsVoiceOption = EasternVoiceOption;
+export const TTS_VOICES = EASTERN_VOICES;
 
 async function fetchGeminiWithBackoff(url: string, payload: any, retries = 3): Promise<any> {
   for (let i = 0; i < retries; i++) {
@@ -473,6 +411,15 @@ export default function App() {
           if (parsed.artifacts) {
             parsed.artifacts = parsed.artifacts.filter((a: any) => a.id !== 'a-103' && a.name !== '装满用尽笔芯的透明笔袋');
           }
+          if (parsed.timeline) {
+            parsed.timeline = parsed.timeline.map((item: any) => {
+              if (item.id === 't-102' || item.title?.includes('单车道') || item.title?.includes('蝉鸣')) {
+                const { video, videoPoster, ...rest } = item;
+                return { ...rest, mediaType: 'image' };
+              }
+              return item;
+            });
+          }
           const authorPerson = parsed.people.find((p: any) => p.id === 'p-author' || p.name === '作者');
           if (authorPerson && authorPerson.birthday === '2009.11.20') {
             authorPerson.birthday = '2009.11.18';
@@ -720,6 +667,9 @@ export default function App() {
   const [formArtifactMediaType, setFormArtifactMediaType] = useState<'image' | 'video'>('image');
   const [formStoryDate, setFormStoryDate] = useState<string>(() => new Date().toISOString().slice(0, 10));
   const [formLetterUnlockDate, setFormLetterUnlockDate] = useState<string>('2030-01-01');
+  const [formLetterMediaUrl, setFormLetterMediaUrl] = useState<string>('');
+  const [formLetterMediaType, setFormLetterMediaType] = useState<'image' | 'video'>('image');
+  const [formLetterVideoPoster, setFormLetterVideoPoster] = useState<string>('');
   const [editStoryDate, setEditStoryDate] = useState<string>('');
 
   // Artifact Edit State
@@ -756,17 +706,17 @@ export default function App() {
   const [ttsSelectedVoice, setTtsSelectedVoice] = useState<string>(() => {
     const saved = localStorage.getItem('shinian_tts_voice');
     if (saved) {
-      if (saved === 'Kore') return 'zh-CN-XiaoxiaoNeural';
-      if (saved === 'Zephyr') return 'zh-CN-XiaoyiNeural';
-      if (saved === 'Puck') return 'zh-CN-YunxiNeural';
-      if (saved === 'Fenrir') return 'zh-CN-YunjianNeural';
-      if (TTS_VOICES.some(v => v.id === saved)) return saved;
+      if (EASTERN_VOICES.some(v => v.id === saved)) return saved;
+      if (saved.includes('Xiaoyi') || saved === 'Zephyr') return 'xiaofeng';
+      if (saved.includes('Yunxi') || saved === 'Puck') return 'qinglang';
+      if (saved.includes('Yunjian') || saved === 'Fenrir') return 'jingshui';
+      if (saved.includes('Xiaoyou')) return 'chengche';
     }
-    return 'zh-CN-XiaoxiaoNeural';
+    return 'wenwan';
   });
   const [previewingVoiceId, setPreviewingVoiceId] = useState<string | null>(null);
   const [isVoicePickerModalOpen, setIsVoicePickerModalOpen] = useState<boolean>(false);
-  const [voiceFilterGender, setVoiceFilterGender] = useState<'all' | '女声' | '男声'>('all');
+  const [voiceFilterGender, setVoiceFilterGender] = useState<'all' | '女声' | '男声' | '清音'>('all');
 
   // Backup Import States
   const [importPreview, setImportPreview] = useState<{
@@ -899,17 +849,17 @@ export default function App() {
     readerStory,
     closeReaderStory: () => setReaderStory(null),
 
-    selectedPerson,
-    closeSelectedPerson: () => {
-      setIsEditingPerson(false);
-      setSelectedPerson(null);
-    },
-
     selectedArtifact,
     closeSelectedArtifact: () => setSelectedArtifact(null),
 
     selectedLetter,
     closeSelectedLetter: () => setSelectedLetter(null),
+
+    selectedPerson,
+    closeSelectedPerson: () => {
+      setIsEditingPerson(false);
+      setSelectedPerson(null);
+    },
 
     isVoicePickerModalOpen,
     closeVoicePickerModal: () => setIsVoicePickerModalOpen(false),
@@ -940,13 +890,21 @@ export default function App() {
   const { isKeyboardVisible } = useKeyboardStatus();
   const mainContentRef = useRef<HTMLElement | null>(null);
 
-  // Reset scroll position to top on navigation/modal transitions
+  const prevPersonIdRef = useRef<string | null>(null);
+
+  // Reset scroll position to top ONLY on tab change, opening story, or switching to a different person
   useEffect(() => {
-    window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
-    if (mainContentRef.current) {
-      mainContentRef.current.scrollTop = 0;
+    const isNewPerson = selectedPerson && selectedPerson.id !== prevPersonIdRef.current;
+    const justClosedPerson = !selectedPerson && prevPersonIdRef.current !== null;
+    prevPersonIdRef.current = selectedPerson ? selectedPerson.id : null;
+
+    if (activeTab || readerStory || isNewPerson || justClosedPerson) {
+      window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+      if (mainContentRef.current) {
+        mainContentRef.current.scrollTop = 0;
+      }
     }
-  }, [activeTab, readerStory, selectedPerson, selectedArtifact, selectedLetter]);
+  }, [activeTab, readerStory, selectedPerson?.id]);
 
   useEffect(() => {
     if (chatEndRef.current && activeTab === 'ai') {
@@ -1162,7 +1120,7 @@ export default function App() {
       }));
       setSelectedLetter(prev => prev && prev.id === letterToUnseal.id ? { ...prev, isUnlocked: true } : prev);
       setIsUnsealingLetter(false);
-      showToast(`✨ 时光信笺《${letterToUnseal.title}》已顺利拆封展读！`);
+      showToast(`时光信笺《${letterToUnseal.title}》已顺利拆封展读`);
     }, 700);
   };
 
@@ -1576,157 +1534,53 @@ export default function App() {
 
   const handleStopTts = () => {
     TTSAudioEngine.stop();
+    stopAllSpeech();
     if (audioPlayingUrl) {
       setAudioPlayingUrl(null);
       setAudioPlayingVoiceName('');
     }
-    if ('speechSynthesis' in window) {
-      try {
-        window.speechSynthesis.cancel();
-      } catch (e) {}
-    }
   };
 
   const handlePlayTts = async (textToRead: string, voiceOverride?: string) => {
-    // 1. CRITICAL: Prime the audio pipeline synchronously on user click gesture (0ms)
+    // 1. 同步解锁移动端音频管道 (0ms)
     TTSAudioEngine.unlockAndPrime();
     handleStopTts();
 
-    let voiceToUse = voiceOverride || ttsSelectedVoice;
-    if (voiceToUse === 'Kore') voiceToUse = 'zh-CN-XiaoxiaoNeural';
-    if (voiceToUse === 'Zephyr') voiceToUse = 'zh-CN-XiaoyiNeural';
-    if (voiceToUse === 'Puck') voiceToUse = 'zh-CN-YunxiNeural';
-    if (voiceToUse === 'Fenrir') voiceToUse = 'zh-CN-YunjianNeural';
-
-    const voiceObj = TTS_VOICES.find(v => v.id === voiceToUse) || TTS_VOICES[0];
-    const cacheKey = `${voiceToUse}_${textToRead.trim()}`;
-
-    // Instant playback if already cached in memory
-    if (ttsAudioCache.has(cacheKey)) {
-      const cachedUrl = ttsAudioCache.get(cacheKey)!;
-      setAudioPlayingUrl(cachedUrl);
-      setAudioPlayingVoiceName(`${voiceObj.name} (${voiceObj.gender}) · ${voiceObj.character}`);
-      TTSAudioEngine.playAudio(
-        cachedUrl,
-        () => {
-          setAudioPlayingUrl(null);
-          setAudioPlayingVoiceName('');
-        },
-        () => {
-          setAudioPlayingUrl(null);
-          setAudioPlayingVoiceName('');
-        }
-      ).catch(() => {});
-      showToast(`正在播放【${voiceObj.name}】微软神经语音朗诵`);
-      return;
-    }
+    const voiceToUse = voiceOverride || ttsSelectedVoice;
+    const voiceObj = EASTERN_VOICES.find(v => v.id === voiceToUse) || EASTERN_VOICES[0];
 
     setIsTtsGenerating(true);
-    showToast(`正在生成【${voiceObj.name}】微软神经语音朗诵...`);
+    showToast(`正在唤起【${voiceObj.name}】朗诵...`);
+
     try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 4500);
-
-      const res = await fetch(buildApiUrl('/api/ai/tts'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          text: textToRead,
-          voice: voiceToUse
-        }),
-        signal: controller.signal
-      });
-      clearTimeout(timeoutId);
-
-      const contentType = res.headers.get('content-type') || '';
-      if (!res.ok) {
-        throw new Error(`语音服务请求状态: ${res.status}`);
-      }
-
-      if (!contentType.includes('application/json')) {
-        throw new Error('语音服务暂未就绪');
-      }
-
-      const data = await res.json();
-      if (!data.audioBase64) {
-        throw new Error(data?.error || '语音朗诵生成失败');
-      }
-
-      let audioUrl = '';
-      if (data.mimeType && data.mimeType.includes('mp3')) {
-        const arrayBuffer = base64ToArrayBuffer(data.audioBase64);
-        const blob = new Blob([arrayBuffer], { type: 'audio/mp3' });
-        audioUrl = URL.createObjectURL(blob);
-      } else {
-        const matchRate = (data.mimeType || '').match(/rate=(\d+)/);
-        const sampleRate = matchRate ? parseInt(matchRate[1], 10) : 24000;
-        const pcmArrayBuffer = base64ToArrayBuffer(data.audioBase64);
-        const pcmInt16 = new Int16Array(pcmArrayBuffer);
-        const wavBlob = pcmToWav(pcmInt16, sampleRate);
-        audioUrl = URL.createObjectURL(wavBlob);
-      }
-
-      // Cache the generated audio Blob URL for instant replay without consuming bandwidth
-      ttsAudioCache.set(cacheKey, audioUrl);
-
-      setAudioPlayingUrl(audioUrl);
-      setAudioPlayingVoiceName(`${voiceObj.name} (${voiceObj.gender}) · ${voiceObj.character}`);
-      
-      // Play through pre-warmed single-instance audio engine with 100% gesture authority
-      await TTSAudioEngine.playAudio(
-        audioUrl,
-        () => {
-          setAudioPlayingUrl(null);
-          setAudioPlayingVoiceName('');
-        },
-        () => {
-          setAudioPlayingUrl(null);
-          setAudioPlayingVoiceName('');
+      await speakTextCascade(
+        textToRead,
+        voiceObj.id,
+        {
+          onStart: (voiceName, schemeName) => {
+            setAudioPlayingVoiceName(`${voiceName} · ${schemeName}`);
+            showToast(`正在播放【${voiceName}】${schemeName}朗诵`);
+          },
+          onEnd: () => {
+            setAudioPlayingUrl(null);
+            setAudioPlayingVoiceName('');
+          },
+          onError: () => {
+            setAudioPlayingUrl(null);
+            setAudioPlayingVoiceName('');
+            showToast('语音朗诵已停止');
+          }
         }
       );
-      showToast(`正在播放【${voiceObj.name}】微软神经语音朗诵`);
-    } catch (err: any) {
-      console.warn('[Microsoft Edge TTS Fallback to Web Speech Synthesis]:', err);
-      // Fallback seamlessly to native Android / Browser SpeechSynthesis
-      if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
-        try {
-          window.speechSynthesis.cancel();
-          if (window.speechSynthesis.paused) {
-            window.speechSynthesis.resume();
-          }
-          const utterance = new SpeechSynthesisUtterance(textToRead);
-          utterance.lang = 'zh-CN';
-          utterance.rate = 0.92;
-          utterance.pitch = 1.0;
-
-          const voices = window.speechSynthesis.getVoices();
-          const zhVoice = voices.find(v => v.lang.includes('zh') || v.lang.includes('cmn'));
-          if (zhVoice) utterance.voice = zhVoice;
-
-          utterance.onstart = () => {
-            setAudioPlayingVoiceName(`自然朗读 · ${voiceObj.name}`);
-            showToast(`正在播放【${voiceObj.name}】朗诵`);
-          };
-          utterance.onend = () => {
-            setAudioPlayingVoiceName('');
-          };
-          utterance.onerror = () => {
-            setAudioPlayingVoiceName('');
-          };
-
-          window.speechSynthesis.speak(utterance);
-        } catch (speechErr) {
-          showToast('语音朗读生成中，请再次轻触播放');
-        }
-      } else {
-        showToast('语音通道连接中，请稍后重试');
-      }
+    } catch (err) {
+      console.warn('TTS playback error:', err);
+      showToast('语音播放遇到异常，请轻触重试');
     } finally {
       setIsTtsGenerating(false);
     }
   };
 
-  const handlePreviewVoice = async (voice: TtsVoiceOption) => {
+  const handlePreviewVoice = async (voice: EasternVoiceOption) => {
     if (previewingVoiceId !== null || isTtsGenerating) return;
     setPreviewingVoiceId(voice.id);
     try {
@@ -2611,7 +2465,7 @@ export default function App() {
                               <div className="min-w-0">
                                 <div className="text-xs font-serif font-medium text-[#2B332E] truncate">朗读者音色</div>
                                 <div className="text-[10px] text-[#6E7C75] truncate">
-                                  {TTS_VOICES.find(v => v.id === ttsSelectedVoice)?.name || '素问'} · 情感朗诵
+                                  {EASTERN_VOICES.find(v => v.id === ttsSelectedVoice)?.name || '温婉墨香'}
                                 </div>
                               </div>
                             </div>
@@ -2753,7 +2607,7 @@ export default function App() {
                       </motion.div>
                     )}
 
-                    {/* Level 3: 朗读者音色选择 Sub-Card */}
+                    {/* Level 3: 朗读者音色选拔 Sub-Card (东方意境与苹果液态玻璃美学) */}
                     {topNavSubView === 'voice' && (
                       <motion.div
                         key="voice-card"
@@ -2761,7 +2615,7 @@ export default function App() {
                         animate={{ opacity: 1, scale: 1, y: 0 }}
                         exit={{ opacity: 0, scale: 0.94, y: -6 }}
                         transition={{ duration: 0.2, ease: [0.25, 1, 0.5, 1] }}
-                        className={`absolute top-full right-0 mt-2 w-72 max-h-[78vh] flex flex-col p-3.5 apple-liquid-glass rounded-3xl shadow-none border z-50 font-sans ${
+                        className={`absolute top-full right-0 mt-2 w-76 max-h-[82vh] flex flex-col p-3.5 apple-liquid-glass rounded-3xl shadow-none border z-50 font-sans ${
                           isDarkMode
                             ? 'bg-[#141B18]/92 border-white/15 text-[#FAF8F5]'
                             : 'bg-white/90 border-white/85 text-[#2B332E]'
@@ -2782,7 +2636,9 @@ export default function App() {
                             <ChevronLeft className="w-4 h-4" />
                             <span>返回设置</span>
                           </button>
-                          <h4 className="text-xs font-bold font-serif">朗读者音色</h4>
+                          <div className="text-center">
+                            <h4 className="text-xs font-bold font-serif">朗读者音色</h4>
+                          </div>
                           <button
                             onClick={() => setIsTopNavMenuOpen(false)}
                             className="p-1 text-[#6E7C75]/60 hover:text-[#2B332E] dark:hover:text-white rounded-full hover:bg-black/5 cursor-pointer"
@@ -2796,7 +2652,10 @@ export default function App() {
                           {(['all', '女声', '男声'] as const).map(g => (
                             <button
                               key={g}
-                              onClick={() => setVoiceFilterGender(g)}
+                              onClick={() => {
+                                sound.playWaterDrop(840);
+                                setVoiceFilterGender(g);
+                              }}
                               className={`flex-1 py-1 rounded-lg text-[11px] font-serif font-medium transition-all cursor-pointer ${
                                 voiceFilterGender === g
                                   ? 'bg-white dark:bg-white/20 text-[#2B332E] dark:text-white shadow-none font-bold'
@@ -2809,8 +2668,8 @@ export default function App() {
                         </div>
 
                         {/* Scrollable Voice Cards */}
-                        <div className="space-y-1.5 overflow-y-auto flex-1 pr-0.5 custom-scrollbar">
-                          {TTS_VOICES
+                        <div className="space-y-2 overflow-y-auto flex-1 pr-0.5 custom-scrollbar">
+                          {EASTERN_VOICES
                             .filter(v => voiceFilterGender === 'all' || v.gender === voiceFilterGender)
                             .map(v => {
                               const isSelected = ttsSelectedVoice === v.id;
@@ -2820,43 +2679,76 @@ export default function App() {
                                 <div
                                   key={v.id}
                                   onClick={() => {
+                                    sound.playWaterDrop(820);
                                     setTtsSelectedVoice(v.id);
                                     localStorage.setItem('shinian_tts_voice', v.id);
-                                    showToast(`已选用朗诵音色：${v.name}`);
+                                    showToast(`已选用朗诵音色：【${v.name}】`);
                                   }}
-                                  className={`p-2.5 rounded-2xl border transition-all text-left cursor-pointer ${
+                                  className={`p-3 rounded-2xl border transition-all text-left cursor-pointer relative overflow-hidden group ${
                                     isSelected
                                       ? isDarkMode
-                                        ? 'bg-white/15 border-white/30 shadow-none'
-                                        : 'bg-white/90 border-[#5B7B6D] shadow-none'
+                                        ? 'bg-white/15 border-white/40 ring-1 ring-white/20'
+                                        : 'bg-white/95 border-[#5B7B6D] ring-1 ring-[#5B7B6D]/30 shadow-xs'
                                       : isDarkMode
                                         ? 'bg-white/5 border-transparent hover:bg-white/10'
-                                        : 'bg-white/50 border-transparent hover:bg-white/70'
+                                        : 'bg-white/60 border-transparent hover:bg-white/85'
                                   }`}
                                 >
+                                  {/* Corner Accent for Selected Tone */}
+                                  {isSelected && (
+                                    <div
+                                      className="absolute top-0 right-0 w-8 h-8 pointer-events-none"
+                                      style={{
+                                        background: `linear-gradient(135deg, transparent 50%, ${currentTheme.primary}33 50%)`
+                                      }}
+                                    />
+                                  )}
+
                                   <div className="flex items-center justify-between">
-                                    <div className="flex items-center gap-1.5 min-w-0">
-                                      <span className="font-serif font-bold text-xs truncate">{v.name}</span>
-                                      <span className="text-[9px] px-1.5 py-0.2 rounded-md bg-black/5 dark:bg-white/10 font-sans shrink-0 opacity-75">
+                                    <div className="flex items-center gap-2 min-w-0">
+                                      <span className="font-serif font-bold text-xs text-[#2B332E] dark:text-[#FAF8F5] tracking-wide">
+                                        {v.name}
+                                      </span>
+                                      <span className="text-[9px] px-1.5 py-0.5 rounded-md bg-black/5 dark:bg-white/10 text-[#6E7C75] dark:text-[#A0B0A7] font-sans shrink-0">
                                         {v.gender}
                                       </span>
                                     </div>
-                                    <button
-                                      type="button"
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        handlePreviewVoice(v);
-                                      }}
-                                      disabled={isTtsGenerating}
-                                      className="text-[10px] px-2 py-0.5 rounded-lg bg-black/5 dark:bg-white/10 hover:bg-[#5B7B6D] hover:text-white transition-colors flex items-center gap-1 shrink-0 cursor-pointer"
-                                    >
-                                      <Play className="w-2.5 h-2.5" />
-                                      <span>{isPreviewing ? '播放中' : '试听'}</span>
-                                    </button>
+
+                                    <div className="flex items-center gap-1.5 shrink-0">
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          handlePreviewVoice(v);
+                                        }}
+                                        disabled={isTtsGenerating && previewingVoiceId !== v.id}
+                                        className={`text-[10px] px-2.5 py-1 rounded-xl transition-all flex items-center gap-1 cursor-pointer font-sans ${
+                                          isPreviewing
+                                            ? 'bg-[#E88765] text-white shadow-xs animate-pulse'
+                                            : 'bg-black/5 dark:bg-white/10 hover:bg-[#5B7B6D] hover:text-white text-[#2B332E] dark:text-white'
+                                        }`}
+                                      >
+                                        {isPreviewing ? (
+                                          <>
+                                            <Volume2 className="w-2.5 h-2.5 animate-bounce" />
+                                            <span>试听中</span>
+                                          </>
+                                        ) : (
+                                          <>
+                                            <Play className="w-2.5 h-2.5" />
+                                            <span>试听</span>
+                                          </>
+                                        )}
+                                      </button>
+                                      {isSelected && (
+                                        <Check className="w-3.5 h-3.5 text-[#5B7B6D] shrink-0" />
+                                      )}
+                                    </div>
                                   </div>
-                                  <p className="text-[10px] opacity-75 font-serif line-clamp-1 mt-1 leading-tight">
-                                    {v.character}
-                                  </p>
+
+                                  <div className="mt-2 pt-1.5 border-t border-black/5 dark:border-white/5 flex items-center justify-between text-[10px] text-[#6E7C75]/80 dark:text-[#A0B0A7]/70 font-serif">
+                                    <span className="italic truncate pr-2">“{v.previewQuote}”</span>
+                                  </div>
                                 </div>
                               );
                             })}
@@ -3247,7 +3139,8 @@ export default function App() {
 
                     {/* Classic Polaroid Styled Media Frame (Photo or Video) */}
                     {(todayHighlight.image || todayHighlight.video) && (() => {
-                      const isVideo = Boolean(todayHighlight.video || (todayHighlight.image && isVideoMedia(todayHighlight.image)));
+                      const isExplicitPhoto = todayHighlight.mediaType === 'image' || todayHighlight.id === 't-102' || todayHighlight.title?.includes('单车道') || todayHighlight.title?.includes('蝉鸣') || todayHighlight.title?.includes('放学');
+                      const isVideo = !isExplicitPhoto && (todayHighlight.mediaType === 'video' || Boolean(todayHighlight.video) || Boolean(todayHighlight.image && isVideoMedia(todayHighlight.image)));
                       const videoSrc = todayHighlight.video || (isVideo ? todayHighlight.image : undefined);
 
                       return (
@@ -4663,7 +4556,29 @@ export default function App() {
                     </div>
                   </div>
 
-                  {/* Card 3: 寄语与初识印象 (Bio & Impression) */}
+                  {/* Card 3: 社交信息 (Contacts) - 电话、微信、QQ 三栏均分并列 */}
+                  <div className="bg-white/90 dark:bg-white/[0.04] p-3.5 rounded-2xl border border-black/5 dark:border-white/10 space-y-2 shadow-2xs">
+                    <span className="text-[11px] font-serif font-medium text-[#526058] dark:text-[#A7B4AD]">联络方式 (选填)</span>
+                    <div className="grid grid-cols-3 gap-2">
+                      <input
+                        name="phone"
+                        placeholder="电话 (选填)"
+                        className="w-full p-2.5 text-xs font-serif rounded-xl border border-stone-200/80 dark:border-white/10 bg-stone-50/90 dark:bg-black/20 text-[#2B332E] dark:text-[#FAF8F5] focus:outline-none placeholder-[#6E7C75]/50"
+                      />
+                      <input
+                        name="wechat"
+                        placeholder="微信 (选填)"
+                        className="w-full p-2.5 text-xs font-serif rounded-xl border border-stone-200/80 dark:border-white/10 bg-stone-50/90 dark:bg-black/20 text-[#2B332E] dark:text-[#FAF8F5] focus:outline-none placeholder-[#6E7C75]/50"
+                      />
+                      <input
+                        name="qq"
+                        placeholder="QQ (选填)"
+                        className="w-full p-2.5 text-xs font-serif rounded-xl border border-stone-200/80 dark:border-white/10 bg-stone-50/90 dark:bg-black/20 text-[#2B332E] dark:text-[#FAF8F5] focus:outline-none placeholder-[#6E7C75]/50"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Card 4: 寄语与初识印象 (Bio & Impression) */}
                   <div className="bg-white/90 dark:bg-white/[0.04] p-3.5 rounded-2xl border border-black/5 dark:border-white/10 space-y-2 shadow-2xs">
                     <span className="text-[11px] font-serif font-medium text-[#526058] dark:text-[#A7B4AD]">一句话总结与初识印象</span>
                     <input
@@ -4811,7 +4726,7 @@ export default function App() {
                   setFormArtifactMediaType('image');
                   setFormArtifactDate(new Date().toISOString().slice(0, 10));
                   setActiveModal(null);
-                  showToast('旧物已成功入藏拾物阁 ✨');
+                  showToast('旧物已成功入藏拾物阁');
                 }} className="space-y-4 text-xs font-sans">
 
                   {/* Hero Title Input */}
@@ -4918,9 +4833,16 @@ export default function App() {
                     title,
                     unlockDate,
                     content,
-                    isUnlocked: false
+                    isUnlocked: false,
+                    mediaUrl: formLetterMediaUrl || undefined,
+                    mediaType: formLetterMediaType,
+                    videoPoster: formLetterVideoPoster || undefined,
+                    date: new Date().toISOString().slice(0, 10)
                   });
                   setFormLetterUnlockDate('2030-01-01');
+                  setFormLetterMediaUrl('');
+                  setFormLetterVideoPoster('');
+                  setFormLetterMediaType('image');
                   setActiveModal(null);
                   setSealingRitualData({ title, unlockDate });
                 }} className="space-y-4 text-xs font-sans">
@@ -4934,6 +4856,25 @@ export default function App() {
                       className="w-full text-base sm:text-lg font-serif font-bold bg-transparent border-b border-black/10 dark:border-white/10 pb-2 text-[#2B332E] dark:text-[#FAF8F5] focus:outline-none placeholder-[#6E7C75]/40"
                     />
                   </div>
+
+                  {/* Local Media Uploader (支持照片 / 原生二进制安全存储百兆长视频) */}
+                  <LocalMediaUploader
+                    value={formLetterMediaUrl}
+                    poster={formLetterVideoPoster}
+                    mediaType={formLetterMediaType}
+                    onChange={(url, type, poster) => {
+                      setFormLetterMediaType(type);
+                      setFormLetterMediaUrl(url);
+                      setFormLetterVideoPoster(poster || '');
+                    }}
+                    onClear={() => {
+                      setFormLetterMediaUrl('');
+                      setFormLetterVideoPoster('');
+                      setFormLetterMediaType('image');
+                    }}
+                    label="信笺影像附件"
+                    allowVideo={true}
+                  />
 
                   {/* Segmented Metadata Card */}
                   <div className="bg-white/80 dark:bg-white/[0.04] rounded-2xl border border-black/5 dark:border-white/10 divide-y divide-black/5 dark:divide-white/10 shadow-2xs">
@@ -5169,19 +5110,25 @@ export default function App() {
                   </div>
                 </div>
 
-                {/* Card 3: 社交信息与总结寄语 (Contacts & Bio) */}
+                {/* Card 3: 社交信息与总结寄语 (Contacts & Bio) - 电话、微信、QQ 三栏均分并列 */}
                 <div className="bg-white/90 dark:bg-white/[0.04] p-3.5 rounded-2xl border border-black/5 dark:border-white/10 space-y-2.5 shadow-2xs">
-                  <div className="grid grid-cols-2 gap-2">
-                    <input
-                      name="wechat"
-                      defaultValue={selectedPerson.wechat || ''}
-                      placeholder="微信号 (选填)"
-                      className="w-full p-2.5 text-xs font-serif rounded-xl border border-stone-200/80 dark:border-white/10 bg-stone-50/90 dark:bg-black/20 text-[#2B332E] dark:text-[#FAF8F5] focus:outline-none placeholder-[#6E7C75]/50"
-                    />
+                  <div className="grid grid-cols-3 gap-2">
                     <input
                       name="phone"
                       defaultValue={selectedPerson.phone || ''}
-                      placeholder="联系电话 (选填)"
+                      placeholder="电话 (选填)"
+                      className="w-full p-2.5 text-xs font-serif rounded-xl border border-stone-200/80 dark:border-white/10 bg-stone-50/90 dark:bg-black/20 text-[#2B332E] dark:text-[#FAF8F5] focus:outline-none placeholder-[#6E7C75]/50"
+                    />
+                    <input
+                      name="wechat"
+                      defaultValue={selectedPerson.wechat || ''}
+                      placeholder="微信 (选填)"
+                      className="w-full p-2.5 text-xs font-serif rounded-xl border border-stone-200/80 dark:border-white/10 bg-stone-50/90 dark:bg-black/20 text-[#2B332E] dark:text-[#FAF8F5] focus:outline-none placeholder-[#6E7C75]/50"
+                    />
+                    <input
+                      name="qq"
+                      defaultValue={selectedPerson.qq || ''}
+                      placeholder="QQ (选填)"
                       className="w-full p-2.5 text-xs font-serif rounded-xl border border-stone-200/80 dark:border-white/10 bg-stone-50/90 dark:bg-black/20 text-[#2B332E] dark:text-[#FAF8F5] focus:outline-none placeholder-[#6E7C75]/50"
                     />
                   </div>
@@ -5554,49 +5501,85 @@ export default function App() {
           </div>
         )}
 
-        {/* Dedicated AI Voice Picker Modal */}
+        {/* Dedicated AI Voice Picker Modal (东方意境与苹果液态玻璃美学) */}
         {isVoicePickerModalOpen && (
-          <div className="absolute inset-0 bg-[#2B332E]/60 backdrop-blur-xs z-50 flex items-center justify-center p-3 sm:p-4 animate-fadeIn font-sans">
-            <div className="bg-[#FAF8F5] w-full max-w-sm rounded-3xl shadow-2xl border border-[#5B7B6D]/20 overflow-hidden flex flex-col max-h-[88%] paper-texture">
+          <div className="fixed inset-0 bg-[#17201B]/40 dark:bg-black/75 backdrop-blur-xl z-50 flex items-center justify-center p-3 sm:p-5 animate-fadeIn font-sans">
+            <div className={`relative w-full max-w-md rounded-[32px] overflow-hidden flex flex-col max-h-[88vh] apple-liquid-glass ${
+              isDarkMode 
+                ? 'bg-[#141B18]/92 border-white/20 text-[#FAF8F5] shadow-[0_24px_64px_rgba(0,0,0,0.55)]' 
+                : 'bg-white/88 border-white/90 text-[#2B332E] shadow-[0_24px_64px_rgba(43,51,46,0.18)]'
+            } border transition-all transform-gpu`}>
+              <div className="dynamic-glass-sheen pointer-events-none" />
+
               {/* Modal Header */}
-              <div className="p-4 bg-white/90 backdrop-blur-md border-b border-[#5B7B6D]/15 flex items-center justify-between shrink-0">
-                <div className="flex items-center gap-2.5 min-w-0">
-                  <div className="w-8 h-8 rounded-xl bg-[#FAF8F5] border border-[#5B7B6D]/20 flex items-center justify-center text-[#5B7B6D] shrink-0">
-                    <Headphones className="w-4 h-4" />
+              <div className={`p-4 sm:px-5 sm:py-4.5 border-b flex items-center justify-between shrink-0 relative z-10 ${
+                isDarkMode ? 'border-white/10 bg-white/5' : 'border-black/5 bg-white/60'
+              } backdrop-blur-md`}>
+                <div className="flex items-center gap-3 min-w-0">
+                  <div 
+                    className="w-9 h-9 rounded-2xl flex items-center justify-center shrink-0 border shadow-xs"
+                    style={{
+                      backgroundColor: `${currentTheme.primary}18`,
+                      borderColor: `${currentTheme.primary}35`,
+                      color: currentTheme.primary
+                    }}
+                  >
+                    <Headphones className="w-4.5 h-4.5" />
                   </div>
                   <div className="min-w-0">
-                    <h3 className="font-bold text-sm text-[#2B332E] font-serif truncate">选择时光朗读者音色</h3>
-                    <p className="text-[10px] text-[#6E7C75] truncate">高品质情感人声 · 区分男女性格质感</p>
+                    <h3 className="font-bold text-sm sm:text-base text-[#2B332E] dark:text-[#FAF8F5] font-serif truncate tracking-wide">
+                      朗读者音色
+                    </h3>
                   </div>
                 </div>
                 <button
-                  onClick={() => setIsVoicePickerModalOpen(false)}
-                  className="p-1.5 text-[#6E7C75] hover:text-[#2B332E] hover:bg-stone-100 rounded-lg transition-colors shrink-0"
+                  type="button"
+                  onClick={() => {
+                    sound.playWaterDrop(600);
+                    setIsVoicePickerModalOpen(false);
+                  }}
+                  className="p-1.5 text-[#6E7C75] hover:text-[#2B332E] dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/10 rounded-full transition-colors shrink-0 cursor-pointer active:scale-95"
                 >
                   <X className="w-4 h-4" />
                 </button>
               </div>
 
               {/* Gender Filter Tabs */}
-              <div className="px-3.5 py-2 flex items-center gap-1.5 border-b border-[#5B7B6D]/10 bg-white/60 shrink-0">
-                {(['all', '女声', '男声'] as const).map((filter) => (
-                  <button
-                    key={filter}
-                    onClick={() => setVoiceFilterGender(filter)}
-                    className={`flex-1 whitespace-nowrap px-2.5 py-1.5 rounded-xl text-xs font-medium transition-all text-center ${
-                      voiceFilterGender === filter
-                        ? 'bg-[#5B7B6D] text-white shadow-2xs font-semibold'
-                        : 'bg-white text-[#6E7C75] border border-[#5B7B6D]/15 hover:text-[#2B332E]'
-                    }`}
-                  >
-                    {filter === 'all' ? '全部音色' : filter}
-                  </button>
-                ))}
+              <div className={`px-4 py-2.5 flex items-center gap-1.5 border-b shrink-0 relative z-10 ${
+                isDarkMode ? 'border-white/10 bg-black/10' : 'border-black/5 bg-black/5'
+              }`}>
+                {(['all', '女声', '男声'] as const).map((filter) => {
+                  const labelMap = {
+                    all: '全部',
+                    '女声': '女声',
+                    '男声': '男声'
+                  };
+                  const isActive = voiceFilterGender === filter;
+                  return (
+                    <button
+                      key={filter}
+                      type="button"
+                      onClick={() => {
+                        sound.playWaterDrop(840);
+                        setVoiceFilterGender(filter);
+                      }}
+                      className={`flex-1 whitespace-nowrap px-2 py-1.5 rounded-xl text-xs font-serif transition-all text-center cursor-pointer ${
+                        isActive
+                          ? isDarkMode
+                            ? 'bg-white/20 text-white font-bold shadow-xs'
+                            : 'bg-white text-[#2B332E] font-bold shadow-xs'
+                          : 'text-[#6E7C75] dark:text-[#A7B4AD] hover:text-[#2B332E] dark:hover:text-white'
+                      }`}
+                    >
+                      {labelMap[filter]}
+                    </button>
+                  );
+                })}
               </div>
 
               {/* Voice Cards List */}
-              <div className="p-3.5 space-y-2.5 overflow-y-auto flex-1">
-                {TTS_VOICES
+              <div className="p-3.5 sm:p-4 space-y-2.5 overflow-y-auto flex-1 custom-scrollbar relative z-10">
+                {EASTERN_VOICES
                   .filter(v => voiceFilterGender === 'all' || v.gender === voiceFilterGender)
                   .map((v) => {
                     const isSelected = ttsSelectedVoice === v.id;
@@ -5606,59 +5589,59 @@ export default function App() {
                       <div
                         key={v.id}
                         onClick={() => {
+                          sound.playWaterDrop(820);
                           setTtsSelectedVoice(v.id);
                           localStorage.setItem('shinian_tts_voice', v.id);
-                          showToast(`已选用朗诵音色：${v.name}`);
+                          showToast(`已选用朗诵音色：【${v.name}】`);
                         }}
-                        className={`p-3.5 rounded-2xl border text-left cursor-pointer transition-all flex flex-col justify-between space-y-2.5 ${
+                        className={`p-3.5 rounded-2xl border text-left cursor-pointer transition-all flex flex-col justify-between space-y-2 relative overflow-hidden group ${
                           isSelected
-                            ? 'bg-white border-[#5B7B6D] ring-2 ring-[#5B7B6D]/25 shadow-xs'
-                            : 'bg-white/80 border-[#5B7B6D]/15 hover:border-[#5B7B6D]/40 hover:bg-white'
+                            ? isDarkMode
+                              ? 'bg-white/15 border-white/40 ring-1 ring-white/20 shadow-md'
+                              : 'bg-white/95 border-[#5B7B6D] ring-1 ring-[#5B7B6D]/30 shadow-sm'
+                            : isDarkMode
+                              ? 'bg-white/5 border-transparent hover:bg-white/10'
+                              : 'bg-white/60 border-transparent hover:bg-white/85'
                         }`}
                       >
-                        <div className="flex items-center justify-between gap-2">
+                        {/* Selected Indicator */}
+                        {isSelected && (
+                          <div className="absolute top-2.5 right-2.5 flex items-center gap-1">
+                            <span className="font-serif text-[11px] px-1.5 py-0.5 rounded-md bg-[#5B7B6D]/10 text-[#5B7B6D] dark:text-emerald-400 border border-[#5B7B6D]/30">
+                              选定
+                            </span>
+                            <Check className="w-3.5 h-3.5 text-[#5B7B6D] dark:text-emerald-400" />
+                          </div>
+                        )}
+
+                        <div className="flex items-center justify-between gap-2 pr-12">
                           <div className="flex items-center gap-2 min-w-0">
-                            <span className="font-bold text-xs text-[#2B332E] font-serif truncate">{v.name}</span>
-                            <span className={`text-[10px] px-2 py-0.5 rounded-md font-medium font-sans shrink-0 ${
-                              v.gender === '女声'
-                                ? 'bg-[#FDF0EB] text-[#E88765] border border-[#E88765]/20'
-                                : 'bg-[#5B7B6D]/10 text-[#5B7B6D] border border-[#5B7B6D]/20'
-                            }`}>
+                            <span className="font-bold text-sm text-[#2B332E] dark:text-[#FAF8F5] font-serif tracking-wide truncate">
+                              {v.name}
+                            </span>
+                            <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-black/5 dark:bg-white/10 text-[#6E7C75] dark:text-[#A7B4AD] font-sans shrink-0">
                               {v.gender}
                             </span>
-                            <span className="text-[10px] text-[#6E7C75] font-serif hidden xs:inline truncate">
-                              · {v.character}
-                            </span>
                           </div>
-                          {isSelected && (
-                            <span className="text-[10px] text-[#5B7B6D] font-bold flex items-center gap-1 bg-[#5B7B6D]/10 px-2 py-0.5 rounded-full font-sans shrink-0">
-                              <Check className="w-3 h-3" /> 已选用
-                            </span>
-                          )}
                         </div>
 
-                        <p className="text-[11px] text-[#6E7C75] leading-relaxed font-serif">{v.desc}</p>
+                        <div className="text-[11px] text-[#6E7C75] dark:text-[#A7B4AD] font-serif italic py-1">
+                          “{v.previewQuote}”
+                        </div>
 
-                        <div className="flex flex-wrap items-center justify-between gap-2 pt-1.5 border-t border-[#5B7B6D]/10">
-                          <div className="flex flex-wrap gap-1">
-                            {v.tags.map(t => (
-                              <span key={t} className="text-[9px] px-1.5 py-0.5 rounded-md bg-[#FAF8F5] border border-[#5B7B6D]/10 text-[#6E7C75] font-sans whitespace-nowrap">
-                                #{t}
-                              </span>
-                            ))}
-                          </div>
-
+                        <div className="flex items-center justify-end pt-2 border-t border-black/5 dark:border-white/10">
                           <button
                             type="button"
                             onClick={(e) => {
                               e.stopPropagation();
+                              sound.playWaterDrop(840);
                               handlePreviewVoice(v);
                             }}
                             disabled={isTtsGenerating || previewingVoiceId !== null}
-                            className={`text-[11px] px-3 py-1 rounded-xl flex items-center gap-1.5 transition-all font-medium font-sans shrink-0 ${
+                            className={`text-[11px] px-3 py-1 rounded-xl flex items-center gap-1.5 transition-all font-medium font-sans shrink-0 cursor-pointer active:scale-95 ${
                               isPreviewing
                                 ? 'bg-[#E88765] text-white animate-pulse shadow-xs'
-                                : 'bg-[#5B7B6D]/10 text-[#5B7B6D] hover:bg-[#5B7B6D] hover:text-white'
+                                : 'bg-black/5 dark:bg-white/10 text-[#2B332E] dark:text-[#FAF8F5] hover:bg-[#5B7B6D] hover:text-white'
                             }`}
                           >
                             {isPreviewing ? (
@@ -5669,7 +5652,7 @@ export default function App() {
                             ) : (
                               <>
                                 <Play className="w-3 h-3" />
-                                <span className="whitespace-nowrap">试听声线</span>
+                                <span className="whitespace-nowrap">试听</span>
                               </>
                             )}
                           </button>
@@ -5679,13 +5662,23 @@ export default function App() {
                   })}
               </div>
 
-              {/* Modal Footer */}
-              <div className="p-3 bg-white/90 backdrop-blur-md border-t border-[#5B7B6D]/15 shrink-0">
+              {/* Modal Footer (Apple Liquid Glass) */}
+              <div className={`p-4 border-t flex items-center justify-between gap-3 shrink-0 relative z-10 ${
+                isDarkMode ? 'border-white/10 bg-white/5' : 'border-black/5 bg-white/60'
+              } backdrop-blur-md`}>
+                <div className="text-[11px] text-[#6E7C75] dark:text-[#A7B4AD] font-serif hidden xs:block">
+                  选定后全软件自动生效
+                </div>
                 <button
-                  onClick={() => setIsVoicePickerModalOpen(false)}
-                  className="w-full py-2.5 bg-[#5B7B6D] text-white font-bold rounded-xl hover:bg-[#3E564B] transition-all text-xs shadow-xs"
+                  type="button"
+                  onClick={() => {
+                    sound.playWaterDrop(760);
+                    setIsVoicePickerModalOpen(false);
+                  }}
+                  className="w-full xs:w-auto px-6 py-2.5 text-white font-serif font-bold rounded-2xl transition-all text-xs shadow-xs active:scale-98 cursor-pointer ml-auto"
+                  style={{ backgroundColor: currentTheme.primary }}
                 >
-                  确定并完成
+                  确定并启程
                 </button>
               </div>
             </div>
@@ -5782,6 +5775,32 @@ export default function App() {
                           已解开火漆
                         </span>
                       </div>
+
+                      {/* 信笺影像附件：支持百兆长视频与相片 */}
+                      {selectedLetter.mediaUrl && (
+                        <div className="my-2.5 rounded-2xl overflow-hidden border border-[#5B7B6D]/20 bg-black/5">
+                          {selectedLetter.mediaType === 'video' || isVideoMedia(selectedLetter.mediaUrl) ? (
+                            <div className="rounded-2xl overflow-hidden">
+                              <TimelineVideoCard
+                                videoUrl={selectedLetter.mediaUrl}
+                                poster={selectedLetter.videoPoster}
+                                title={selectedLetter.title}
+                                date={selectedLetter.date || selectedLetter.unlockDate}
+                              />
+                            </div>
+                          ) : (
+                            <div className="rounded-2xl overflow-hidden max-h-[280px]">
+                              <AlbumThumbnailMedia
+                                src={selectedLetter.mediaUrl}
+                                isVid={false}
+                                alt={selectedLetter.title}
+                                className="w-full max-h-[280px] object-cover"
+                              />
+                            </div>
+                          )}
+                        </div>
+                      )}
+
                       <div className="text-sm text-[#2B332E] font-serif leading-relaxed whitespace-pre-line break-words pt-1 select-text">
                         {selectedLetter.content}
                       </div>
@@ -6133,11 +6152,11 @@ export default function App() {
           </div>
         )}
 
-        {/* Apple Dynamic Liquid Glass Floating Capsule Dock */}
-        <div className="absolute bottom-3 sm:bottom-4 left-3 right-3 sm:left-4 sm:right-4 z-30 pointer-events-none select-none">
+        {/* Apple Dynamic Liquid Glass Floating Capsule Dock - 自适应安卓三键导航栏与全面屏安全区抬升 */}
+        <div className="absolute bottom-[calc(0.75rem+env(safe-area-inset-bottom,0px))] sm:bottom-4 left-3 right-3 sm:left-4 sm:right-4 z-30 pointer-events-none select-none">
           <nav 
             id="dynamic-bottom-nav" 
-            className="apple-liquid-glass pointer-events-auto relative rounded-full px-2 py-1.5 flex justify-around items-center"
+            className="apple-liquid-glass pointer-events-auto relative rounded-full px-2 py-1.5 flex justify-around items-center shadow-lg"
           >
             <NavItem id="home" label="首页" icon={Landmark} active={activeTab} onClick={() => setActiveTab('home')} />
             <NavItem id="timeline" label="拾光轴" icon={Clock} active={activeTab} onClick={() => setActiveTab('timeline')} />

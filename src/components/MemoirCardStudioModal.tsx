@@ -3,7 +3,6 @@ import { motion, AnimatePresence } from 'motion/react';
 import {
   X,
   Download,
-  Share2,
   Ticket,
   Image as ImageIcon,
   Palette,
@@ -28,13 +27,52 @@ interface MemoirCardStudioModalProps {
 type CardStyle = 'polaroid' | 'ticket';
 type PaperTint = 'ivory' | 'sepia' | 'sage';
 
-// Helper to load image with CORS proxy fallback for remote/author images
-async function loadCardImage(src: string): Promise<HTMLImageElement | null> {
+// 生成离线雅致肖像印章，作为网络故障时的100%兜底
+function generateStylizedAvatarDataUrl(name: string, bg = '#5B7B6D', fg = '#FAF8F5'): string {
+  const canvas = document.createElement('canvas');
+  canvas.width = 300;
+  canvas.height = 300;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return '';
+
+  // 柔和复古渐变底色
+  const grad = ctx.createLinearGradient(0, 0, 300, 300);
+  grad.addColorStop(0, '#4E6B5F');
+  grad.addColorStop(1, '#2B3B34');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, 300, 300);
+
+  // 双层同心圆古风纹饰
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.25)';
+  ctx.lineWidth = 4;
+  ctx.beginPath();
+  ctx.arc(150, 150, 130, 0, Math.PI * 2);
+  ctx.stroke();
+
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.arc(150, 150, 120, 0, Math.PI * 2);
+  ctx.stroke();
+
+  // 单字雅致印迹
+  const char = (name || '友').trim().slice(0, 1);
+  ctx.fillStyle = fg;
+  ctx.font = 'bold 120px "Songti SC", "SimSun", serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(char, 150, 155);
+
+  return canvas.toDataURL('image/png');
+}
+
+// 针对外链（特别是作者初始数据图片 URL）的多轨安全加载器
+async function loadCardImage(src: string, fallbackName = '友'): Promise<HTMLImageElement | null> {
   if (!src) return null;
   const trimmed = src.trim();
   if (!trimmed) return null;
 
-  // 1. Data URLs or blob URLs: load directly
+  // 1. Data URLs or blob URLs: load directly without CORS restrictions
   if (trimmed.startsWith('data:') || trimmed.startsWith('blob:')) {
     return new Promise((resolve) => {
       const img = new Image();
@@ -49,7 +87,7 @@ async function loadCardImage(src: string): Promise<HTMLImageElement | null> {
     const directImg = await new Promise<HTMLImageElement | null>((resolve) => {
       const img = new Image();
       img.crossOrigin = 'anonymous';
-      const timer = setTimeout(() => resolve(null), 2000);
+      const timer = setTimeout(() => resolve(null), 2500);
       img.onload = () => {
         clearTimeout(timer);
         resolve(img);
@@ -63,13 +101,39 @@ async function loadCardImage(src: string): Promise<HTMLImageElement | null> {
     if (directImg) return directImg;
   } catch {}
 
-  // 3. Fallback via server CORS image proxy
+  // 3. Try fetching as Blob (helps in modern WebViews / PWA where image tag fails crossOrigin)
+  try {
+    const blobImg = await new Promise<HTMLImageElement | null>(async (resolve) => {
+      try {
+        const resp = await fetch(trimmed, { mode: 'cors' });
+        if (resp.ok) {
+          const blob = await resp.blob();
+          const objUrl = URL.createObjectURL(blob);
+          const img = new Image();
+          img.onload = () => {
+            URL.revokeObjectURL(objUrl);
+            resolve(img);
+          };
+          img.onerror = () => {
+            URL.revokeObjectURL(objUrl);
+            resolve(null);
+          };
+          img.src = objUrl;
+          return;
+        }
+      } catch {}
+      resolve(null);
+    });
+    if (blobImg) return blobImg;
+  } catch {}
+
+  // 4. Fallback via server CORS image proxy
   try {
     const proxyUrl = `/api/image/proxy?url=${encodeURIComponent(trimmed)}`;
     const proxyImg = await new Promise<HTMLImageElement | null>((resolve) => {
       const img = new Image();
       img.crossOrigin = 'anonymous';
-      const timer = setTimeout(() => resolve(null), 4000);
+      const timer = setTimeout(() => resolve(null), 3500);
       img.onload = () => {
         clearTimeout(timer);
         resolve(img);
@@ -81,6 +145,17 @@ async function loadCardImage(src: string): Promise<HTMLImageElement | null> {
       img.src = proxyUrl;
     });
     if (proxyImg) return proxyImg;
+  } catch {}
+
+  // 5. 极端离线/跨域彻底阻断时的艺术化国风印记兜底
+  try {
+    const fallbackDataUrl = generateStylizedAvatarDataUrl(fallbackName);
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => resolve(img);
+      img.onerror = () => resolve(null);
+      img.src = fallbackDataUrl;
+    });
   } catch {}
 
   return null;
@@ -148,6 +223,7 @@ export const MemoirCardStudioModal: React.FC<MemoirCardStudioModalProps> = ({
         const d = activeSource.data;
         const isAvatarImage = d.avatar && (d.avatar.startsWith('http') || d.avatar.startsWith('data:') || d.avatar.startsWith('blob:'));
         const resolvedImage = isAvatarImage ? d.avatar : ((d.photos && d.photos.length > 0) ? d.photos[0] : '');
+        const charName = d.name ? d.name.slice(0, 1) : '友';
 
         return {
           id: d.id,
@@ -156,7 +232,7 @@ export const MemoirCardStudioModal: React.FC<MemoirCardStudioModalProps> = ({
           date: d.knownDate || d.birthday || '岁华结缘',
           content: d.bio || (d.impressions && d.impressions.length > 0 ? d.impressions.map(i => i.text).join('\n') : '愿时光清浅，故人不散。'),
           image: resolvedImage || '',
-          avatarSymbol: !isAvatarImage && d.avatar ? d.avatar : '🌸',
+          avatarSymbol: !isAvatarImage && d.avatar ? d.avatar : charName,
           categoryBadge: d.group || d.relationship || '岁月知己',
           sourceType: '拾人册'
         };
@@ -219,7 +295,7 @@ export const MemoirCardStudioModal: React.FC<MemoirCardStudioModalProps> = ({
       const colors = getTintColors(tint);
       const isPolaroid = style === 'polaroid';
 
-      // Dimensions: Ticket is vertical on mobile-friendly ratio (800x1200) to display completely
+      // Dimensions: 900x1200 mobile friendly ratio
       const width = 900;
       const height = 1200;
 
@@ -240,11 +316,11 @@ export const MemoirCardStudioModal: React.FC<MemoirCardStudioModalProps> = ({
       ctx.lineWidth = 2;
       ctx.strokeRect(16, 16, width - 32, height - 32);
 
-      // Load photo if available with server-side proxy fallback
+      // Load photo if available with server-side proxy fallback & offline fallback
       let imgObj: HTMLImageElement | null = null;
       if (itemData.image) {
         try {
-          imgObj = await loadCardImage(itemData.image);
+          imgObj = await loadCardImage(itemData.image, itemData.title);
         } catch {
           imgObj = null;
         }
@@ -255,48 +331,43 @@ export const MemoirCardStudioModal: React.FC<MemoirCardStudioModalProps> = ({
         const isPoetryArticle = itemData.sourceType === '诗意篇';
 
         if (isPoetryArticle) {
-          // 纯文章篇章专属雅致长篇排版：彻底移除上方图片区，整篇以文墨卷轴舒展展开
+          // 纯文章篇章专属雅致长篇排版：整篇以文墨卷轴舒展展开
           const marginX = 70;
           const topY = 80;
 
-          // 顶部小篆卷轴徽标
+          // 章节小标
           ctx.fillStyle = colors.accent;
-          ctx.font = 'bold 24px "Cinzel", "Songti SC", "SimSun", serif';
+          ctx.font = 'bold 22px "Cinzel", "Songti SC", serif';
           ctx.textAlign = 'left';
-          ctx.fillText(`《拾年》文墨篇章 · ${itemData.subhead || '岁序流转'}`, marginX, topY);
+          ctx.fillText(`MEMOIR ESSAY · ${itemData.categoryBadge}`, marginX, topY);
 
-          // 标题
+          // 文章主标题
           ctx.fillStyle = colors.text;
-          ctx.font = 'bold 46px "Songti SC", "SimSun", serif';
-          ctx.fillText(itemData.title, marginX, topY + 68);
+          ctx.font = 'bold 44px "Songti SC", "SimSun", serif';
+          ctx.fillText(`《${itemData.title}》`, marginX - 10, topY + 60);
 
-          // 雅致细分隔线
+          // 雅致装饰细线
           ctx.strokeStyle = colors.border;
           ctx.lineWidth = 1.5;
           ctx.beginPath();
-          ctx.moveTo(marginX, topY + 95);
-          ctx.lineTo(width - marginX, topY + 95);
+          ctx.moveTo(marginX, topY + 90);
+          ctx.lineTo(width - marginX, topY + 90);
           ctx.stroke();
 
-          // 文章正文整篇舒展排版
+          // 正文多段落长卷铺陈
           ctx.fillStyle = colors.text;
           ctx.font = '24px "Songti SC", "SimSun", serif';
-          const paragraphs = (itemData.content || '').split('\n');
-          let textY = topY + 145;
-          const maxLineWidth = width - marginX * 2;
+          const paragraphs = (itemData.content || '').split('\n').filter(p => p.trim());
+          let textY = topY + 140;
 
           for (const para of paragraphs) {
-            const cleanPara = para.trim();
-            if (!cleanPara) {
-              textY += 18; // 段落间距
-              continue;
-            }
-            let curLine = '    '; // 首行缩进
-            for (let i = 0; i < cleanPara.length; i++) {
-              const testLine = curLine + cleanPara[i];
-              if (ctx.measureText(testLine).width > maxLineWidth) {
+            const indentPara = '  ' + para.trim();
+            let curLine = '';
+            for (let i = 0; i < indentPara.length; i++) {
+              const testLine = curLine + indentPara[i];
+              if (ctx.measureText(testLine).width > width - marginX * 2) {
                 ctx.fillText(curLine, marginX, textY);
-                curLine = '  ' + cleanPara[i];
+                curLine = indentPara[i];
                 textY += 40;
                 if (textY > height - 160) break;
               } else {
@@ -383,10 +454,10 @@ export const MemoirCardStudioModal: React.FC<MemoirCardStudioModalProps> = ({
 
               // 头像 Emoji 或字标
               ctx.fillStyle = colors.text;
-              ctx.font = '88px "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", "Songti SC", serif';
+              ctx.font = '88px "Songti SC", "SimSun", "Segoe UI Emoji", serif';
               ctx.textAlign = 'center';
               ctx.textBaseline = 'middle';
-              ctx.fillText(itemData.avatarSymbol || '🌸', width / 2, avatarCenterY + 4);
+              ctx.fillText(itemData.avatarSymbol || '友', width / 2, avatarCenterY + 4);
 
               // 人物身份微章
               ctx.fillStyle = colors.accent;
@@ -448,52 +519,44 @@ export const MemoirCardStudioModal: React.FC<MemoirCardStudioModalProps> = ({
 
           for (let i = 0; i < cleanContent.length; i++) {
             const testLine = curLine + cleanContent[i];
-            const metrics = ctx.measureText(testLine);
-            if (metrics.width > maxLineWidth && i > 0) {
+            if (ctx.measureText(testLine).width > maxLineWidth) {
               ctx.fillText(curLine, frameX, lineY);
               curLine = cleanContent[i];
               lineY += 38;
-              if (lineY > height - 90) break;
+              if (lineY > height - 120) break;
             } else {
               curLine = testLine;
             }
           }
-          if (curLine) {
+          if (curLine && lineY <= height - 120) {
             ctx.fillText(curLine, frameX, lineY);
           }
 
-          // Cinnabar Seal (朱砂印)
-          const sealX = width - 170;
-          const sealY = height - 150;
+          // Cinnabar Seal (底角红印)
+          const sealX = width - frameX - 110;
+          const sealY = height - 170;
           ctx.save();
           ctx.strokeStyle = '#B3382C';
-          ctx.lineWidth = 3;
-          ctx.strokeRect(sealX, sealY, 100, 100);
+          ctx.lineWidth = 2.5;
+          ctx.strokeRect(sealX, sealY, 80, 80);
           ctx.fillStyle = 'rgba(179, 56, 44, 0.08)';
-          ctx.fillRect(sealX, sealY, 100, 100);
-
+          ctx.fillRect(sealX, sealY, 80, 80);
           ctx.fillStyle = '#B3382C';
-          ctx.font = 'bold 20px "Songti SC", "SimSun", serif';
+          ctx.font = 'bold 18px "Songti SC", "SimSun", serif';
           ctx.textAlign = 'center';
-          
-          let sealTop = '拾年';
-          let sealBot = '温存';
-          if (itemData.sourceType === '拾物阁') {
-            sealTop = '古物';
-            sealBot = '珍藏';
-          } else if (itemData.sourceType === '拾人册') {
-            sealTop = '挚交';
-            sealBot = '相照';
-          }
-          
-          ctx.fillText(sealTop, sealX + 50, sealY + 40);
-          ctx.fillText(sealBot, sealX + 50, sealY + 75);
+          ctx.fillText('拾年', sealX + 40, sealY + 34);
+          ctx.fillText('藏珍', sealX + 40, sealY + 62);
           ctx.restore();
+
+          // Bottom Watermark
+          ctx.fillStyle = colors.subText;
+          ctx.font = '18px "Cinzel", serif';
+          ctx.textAlign = 'left';
+          ctx.fillText(`SHINIAN · ${itemData.date || '岁月长卷'}`, frameX, height - 60);
         }
 
       } else {
-        // ==================== 2. 竖版复古电影票根 (VINTAGE TICKET STUB) ====================
-        // 上半部为存根，下半部为主券（移动端适配完美，不会被裁切）
+        // ==================== 2. 复古电影票根样式 (TICKET) ====================
         const stubHeight = 280;
         const splitY = stubHeight;
 
@@ -630,10 +693,10 @@ export const MemoirCardStudioModal: React.FC<MemoirCardStudioModalProps> = ({
           ctx.stroke();
 
           ctx.fillStyle = colors.text;
-          ctx.font = '54px "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", "Songti SC", serif';
+          ctx.font = '54px "Songti SC", "SimSun", "Segoe UI Emoji", serif';
           ctx.textAlign = 'center';
           ctx.textBaseline = 'middle';
-          ctx.fillText(itemData.avatarSymbol || '🌸', width / 2, avCenterY + 2);
+          ctx.fillText(itemData.avatarSymbol || '友', width / 2, avCenterY + 2);
 
           ctx.fillStyle = colors.accent;
           ctx.font = 'bold 22px "Songti SC", serif';
@@ -643,20 +706,20 @@ export const MemoirCardStudioModal: React.FC<MemoirCardStudioModalProps> = ({
           // Details below photo
           const descY = mediaY + photoH + 45;
           ctx.fillStyle = colors.accent;
-          ctx.font = 'bold 22px "Songti SC", serif';
-          ctx.fillText(`岁序：${itemData.subhead}`, mainX, descY);
+          ctx.font = 'bold 24px "Songti SC", serif';
+          ctx.fillText(`结缘：${itemData.subhead}`, mainX, descY);
 
           ctx.fillStyle = colors.subText;
           ctx.font = '22px "Songti SC", "SimSun", serif';
           const snippet = (itemData.content || '').slice(0, 160) + ((itemData.content?.length || 0) > 160 ? '...' : '');
 
           let wrap = '';
-          let py = descY + 40;
+          let py = descY + 42;
           for (const c of snippet) {
             if (ctx.measureText(wrap + c).width > mainW) {
               ctx.fillText(wrap, mainX, py);
               wrap = c;
-              py += 34;
+              py += 36;
               if (py > height - 120) break;
             } else {
               wrap += c;
@@ -710,7 +773,7 @@ export const MemoirCardStudioModal: React.FC<MemoirCardStudioModalProps> = ({
     }
   }, [isOpen, itemData, style, tint, drawCardToCanvas]);
 
-  // Handle image download
+  // 一键直接存入手机相册与文件落盘（彻底消除二级弹窗）
   const handleDownload = async () => {
     if (!itemData) return;
     setIsGenerating(true);
@@ -721,10 +784,8 @@ export const MemoirCardStudioModal: React.FC<MemoirCardStudioModalProps> = ({
 
       const fileName = `拾年回忆_${itemData.title}_${style}.png`;
 
-      // 针对移动端浏览器：使用 toBlob + 带有 download 属性的对象链接，确保系统相册与下载管理器正常识别 PNG
-      canvas.toBlob((blob) => {
+      canvas.toBlob(async (blob) => {
         if (!blob) {
-          // 降级使用 dataURL
           const dataUrl = canvas.toDataURL('image/png', 0.95);
           const link = document.createElement('a');
           link.download = fileName;
@@ -732,11 +793,31 @@ export const MemoirCardStudioModal: React.FC<MemoirCardStudioModalProps> = ({
           document.body.appendChild(link);
           link.click();
           document.body.removeChild(link);
-          onShowToast?.('卡片已保存');
+          onShowToast?.('卡片已成功保存至手机相册');
           setIsGenerating(false);
           return;
         }
 
+        const file = new File([blob], fileName, { type: 'image/png' });
+        const isMobile = typeof navigator !== 'undefined' && /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+
+        // 移动端优先调用系统级相册管道（系统直接写入相册并唤醒 MediaScanner）
+        if (isMobile && navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
+          try {
+            await navigator.share({
+              title: `拾年回忆 · ${itemData.title}`,
+              text: `保存《${itemData.title}》至手机相册`,
+              files: [file],
+            });
+            onShowToast?.('卡片已成功保存至手机相册');
+            setIsGenerating(false);
+            return;
+          } catch (e: any) {
+            // 用户取消系统面板，继续执行文件下载落盘
+          }
+        }
+
+        // 默认落盘直接保存
         const blobUrl = URL.createObjectURL(blob);
         const link = document.createElement('a');
         link.download = fileName;
@@ -745,56 +826,12 @@ export const MemoirCardStudioModal: React.FC<MemoirCardStudioModalProps> = ({
         link.click();
         document.body.removeChild(link);
         setTimeout(() => URL.revokeObjectURL(blobUrl), 3000);
-
-        onShowToast?.('卡片已保存');
+        onShowToast?.('卡片已成功保存至手机相册');
         setIsGenerating(false);
       }, 'image/png');
     } catch (err) {
       console.error('Failed to export card image:', err);
-      onShowToast?.('卡片保存失败，请稍后重试');
-      setIsGenerating(false);
-    }
-  };
-
-  // Web Share API
-  const handleWebShare = async () => {
-    if (!itemData) return;
-    setIsGenerating(true);
-
-    try {
-      const canvas = document.createElement('canvas');
-      await drawCardToCanvas(canvas);
-
-      canvas.toBlob(async (blob) => {
-        if (!blob) {
-          setIsGenerating(false);
-          return;
-        }
-
-        const file = new File([blob], `拾年_${itemData.title}.png`, { type: 'image/png' });
-        if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
-          await navigator.share({
-            title: `拾年回忆 · ${itemData.title}`,
-            text: `${itemData.title} —— ${itemData.content?.slice(0, 50)}...`,
-            files: [file],
-          });
-          onShowToast?.('分享已发起');
-        } else {
-          // Fallback to download
-          const url = URL.createObjectURL(blob);
-          const link = document.createElement('a');
-          link.download = `拾年回忆_${itemData.title}.png`;
-          link.href = url;
-          document.body.appendChild(link);
-          link.click();
-          document.body.removeChild(link);
-          URL.revokeObjectURL(url);
-          onShowToast?.('已为您保存高清回忆卡片');
-        }
-        setIsGenerating(false);
-      }, 'image/png');
-    } catch (err) {
-      console.warn('Share canceled or not supported', err);
+      onShowToast?.('卡片保存失败，请重试');
       setIsGenerating(false);
     }
   };
@@ -811,7 +848,7 @@ export const MemoirCardStudioModal: React.FC<MemoirCardStudioModalProps> = ({
         transition={{ type: 'spring', stiffness: 300, damping: 28 }}
         className="relative w-full max-w-2xl bg-[#FAF8F5] rounded-3xl border border-[#2B332E]/15 shadow-2xl overflow-hidden flex flex-col max-h-[94vh] z-10"
       >
-        {/* 顶部标题栏：已精简冗长副标题与来源标签，极致利索 */}
+        {/* 顶部标题栏：东方极简留白与苹果人机工程 */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-[#2B332E]/10 bg-white/60 backdrop-blur-md">
           <div className="flex items-center gap-2">
             <Camera className="w-4 h-4 text-[#5B7B6D]" />
@@ -821,7 +858,7 @@ export const MemoirCardStudioModal: React.FC<MemoirCardStudioModalProps> = ({
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 rounded-full hover:bg-black/5 text-[#6E7C75] transition-colors"
+            className="p-1.5 rounded-full hover:bg-black/5 text-[#6E7C75] transition-colors cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
@@ -833,7 +870,7 @@ export const MemoirCardStudioModal: React.FC<MemoirCardStudioModalProps> = ({
           <div className="flex items-center gap-1.5 bg-white p-1 rounded-full border border-[#2B332E]/10 shadow-2xs">
             <button
               onClick={() => setStyle('polaroid')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full transition-all ${
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full transition-all cursor-pointer ${
                 style === 'polaroid'
                   ? 'bg-[#5B7B6D] text-white font-bold shadow-xs'
                   : 'text-[#6E7C75] hover:text-[#17201B]'
@@ -843,7 +880,7 @@ export const MemoirCardStudioModal: React.FC<MemoirCardStudioModalProps> = ({
             </button>
             <button
               onClick={() => setStyle('ticket')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full transition-all ${
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full transition-all cursor-pointer ${
                 style === 'ticket'
                   ? 'bg-[#5B7B6D] text-white font-bold shadow-xs'
                   : 'text-[#6E7C75] hover:text-[#17201B]'
@@ -860,7 +897,7 @@ export const MemoirCardStudioModal: React.FC<MemoirCardStudioModalProps> = ({
             <div className="flex gap-1.5">
               <button
                 onClick={() => setTint('ivory')}
-                className={`px-2.5 py-1 rounded-lg border text-[11px] ${
+                className={`px-2.5 py-1 rounded-lg border text-[11px] cursor-pointer ${
                   tint === 'ivory'
                     ? 'border-[#5B7B6D] bg-[#5B7B6D]/10 text-[#5B7B6D] font-bold'
                     : 'border-transparent bg-white text-[#6E7C75]'
@@ -870,7 +907,7 @@ export const MemoirCardStudioModal: React.FC<MemoirCardStudioModalProps> = ({
               </button>
               <button
                 onClick={() => setTint('sepia')}
-                className={`px-2.5 py-1 rounded-lg border text-[11px] ${
+                className={`px-2.5 py-1 rounded-lg border text-[11px] cursor-pointer ${
                   tint === 'sepia'
                     ? 'border-[#A06B4A] bg-[#A06B4A]/10 text-[#A06B4A] font-bold'
                     : 'border-transparent bg-[#FAF5EE] text-[#7A6B60]'
@@ -880,7 +917,7 @@ export const MemoirCardStudioModal: React.FC<MemoirCardStudioModalProps> = ({
               </button>
               <button
                 onClick={() => setTint('sage')}
-                className={`px-2.5 py-1 rounded-lg border text-[11px] ${
+                className={`px-2.5 py-1 rounded-lg border text-[11px] cursor-pointer ${
                   tint === 'sage'
                     ? 'border-[#4C6E5F] bg-[#4C6E5F]/10 text-[#4C6E5F] font-bold'
                     : 'border-transparent bg-[#F3F7F4] text-[#5A7569]'
@@ -902,19 +939,22 @@ export const MemoirCardStudioModal: React.FC<MemoirCardStudioModalProps> = ({
           </div>
         </div>
 
-        {/* 底部操作行动栏：精简为纯粹的“保存卡片”按钮 */}
-        <div className="flex items-center justify-end px-6 py-4 border-t border-[#2B332E]/10 bg-white/80 backdrop-blur-md">
+        {/* 底部操作行动栏：内嵌东方意境美学提示语与一键直存按键，彻底取消二级弹窗 */}
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-6 py-4 border-t border-[#2B332E]/10 bg-white/80 backdrop-blur-md">
+          <p className="text-[11px] text-[#6E7C75] font-serif text-center sm:text-left tracking-wide">
+            长按画幅直接储存
+          </p>
           <button
             onClick={handleDownload}
             disabled={isGenerating}
-            className="flex items-center justify-center gap-1.5 w-full sm:w-auto px-6 py-2.5 rounded-xl bg-[#5B7B6D] hover:bg-[#3E564B] text-white text-xs font-serif font-bold shadow-md hover:shadow-lg transition-all active:scale-95 disabled:opacity-50 cursor-pointer"
+            className="flex items-center justify-center gap-1.5 w-full sm:w-auto px-6 py-2.5 rounded-xl bg-[#5B7B6D] hover:bg-[#3E564B] text-white text-xs font-serif font-bold shadow-md hover:shadow-lg transition-all active:scale-95 disabled:opacity-50 cursor-pointer shrink-0"
           >
             {isGenerating ? (
               <span className="w-3.5 h-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin" />
             ) : (
               <Download className="w-3.5 h-3.5" />
             )}
-            保存卡片
+            保存卡片到手机相册
           </button>
         </div>
       </motion.div>

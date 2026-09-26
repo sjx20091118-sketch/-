@@ -479,28 +479,31 @@ app.post('/api/ai/tts', async (req, res) => {
     let prosodyRate = '-3%';
     let prosodyPitch = '0Hz';
 
-    if (voice === 'Zephyr' || voice === 'zh-CN-XiaoyiNeural') {
+    if (voice === 'wenwan' || voice === 'zh-CN-XiaoxiaoNeural') {
+      neuralVoice = 'zh-CN-XiaoxiaoNeural';
+      prosodyRate = '-3%';
+      prosodyPitch = '+0Hz';
+    } else if (voice === 'qinglang' || voice === 'zh-CN-YunxiNeural' || voice === 'Puck') {
+      neuralVoice = 'zh-CN-YunxiNeural';
+      prosodyRate = '+1%';
+      prosodyPitch = '+1Hz';
+    } else if (voice === 'jingshui' || voice === 'zh-CN-YunjianNeural' || voice === 'Fenrir') {
+      neuralVoice = 'zh-CN-YunjianNeural';
+      prosodyRate = '-6%';
+      prosodyPitch = '-2Hz';
+    } else if (voice === 'xiaofeng' || voice === 'zh-CN-XiaoyiNeural' || voice === 'Zephyr') {
       neuralVoice = 'zh-CN-XiaoyiNeural';
       prosodyRate = '-2%';
-      prosodyPitch = '+1Hz';
+      prosodyPitch = '+2Hz';
     } else if (voice === 'zh-CN-XiaoyouNeural') {
       neuralVoice = 'zh-CN-XiaoyouNeural';
       prosodyRate = '+2%';
       prosodyPitch = '+2Hz';
-    } else if (voice === 'Puck' || voice === 'zh-CN-YunxiNeural') {
-      neuralVoice = 'zh-CN-YunxiNeural';
-      prosodyRate = '+0%';
-      prosodyPitch = '0Hz';
-    } else if (voice === 'Fenrir' || voice === 'zh-CN-YunjianNeural') {
-      neuralVoice = 'zh-CN-YunjianNeural';
-      prosodyRate = '-5%';
-      prosodyPitch = '-1Hz';
     } else if (voice === 'zh-CN-YunyangNeural') {
       neuralVoice = 'zh-CN-YunyangNeural';
       prosodyRate = '-2%';
       prosodyPitch = '-1Hz';
     } else {
-      // Default: 素问 (Xiaoxiao)
       neuralVoice = 'zh-CN-XiaoxiaoNeural';
       prosodyRate = '-3%';
       prosodyPitch = '0Hz';
@@ -514,12 +517,12 @@ app.post('/api/ai/tts', async (req, res) => {
       audioBase64,
       mimeType: 'audio/mp3',
       voiceUsed: neuralVoice,
-      engine: 'Microsoft Edge Neural TTS',
+      engine: '高保真情感语音引擎',
     });
   } catch (err: any) {
-    console.warn('Edge TTS synthesis warning (fallback triggered):', err?.message);
+    console.warn('TTS synthesis warning (fallback triggered):', err?.message);
     return res.status(500).json({
-      error: err.message || '微软神经语音引擎暂时繁忙，请重试',
+      error: err.message || '语音合成引擎暂时繁忙，请重试',
     });
   }
 });
@@ -562,7 +565,7 @@ app.get('/api/music/search', async (req, res) => {
       return res.json({ songs: [] });
     }
 
-    const searchUrl = `http://search.kuwo.cn/r.s?client=kt&all=${encodeURIComponent(q)}&pn=0&rn=20&vipver=1&ft=music&encoding=utf8&rformat=json&mobi=1`;
+    const searchUrl = `https://search.kuwo.cn/r.s?client=kt&all=${encodeURIComponent(q)}&pn=0&rn=20&vipver=1&ft=music&encoding=utf8&rformat=json&mobi=1`;
     const response = await fetch(searchUrl, {
       signal: AbortSignal.timeout(5000),
       headers: {
@@ -672,7 +675,7 @@ app.get('/api/music/play-url', async (req, res) => {
     // 2. 主力解析：Kuwo convert_url3 JSON 纯净音频流
     if (id && /^\d+$/.test(id)) {
       try {
-        const kuwoV3Url = `http://antiserver.kuwo.cn/anti.s?type=convert_url3&rid=${id}&format=mp3`;
+        const kuwoV3Url = `https://antiserver.kuwo.cn/anti.s?type=convert_url3&rid=${id}&format=mp3`;
         const v3Res = await fetch(kuwoV3Url, {
           signal: AbortSignal.timeout(4000),
           headers: {
@@ -691,7 +694,7 @@ app.get('/api/music/play-url', async (req, res) => {
 
       // 3. 备用解析：Kuwo convert_url 文本转换
       try {
-        const antiUrl = `http://antiserver.kuwo.cn/anti.s?type=convert_url&rid=${id}&format=mp3&response=url`;
+        const antiUrl = `https://antiserver.kuwo.cn/anti.s?type=convert_url&rid=${id}&format=mp3&response=url`;
         const response = await fetch(antiUrl, {
           signal: AbortSignal.timeout(4000),
           headers: {
@@ -720,7 +723,7 @@ app.get('/api/music/play-url', async (req, res) => {
     if (title) {
       try {
         const searchKeyword = `${title} ${artist}`.trim();
-        const searchUrl = `http://search.kuwo.cn/r.s?all=${encodeURIComponent(searchKeyword)}&ft=music&itemset=web_2013&client=kt&pn=0&rn=5&rformat=json&encoding=utf8`;
+        const searchUrl = `https://search.kuwo.cn/r.s?all=${encodeURIComponent(searchKeyword)}&ft=music&itemset=web_2013&client=kt&pn=0&rn=5&rformat=json&encoding=utf8`;
         const searchRes = await fetch(searchUrl, {
           signal: AbortSignal.timeout(4000),
           headers: {
@@ -741,7 +744,7 @@ app.get('/api/music/play-url', async (req, res) => {
           for (const item of list) {
             const fallbackRid = item.DC_TARGETID || (item.MUSICRID ? String(item.MUSICRID).replace(/^MUSIC_/, '') : '');
             if (fallbackRid && fallbackRid !== id) {
-              const fbUrl = `http://antiserver.kuwo.cn/anti.s?type=convert_url3&rid=${fallbackRid}&format=mp3`;
+              const fbUrl = `https://antiserver.kuwo.cn/anti.s?type=convert_url3&rid=${fallbackRid}&format=mp3`;
               const fbRes = await fetch(fbUrl, { signal: AbortSignal.timeout(3000) });
               if (fbRes.ok) {
                 const fbData = await fbRes.json();
@@ -868,6 +871,46 @@ app.get('/api/music/cover', async (req, res) => {
     if (!res.headersSent) {
       res.redirect(DEFAULT_FALLBACK_COVER);
     }
+  }
+});
+
+// ==================== CORS Image Proxy for Cards & Canvas ====================
+app.get('/api/image/proxy', async (req, res) => {
+  try {
+    const targetUrl = String(req.query.url || '').trim();
+    if (!targetUrl || !targetUrl.startsWith('http')) {
+      return res.status(400).send('Invalid image URL');
+    }
+
+    const response = await fetch(targetUrl, {
+      signal: AbortSignal.timeout(5000),
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+        'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
+      },
+    });
+
+    if (!response.ok) {
+      return res.status(response.status).send(`Failed to fetch image: ${response.statusText}`);
+    }
+
+    const contentType = response.headers.get('content-type') || 'image/jpeg';
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Cache-Control', 'public, max-age=86400');
+
+    // @ts-ignore
+    const bodyStream = response.body;
+    if (bodyStream) {
+      // @ts-ignore
+      for await (const chunk of bodyStream) {
+        res.write(chunk);
+      }
+    }
+    return res.end();
+  } catch (err: any) {
+    console.warn('Image proxy error:', err?.message || err);
+    return res.status(502).send('Error proxying image');
   }
 });
 

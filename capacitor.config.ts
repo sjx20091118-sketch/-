@@ -13,6 +13,16 @@ const config: CapacitorConfig = {
     },
     App: {},
   },
+  android: {
+    backgroundColor: '#FAF8F5',
+    allowMixedContent: true,
+    captureInput: true,
+    webContentsDebuggingEnabled: false,
+  },
+  server: {
+    androidScheme: 'https',
+    cleartext: true,
+  },
 };
 
 export default config;

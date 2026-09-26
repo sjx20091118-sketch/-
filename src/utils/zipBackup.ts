@@ -1,5 +1,6 @@
 import JSZip from 'jszip';
 import { AppData } from '../types';
+import { getMediaBlob, isIndexedDbMedia } from '../services/indexedDbMedia';
 
 /**
  * Helper to extract binary payload from Base64 Data URL
@@ -74,31 +75,53 @@ export async function exportZipArchive(data: AppData, customGroups?: string[]): 
   const imageFolder = mediaFolder?.folder('images');
   const videoFolder = mediaFolder?.folder('videos');
 
-  // Timeline Media
-  data.timeline.forEach((item, idx) => {
+  // Timeline Media (Data URLs & IndexedDB binary blobs)
+  for (let idx = 0; idx < data.timeline.length; idx++) {
+    const item = data.timeline[idx];
     if (item.image && item.image.startsWith('data:')) {
       const parsed = dataUrlToBinary(item.image);
       if (parsed && imageFolder) {
         imageFolder.file(`timeline_${item.id || idx}.${parsed.ext}`, parsed.data);
       }
     }
-    if (item.video && item.video.startsWith('data:')) {
-      const parsed = dataUrlToBinary(item.video);
-      if (parsed && videoFolder) {
-        videoFolder.file(`timeline_video_${item.id || idx}.${parsed.ext}`, parsed.data);
+    if (item.video) {
+      if (item.video.startsWith('data:')) {
+        const parsed = dataUrlToBinary(item.video);
+        if (parsed && videoFolder) {
+          videoFolder.file(`timeline_video_${item.id || idx}.${parsed.ext}`, parsed.data);
+        }
+      } else if (isIndexedDbMedia(item.video) && videoFolder) {
+        const blob = await getMediaBlob(item.video);
+        if (blob) {
+          const ext = blob.type.includes('webm') ? 'webm' : 'mp4';
+          videoFolder.file(`idb_${item.video.replace('idb://', '')}.${ext}`, await blob.arrayBuffer());
+        }
       }
     }
-  });
+  }
 
-  // People Avatars
-  data.people.forEach((person, idx) => {
+  // People Avatars & Photos
+  for (let idx = 0; idx < data.people.length; idx++) {
+    const person = data.people[idx];
     if (person.avatar && person.avatar.startsWith('data:')) {
       const parsed = dataUrlToBinary(person.avatar);
       if (parsed && imageFolder) {
         imageFolder.file(`avatar_${person.name || person.id || idx}.${parsed.ext}`, parsed.data);
       }
     }
-  });
+    if (person.photos && Array.isArray(person.photos)) {
+      for (let pIdx = 0; pIdx < person.photos.length; pIdx++) {
+        const p = person.photos[pIdx];
+        if (isIndexedDbMedia(p) && videoFolder) {
+          const blob = await getMediaBlob(p);
+          if (blob) {
+            const ext = blob.type.includes('webm') ? 'webm' : 'mp4';
+            videoFolder.file(`idb_${p.replace('idb://', '')}.${ext}`, await blob.arrayBuffer());
+          }
+        }
+      }
+    }
+  }
 
   // Artifacts Media
   data.artifacts.forEach((art, idx) => {
@@ -109,6 +132,20 @@ export async function exportZipArchive(data: AppData, customGroups?: string[]): 
       }
     }
   });
+
+  // Letters Media (支持私信信笺音画附件)
+  if (data.letters) {
+    for (let idx = 0; idx < data.letters.length; idx++) {
+      const letter = data.letters[idx];
+      if (letter.mediaUrl && isIndexedDbMedia(letter.mediaUrl) && videoFolder) {
+        const blob = await getMediaBlob(letter.mediaUrl);
+        if (blob) {
+          const ext = blob.type.includes('webm') ? 'webm' : 'mp4';
+          videoFolder.file(`idb_${letter.mediaUrl.replace('idb://', '')}.${ext}`, await blob.arrayBuffer());
+        }
+      }
+    }
+  }
 
   // Generate ZIP Blob
   const blob = await zip.generateAsync({

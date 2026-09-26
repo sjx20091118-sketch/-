@@ -3,8 +3,54 @@ import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { Plus, Trash2, X, ChevronLeft, ChevronRight, Image as ImageIcon, Check, CheckSquare, Film, Video } from 'lucide-react';
 import { compressImageFile } from './LocalImageUploader';
-import { isVideoMedia, readFileAsBase64 } from '../utils/mediaStorage';
+import { isVideoMedia } from '../utils/mediaStorage';
 import { VintageVideoPlayer } from './VintageVideoPlayer';
+import { saveMediaBlob, resolveMediaUrl, isIndexedDbMedia } from '../services/indexedDbMedia';
+import { useBackHandler } from '../hooks/useAndroidBackHandler';
+
+// 媒体缩略展示组件：支持快速异步解析 IndexedDB 二进制流地址，秒开保真
+export const AlbumThumbnailMedia: React.FC<{
+  src: string;
+  isVid: boolean;
+  className?: string;
+  alt?: string;
+}> = ({ src, isVid, className = '', alt = '留影' }) => {
+  const [resolvedUrl, setResolvedUrl] = useState<string>(src);
+
+  useEffect(() => {
+    let isMounted = true;
+    if (isIndexedDbMedia(src)) {
+      resolveMediaUrl(src).then(u => {
+        if (isMounted) setResolvedUrl(u);
+      });
+    } else {
+      setResolvedUrl(src);
+    }
+    return () => {
+      isMounted = false;
+    };
+  }, [src]);
+
+  if (isVid) {
+    return (
+      <video
+        src={resolvedUrl}
+        playsInline
+        muted
+        className={`w-full h-full object-cover transition-transform duration-300 ${className}`}
+      />
+    );
+  }
+
+  return (
+    <img
+      src={resolvedUrl}
+      alt={alt}
+      loading="lazy"
+      className={`w-full h-full object-cover transition-transform duration-300 ${className}`}
+    />
+  );
+};
 
 interface PersonAlbumProps {
   photos?: string[];
@@ -31,6 +77,28 @@ export const PersonAlbum: React.FC<PersonAlbumProps> = ({
   const [selectedIndices, setSelectedIndices] = useState<Set<number>>(new Set());
   const [isBatchConfirmOpen, setIsBatchConfirmOpen] = useState<boolean>(false);
 
+  // Level 4: 物理返回拦截：大图放映、单图删除与批量删除确认 (Priority 100)
+  useBackHandler('person-album-preview', 100, previewIndex !== null, () => {
+    setPreviewIndex(null);
+  });
+  useBackHandler('person-album-del-confirm', 100, deleteConfirmIndex !== null, () => {
+    setDeleteConfirmIndex(null);
+  });
+  useBackHandler('person-album-batch-confirm', 100, isBatchConfirmOpen, () => {
+    setIsBatchConfirmOpen(false);
+  });
+
+  // Level 3: 物理返回拦截：多选批量管理模式 (Priority 85)
+  useBackHandler('person-album-multi-select', 85, isMultiSelectMode, () => {
+    setIsMultiSelectMode(false);
+    setSelectedIndices(new Set());
+  });
+
+  // Level 3: 物理返回拦截：全部相册列表大卡片 (Priority 80)
+  useBackHandler('person-album-all-modal', 80, isAllModalOpen, () => {
+    setIsAllModalOpen(false);
+  });
+
   // 当弹窗打开时，锁定 body 滚动，防止移动端滚动穿透或错位
   const isAnyModalActive = isAllModalOpen || previewIndex !== null || deleteConfirmIndex !== null || isBatchConfirmOpen;
   useEffect(() => {
@@ -54,7 +122,8 @@ export const PersonAlbum: React.FC<PersonAlbumProps> = ({
 
       let mediaData = '';
       if (isVid) {
-        mediaData = await readFileAsBase64(file);
+        // 百兆长视频直接写入 IndexedDB 原生二进制安全存储，绝无 Base64 内存暴涨与白屏闪退
+        mediaData = await saveMediaBlob(file);
         showToast(`已向专属相册添加 1 段影像视频`);
       } else {
         mediaData = await compressImageFile(file, 1200, 1200, 0.82);
@@ -186,26 +255,12 @@ export const PersonAlbum: React.FC<PersonAlbumProps> = ({
                 className="relative aspect-square rounded-2xl overflow-hidden bg-black/90 border border-[#5B7B6D]/15 group cursor-pointer shadow-2xs hover:shadow-md transition-all active:scale-[0.98]"
                 title={isVid ? '点击放映视频' : '点击放大查看'}
               >
-                {isVid ? (
-                  <>
-                    <video
-                      src={itemUrl}
-                      playsInline
-                      muted
-                      className="w-full h-full object-cover brightness-[0.9] group-hover:scale-105 transition-transform duration-300"
-                    />
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent pointer-events-none" />
-                    <div className="absolute bottom-1.5 right-1.5 flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-black/60 backdrop-blur-xs text-white text-[9px] font-mono border border-white/20">
-                      <Film className="w-2.5 h-2.5 text-white/90" />
-                      <span>视频</span>
-                    </div>
-                  </>
-                ) : (
-                  <img
-                    src={itemUrl}
-                    alt={`留影 ${idx + 1}`}
-                    className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
-                  />
+                <AlbumThumbnailMedia src={itemUrl} isVid={isVid} alt={`留影 ${idx + 1}`} />
+                {isVid && (
+                  <div className="absolute bottom-1.5 right-1.5 flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-black/60 backdrop-blur-xs text-white text-[9px] font-mono border border-white/20 pointer-events-none">
+                    <Film className="w-2.5 h-2.5 text-white/90" />
+                    <span>视频</span>
+                  </div>
                 )}
               </div>
             );
@@ -236,20 +291,12 @@ export const PersonAlbum: React.FC<PersonAlbumProps> = ({
             className="relative aspect-square rounded-2xl overflow-hidden bg-black/90 border border-[#5B7B6D]/15 group cursor-pointer shadow-2xs hover:shadow-md transition-all active:scale-[0.98]"
             title="点击查看"
           >
-            {isVideoMedia(photos[0]) ? (
-              <>
-                <video src={photos[0]} playsInline muted className="w-full h-full object-cover brightness-[0.9] group-hover:scale-105 transition-transform duration-300" />
-                <div className="absolute bottom-1.5 right-1.5 flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-black/60 text-white text-[9px] font-mono border border-white/20">
-                  <Film className="w-2.5 h-2.5 text-white/90" />
-                  <span>视频</span>
-                </div>
-              </>
-            ) : (
-              <img
-                src={photos[0]}
-                alt="留影 1"
-                className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
-              />
+            <AlbumThumbnailMedia src={photos[0]} isVid={isVideoMedia(photos[0])} alt="留影 1" />
+            {isVideoMedia(photos[0]) && (
+              <div className="absolute bottom-1.5 right-1.5 flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-black/60 text-white text-[9px] font-mono border border-white/20 pointer-events-none">
+                <Film className="w-2.5 h-2.5 text-white/90" />
+                <span>视频</span>
+              </div>
             )}
           </div>
 
@@ -259,20 +306,12 @@ export const PersonAlbum: React.FC<PersonAlbumProps> = ({
             className="relative aspect-square rounded-2xl overflow-hidden bg-black/90 border border-[#5B7B6D]/15 group cursor-pointer shadow-2xs hover:shadow-md transition-all active:scale-[0.98]"
             title="点击查看"
           >
-            {isVideoMedia(photos[1]) ? (
-              <>
-                <video src={photos[1]} playsInline muted className="w-full h-full object-cover brightness-[0.9] group-hover:scale-105 transition-transform duration-300" />
-                <div className="absolute bottom-1.5 right-1.5 flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-black/60 text-white text-[9px] font-mono border border-white/20">
-                  <Film className="w-2.5 h-2.5 text-white/90" />
-                  <span>视频</span>
-                </div>
-              </>
-            ) : (
-              <img
-                src={photos[1]}
-                alt="留影 2"
-                className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
-              />
+            <AlbumThumbnailMedia src={photos[1]} isVid={isVideoMedia(photos[1])} alt="留影 2" />
+            {isVideoMedia(photos[1]) && (
+              <div className="absolute bottom-1.5 right-1.5 flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-black/60 text-white text-[9px] font-mono border border-white/20 pointer-events-none">
+                <Film className="w-2.5 h-2.5 text-white/90" />
+                <span>视频</span>
+              </div>
             )}
           </div>
 
@@ -455,29 +494,17 @@ export const PersonAlbum: React.FC<PersonAlbumProps> = ({
                           }`}
                           title={isMultiSelectMode ? '点击勾选/取消勾选' : isVid ? '点击放映视频' : '点击放大查看'}
                         >
-                          {isVid ? (
-                            <>
-                              <video
-                                src={itemUrl}
-                                playsInline
-                                muted
-                                className={`w-full h-full object-cover transition-transform duration-300 ${
-                                  isMultiSelectMode && isSelected ? 'brightness-90' : 'hover:scale-105'
-                                }`}
-                              />
-                              <div className="absolute bottom-1.5 right-1.5 z-10 flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-black/60 text-white text-[8px] font-mono border border-white/20 pointer-events-none">
-                                <Film className="w-2.5 h-2.5 text-white/90" />
-                                <span>视频</span>
-                              </div>
-                            </>
-                          ) : (
-                            <img
-                              src={itemUrl}
-                              alt={`留影 ${idx + 1}`}
-                              className={`w-full h-full object-cover transition-transform duration-300 ${
-                                isMultiSelectMode && isSelected ? 'brightness-90' : 'hover:scale-105'
-                              }`}
-                            />
+                          <AlbumThumbnailMedia
+                            src={itemUrl}
+                            isVid={isVid}
+                            alt={`留影 ${idx + 1}`}
+                            className={isMultiSelectMode && isSelected ? 'brightness-90' : 'hover:scale-105'}
+                          />
+                          {isVid && (
+                            <div className="absolute bottom-1.5 right-1.5 z-10 flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-black/60 text-white text-[8px] font-mono border border-white/20 pointer-events-none">
+                              <Film className="w-2.5 h-2.5 text-white/90" />
+                              <span>视频</span>
+                            </div>
                           )}
 
                           {/* 多选模式下的打钩选择圆环 */}
@@ -591,8 +618,9 @@ export const PersonAlbum: React.FC<PersonAlbumProps> = ({
                       className="w-full max-h-[68dvh]"
                     />
                   ) : (
-                    <img
+                    <AlbumThumbnailMedia
                       src={photos[previewIndex]}
+                      isVid={false}
                       alt="昔日留影"
                       className="max-h-[66dvh] max-w-full object-contain rounded-lg shadow-md"
                     />

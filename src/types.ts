@@ -65,6 +65,10 @@ export interface Letter {
   unlockDate: string;
   content: string;
   isUnlocked: boolean;
+  mediaUrl?: string;
+  mediaType?: 'image' | 'video';
+  videoPoster?: string;
+  date?: string;
 }
 
 export interface AppData {

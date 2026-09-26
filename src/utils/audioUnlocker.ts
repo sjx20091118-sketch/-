@@ -196,4 +196,5 @@ class TTSAudioEngine {
   }
 }
 
+export { TTSAudioEngine };
 export default TTSAudioEngine;

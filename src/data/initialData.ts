@@ -19,9 +19,7 @@ export const INITIAL_SEED: AppData = {
       content: '盛夏的蝉鸣格外喧嚣。放学后几辆单车并排滑下长长的林荫坡道，车篮里装着沉甸甸的参考书与刚买的冰棍。链条咔哒作响，海风把所有少年的笑闹声都吹得很远很远。',
       tag: '放学',
       image: 'https://images.unsplash.com/photo-1471506480208-91b3a4cc78be?w=700&auto=format&fit=crop&q=80',
-      video: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4',
-      videoPoster: 'https://images.unsplash.com/photo-1471506480208-91b3a4cc78be?w=700&auto=format&fit=crop&q=80',
-      mediaType: 'video'
+      mediaType: 'image'
     },
     {
       id: 't-103',

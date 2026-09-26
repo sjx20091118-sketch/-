@@ -18,15 +18,17 @@ export interface ProcessedMedia {
 export function isVideoMedia(url?: string): boolean {
   if (!url) return false;
   if (url.startsWith('data:video/')) return true;
+  if (url.startsWith('idb://video_') || url.startsWith('idb://video')) return true;
   const clean = url.split('?')[0].toLowerCase();
   return clean.endsWith('.mp4') || clean.endsWith('.webm') || clean.endsWith('.mov') || clean.endsWith('.m4v');
 }
 
 /**
- * 从上传的视频文件提取第一帧生成 Base64 封面缩略图
+ * 从上传的视频文件提取第一帧生成 Base64 封面缩略图（含高可用超时与内存释放保障）
  */
 export async function extractVideoPoster(file: File): Promise<{ poster: string; duration: number }> {
   return new Promise((resolve) => {
+    let isSettled = false;
     const video = document.createElement('video');
     video.preload = 'metadata';
     video.muted = true;
@@ -35,12 +37,32 @@ export async function extractVideoPoster(file: File): Promise<{ poster: string; 
     const fileUrl = URL.createObjectURL(file);
     video.src = fileUrl;
 
+    const cleanup = () => {
+      if (!isSettled) {
+        isSettled = true;
+        try {
+          video.pause();
+          video.src = '';
+          video.load();
+        } catch (e) {}
+        URL.revokeObjectURL(fileUrl);
+      }
+    };
+
+    // 3.5秒超时安全网：杜绝数百兆异形编码长视频导致页面等待死锁
+    const timer = setTimeout(() => {
+      cleanup();
+      resolve({ poster: '', duration: 0 });
+    }, 3500);
+
     video.onloadeddata = () => {
-      // 截取 0.2 秒处避免全黑帧
+      if (isSettled) return;
       video.currentTime = Math.min(0.2, (video.duration || 1) / 2);
     };
 
     video.onseeked = () => {
+      if (isSettled) return;
+      clearTimeout(timer);
       try {
         const canvas = document.createElement('canvas');
         const maxDim = 800;
@@ -63,19 +85,20 @@ export async function extractVideoPoster(file: File): Promise<{ poster: string; 
         if (ctx) {
           ctx.drawImage(video, 0, 0, w, h);
           const poster = canvas.toDataURL('image/jpeg', 0.82);
-          URL.revokeObjectURL(fileUrl);
+          cleanup();
           resolve({ poster, duration: video.duration || 0 });
           return;
         }
       } catch (e) {
         console.warn('提取视频首帧失败', e);
       }
-      URL.revokeObjectURL(fileUrl);
+      cleanup();
       resolve({ poster: '', duration: video.duration || 0 });
     };
 
     video.onerror = () => {
-      URL.revokeObjectURL(fileUrl);
+      clearTimeout(timer);
+      cleanup();
       resolve({ poster: '', duration: 0 });
     };
   });

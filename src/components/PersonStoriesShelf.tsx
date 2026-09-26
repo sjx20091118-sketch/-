@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { BookOpen, Plus, X, Check, FileText } from 'lucide-react';
 import { Story } from '../types';
 import { sound } from '../utils/soundEngine';
+import { useBackHandler } from '../hooks/useAndroidBackHandler';
 
 interface PersonStoriesShelfProps {
   personName: string;
@@ -24,6 +25,11 @@ export const PersonStoriesShelf: React.FC<PersonStoriesShelfProps> = ({
 }) => {
   const [isPickerOpen, setIsPickerOpen] = useState(false);
   const [selectedIds, setSelectedIds] = useState<string[]>(boundStoryIds);
+
+  // Level 3: 物理返回拦截：关联拾忆篇章拣选弹窗 (Priority 80)
+  useBackHandler('person-stories-picker', 80, isPickerOpen, () => {
+    setIsPickerOpen(false);
+  });
 
   const boundStories = allStories.filter((s) => boundStoryIds.includes(s.id));
 

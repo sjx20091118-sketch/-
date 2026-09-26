@@ -5,6 +5,7 @@ import { Package, Plus, Trash2, X, Check } from 'lucide-react';
 import { Artifact } from '../types';
 import { sound } from '../utils/soundEngine';
 import { TiltCard } from './TiltCard';
+import { useBackHandler } from '../hooks/useAndroidBackHandler';
 
 interface PersonArtifactsShelfProps {
   personName: string;
@@ -25,6 +26,11 @@ export const PersonArtifactsShelf: React.FC<PersonArtifactsShelfProps> = ({
 }) => {
   const [isPickerOpen, setIsPickerOpen] = useState(false);
   const [selectedIds, setSelectedIds] = useState<string[]>(boundArtifactIds);
+
+  // Level 3: 物理返回拦截：从拾物阁拣选信物弹窗 (Priority 80)
+  useBackHandler('person-artifacts-picker', 80, isPickerOpen, () => {
+    setIsPickerOpen(false);
+  });
 
   const boundArtifacts = allArtifacts.filter(a => boundArtifactIds.includes(a.id));
 
@@ -92,7 +98,11 @@ export const PersonArtifactsShelf: React.FC<PersonArtifactsShelfProps> = ({
           {boundArtifacts.map(art => (
             <div
               key={art.id}
-              onClick={() => onSelectArtifact?.(art)}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                onSelectArtifact?.(art);
+              }}
               className="cursor-pointer"
             >
               <TiltCard

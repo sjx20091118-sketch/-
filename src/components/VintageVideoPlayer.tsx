@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { Play, Pause, Volume2, VolumeX, Maximize2, X, RotateCcw, Film } from 'lucide-react';
 import { formatVideoDuration } from '../utils/mediaStorage';
+import { resolveMediaUrl, isIndexedDbMedia } from '../services/indexedDbMedia';
 
 interface VintageVideoPlayerProps {
   src: string;
@@ -28,6 +29,22 @@ export const VintageVideoPlayer: React.FC<VintageVideoPlayerProps> = ({
   const instanceId = useId();
   const videoRef = useRef<HTMLVideoElement>(null);
   const modalVideoRef = useRef<HTMLVideoElement>(null);
+
+  const [resolvedSrc, setResolvedSrc] = useState(src);
+
+  useEffect(() => {
+    let isMounted = true;
+    if (isIndexedDbMedia(src)) {
+      resolveMediaUrl(src).then((url) => {
+        if (isMounted) setResolvedSrc(url);
+      });
+    } else {
+      setResolvedSrc(src);
+    }
+    return () => {
+      isMounted = false;
+    };
+  }, [src]);
 
   const [isPlaying, setIsPlaying] = useState(false);
   const [isMuted, setIsMuted] = useState(true);
@@ -182,7 +199,7 @@ export const VintageVideoPlayer: React.FC<VintageVideoPlayerProps> = ({
       <div className="relative w-full h-full flex items-center justify-center cursor-pointer" onClick={handleTogglePlay}>
         <video
           ref={videoRef}
-          src={src}
+          src={resolvedSrc}
           poster={poster}
           playsInline
           loop
@@ -308,7 +325,7 @@ export const VintageVideoPlayer: React.FC<VintageVideoPlayerProps> = ({
                 >
                   <video
                     ref={modalVideoRef}
-                    src={src}
+                    src={resolvedSrc}
                     poster={poster}
                     playsInline
                     autoPlay
