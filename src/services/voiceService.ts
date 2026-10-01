@@ -98,6 +98,46 @@ export async function stopAllSpeech(): Promise<void> {
 }
 
 /**
+ * 暂停当前朗诵
+ */
+export function pauseCurrentSpeech(): void {
+  if (activeStreamAudio && !activeStreamAudio.paused) {
+    activeStreamAudio.pause();
+  }
+  if (typeof window !== 'undefined' && 'speechSynthesis' in window && window.speechSynthesis.speaking) {
+    try {
+      window.speechSynthesis.pause();
+    } catch (e) {}
+  }
+}
+
+/**
+ * 恢复当前朗诵
+ */
+export function resumeCurrentSpeech(): void {
+  if (activeStreamAudio && activeStreamAudio.paused) {
+    activeStreamAudio.play().catch(() => {});
+  }
+  if (typeof window !== 'undefined' && 'speechSynthesis' in window && window.speechSynthesis.paused) {
+    try {
+      window.speechSynthesis.resume();
+    } catch (e) {}
+  }
+}
+
+/**
+ * 调节播放语速
+ */
+export function setSpeechRate(rate: number): void {
+  if (activeStreamAudio) {
+    activeStreamAudio.playbackRate = rate;
+  }
+  if (activeUtterance) {
+    activeUtterance.rate = rate;
+  }
+}
+
+/**
  * 将长文本智能切分成句子，便于分段缓冲
  */
 function splitTextIntoSentences(text: string): string[] {

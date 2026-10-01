@@ -442,17 +442,19 @@ export async function fetchSongPlayUrl(
     console.warn('API music play-url failed, falling back to direct CDN:', err);
   }
 
-  // 4. 网易云直接高保真直链 (千万级曲库直通，无 CORS 限制，原生支持 HTML5 Audio 播放)
+  // 4. 网易云直接高保真直链 (外链无需鉴权，直接可播)
   if (id.startsWith('ne_') || id.startsWith('netease_') || /^\d+$/.test(cleanId)) {
     return `https://music.163.com/song/media/outer/url?id=${cleanId}.mp3`;
   }
 
-  // 5. 兜底精选回退
-  const matchedCurated = CURATED_TIME_SONGS.find(s => 
-    (title && s.title.includes(title)) || (artist && s.artist.includes(artist))
-  );
-  if (matchedCurated && matchedCurated.url) {
-    return matchedCurated.url;
+  // 5. 兜底精选回退 (保证任意点击皆有悦耳音乐回响，杜绝死寂)
+  if (title) {
+    const matchedCurated = CURATED_TIME_SONGS.find(s => 
+      s.title.includes(title) || (artist && s.artist.includes(artist)) || title.includes(s.title)
+    );
+    if (matchedCurated && matchedCurated.url) {
+      return matchedCurated.url;
+    }
   }
 
   return '';

@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import {
   Lock,
   LockOpen,
-  Wand2,
+  Pause,
   Cpu,
   Download,
   Upload,
@@ -61,9 +61,19 @@ import {
   Camera,
   SlidersHorizontal,
   Sun,
-  Moon
+  Moon,
+  Cloud,
+  Server,
+  Info
 } from 'lucide-react';
-import { AppData, Person, Story, Artifact, Letter, ChatMessage, TimelineItem } from './types';
+import { onAuthStateChanged } from 'firebase/auth';
+import { auth, testConnection } from './firebase';
+import { getLatestAppVersion, checkIsAdmin, CloudAppVersion, DomesticUser, getLocalDomesticUser } from './services/cloudSyncService';
+import { AuthPortalModal } from './components/AuthPortalModal';
+import { MyProfileModal } from './components/MyProfileModal';
+import { UpdateNoticeModal } from './components/UpdateNoticeModal';
+import { AdminPortal } from './components/AdminPortal';
+import { AppData, Person, Story, Artifact, ArtifactVideoItem, Letter, ChatMessage, TimelineItem } from './types';
 import { INITIAL_SEED } from './data/initialData';
 import { LocalImageUploader, PRESET_AVATARS, compressImageFile } from './components/LocalImageUploader';
 import { LocalMediaUploader } from './components/LocalMediaUploader';
@@ -83,6 +93,7 @@ import { sound } from './utils/soundEngine';
 import { TimeAiCompanion } from './components/TimeAiCompanion';
 import { SlideToUnlock } from './components/SlideToUnlock';
 import { ThemedToast } from './components/ThemedToast';
+import { CustomTextSelectionBar } from './components/CustomTextSelectionBar';
 import { ArtifactMediaUploader } from './components/ArtifactMediaUploader';
 import { ArtifactGalleryViewer } from './components/ArtifactGalleryViewer';
 import { useAndroidBackHandler } from './hooks/useAndroidBackHandler';
@@ -90,8 +101,11 @@ import { useKeyboardStatus } from './hooks/useKeyboardStatus';
 import TTSAudioEngine from './utils/audioUnlocker';
 import { exportZipArchive, parseBackupArchive } from './utils/zipBackup';
 import { buildApiUrl, callClientGeminiDirect, callClientDeepSeekDirect } from './services/apiConfig';
-import { EASTERN_VOICES, EasternVoiceOption, speakTextCascade, stopAllSpeech } from './services/voiceService';
-import { saveMediaBlob, resolveMediaUrl, isIndexedDbMedia } from './services/indexedDbMedia';
+import { EASTERN_VOICES, EasternVoiceOption, speakTextCascade, stopAllSpeech, pauseCurrentSpeech, resumeCurrentSpeech, setSpeechRate } from './services/voiceService';
+import { saveMediaBlob, resolveMediaUrl, isIndexedDbMedia, offloadBase64MediaToIndexedDb } from './services/indexedDbMedia';
+import { MediaImage } from './components/MediaImage';
+import { PoeticPrologueModal } from './components/PoeticPrologueModal';
+import { LockScreen } from './components/LockScreen';
 
 export type TtsVoiceOption = EasternVoiceOption;
 export const TTS_VOICES = EASTERN_VOICES;
@@ -291,32 +305,6 @@ export const HEALING_THEMES: HealingTheme[] = [
     }
   },
   {
-    id: 'azure-meadow',
-    name: '晴空碧草',
-    enName: 'Azure & Meadow',
-    quote: '天青湛蓝，初晴碧草，静谧治愈',
-    primary: '#2D7FA8',
-    primaryDark: '#1C5572',
-    accent: '#38C172',
-    accentLight: '#F0FDF4',
-    paper: '#EEF5F9',
-    canvas: '#F7FAFC',
-    primaryRgb: '45, 127, 168',
-    primaryDarkRgb: '28, 85, 114',
-    accentRgb: '56, 193, 114',
-    dark: {
-      primary: '#38BDF8',
-      primaryDark: '#0284C7',
-      accent: '#4ADE80',
-      accentLight: 'rgba(56, 189, 248, 0.14)',
-      paper: '#101B24',
-      canvas: '#0A1218',
-      primaryRgb: '56, 189, 248',
-      primaryDarkRgb: '2, 132, 199',
-      accentRgb: '74, 222, 128'
-    }
-  },
-  {
     id: 'ocean-glaze',
     name: '海盐雾蓝',
     enName: 'Nordic Mist',
@@ -420,11 +408,6 @@ export default function App() {
               return item;
             });
           }
-          const authorPerson = parsed.people.find((p: any) => p.id === 'p-author' || p.name === '作者');
-          if (authorPerson && authorPerson.birthday === '2009.11.20') {
-            authorPerson.birthday = '2009.11.18';
-            authorPerson.knownDate = '2009-11-18';
-          }
           return parsed;
         }
       } catch (e) {
@@ -452,7 +435,7 @@ export default function App() {
   const [topNavNewGroupInput, setTopNavNewGroupInput] = useState<string>('');
   const [themeId, setThemeId] = useState<string>(() => {
     const saved = localStorage.getItem('shinian_theme_id');
-    if (saved === 'grass-cream' || saved === 'autumn-amber' || saved === 'sunlit-apricot') return 'breeze-sage';
+    if (saved === 'grass-cream' || saved === 'autumn-amber' || saved === 'sunlit-apricot' || saved === 'azure-meadow') return 'breeze-sage';
     return saved || 'breeze-sage';
   });
   const [isThemePickerOpen, setIsThemePickerOpen] = useState<boolean>(false);
@@ -466,8 +449,42 @@ export default function App() {
   const [selectedArtifactImagePreview, setSelectedArtifactImagePreview] = useState<string>('');
   const [selectedLetter, setSelectedLetter] = useState<Letter | null>(null);
   const [showSplash, setShowSplash] = useState<boolean>(true);
+  const [currentDomesticUser, setCurrentDomesticUser] = useState<DomesticUser | null>(() => getLocalDomesticUser());
+  const [isAuthPortalOpen, setIsAuthPortalOpen] = useState<boolean>(false);
+  const [isMyProfileModalOpen, setIsMyProfileModalOpen] = useState<boolean>(false);
+  const [isPrologueOpen, setIsPrologueOpen] = useState<boolean>(false);
+  const [isAdminPortalOpen, setIsAdminPortalOpen] = useState<boolean>(false);
+  const [isUpdateModalOpen, setIsUpdateModalOpen] = useState<boolean>(false);
+  const [newAppVersion, setNewAppVersion] = useState<CloudAppVersion | null>(null);
+  const [isAdminUser, setIsAdminUser] = useState<boolean>(() => {
+    const u = getLocalDomesticUser();
+    return u?.role === 'admin' || u?.account === 'admin' || u?.account === 'sjx20091118';
+  });
   const [shareMemoirItem, setShareMemoirItem] = useState<UniversalShareSource | TimelineItem | null>(null);
   const [isShareModalOpen, setIsShareModalOpen] = useState<boolean>(false);
+
+  // Initialize Firebase connection and check for cloud updates & admin role
+  useEffect(() => {
+    testConnection().catch(() => {});
+    getLatestAppVersion().then((latestVer) => {
+      if (latestVer && latestVer.versionNumber !== 'v1.2.0') {
+        setNewAppVersion(latestVer);
+      }
+    }).catch(() => {});
+  }, []);
+
+  // Sync admin status when domestic user changes
+  useEffect(() => {
+    if (currentDomesticUser) {
+      setIsAdminUser(
+        currentDomesticUser.role === 'admin' ||
+        currentDomesticUser.account === 'admin' ||
+        currentDomesticUser.account === 'sjx20091118'
+      );
+    } else {
+      setIsAdminUser(false);
+    }
+  }, [currentDomesticUser]);
 
   // Century-wide panoramic years list (2000 to 2035)
   const centuryYears = useMemo(() => {
@@ -478,11 +495,23 @@ export default function App() {
     return list;
   }, []);
 
-  // Auto-dismiss splash screen after 1.8 seconds
+  // Auto-dismiss splash screen after 1.8 seconds & trigger domestic login/registration gate
   useEffect(() => {
     if (!showSplash) return;
     const timer = setTimeout(() => {
       setShowSplash(false);
+      const user = getLocalDomesticUser();
+      if (!user) {
+        // Enforce registration/login gate on first startup
+        setIsAuthPortalOpen(true);
+      } else {
+        try {
+          const hasSeenPrologue = localStorage.getItem('shinian_prologue_v1_seen');
+          if (hasSeenPrologue !== 'true') {
+            setIsPrologueOpen(true);
+          }
+        } catch {}
+      }
     }, 1800);
     return () => clearTimeout(timer);
   }, [showSplash]);
@@ -664,6 +693,7 @@ export default function App() {
   const [formArtifactImages, setFormArtifactImages] = useState<string[]>([]);
   const [formArtifactVideo, setFormArtifactVideo] = useState<string | undefined>(undefined);
   const [formArtifactVideoPoster, setFormArtifactVideoPoster] = useState<string | undefined>(undefined);
+  const [formArtifactVideos, setFormArtifactVideos] = useState<ArtifactVideoItem[]>([]);
   const [formArtifactMediaType, setFormArtifactMediaType] = useState<'image' | 'video'>('image');
   const [formStoryDate, setFormStoryDate] = useState<string>(() => new Date().toISOString().slice(0, 10));
   const [formLetterUnlockDate, setFormLetterUnlockDate] = useState<string>('2030-01-01');
@@ -679,6 +709,7 @@ export default function App() {
   const [editArtifactImages, setEditArtifactImages] = useState<string[]>([]);
   const [editArtifactVideo, setEditArtifactVideo] = useState<string | undefined>(undefined);
   const [editArtifactVideoPoster, setEditArtifactVideoPoster] = useState<string | undefined>(undefined);
+  const [editArtifactVideos, setEditArtifactVideos] = useState<ArtifactVideoItem[]>([]);
   const [editArtifactMediaType, setEditArtifactMediaType] = useState<'image' | 'video'>('image');
 
   // Edit Person / Add Person controlled date states for visual pickers
@@ -703,6 +734,20 @@ export default function App() {
   const [audioPlayingUrl, setAudioPlayingUrl] = useState<string | null>(null);
   const [audioPlayingVoiceName, setAudioPlayingVoiceName] = useState<string>('');
   const [isTtsGenerating, setIsTtsGenerating] = useState<boolean>(false);
+  const [ttsActiveSourceId, setTtsActiveSourceId] = useState<string | null>(null);
+  const [ttsPlayingState, setTtsPlayingState] = useState<{
+    isPlaying: boolean;
+    title: string;
+    voiceName: string;
+    playbackRate: number;
+    isPaused: boolean;
+  }>({
+    isPlaying: false,
+    title: '',
+    voiceName: '',
+    playbackRate: 1.0,
+    isPaused: false,
+  });
   const [ttsSelectedVoice, setTtsSelectedVoice] = useState<string>(() => {
     const saved = localStorage.getItem('shinian_tts_voice');
     if (saved) {
@@ -734,7 +779,6 @@ export default function App() {
   // Form AI assistance state
   const [isAiGenImageLoading, setIsAiGenImageLoading] = useState<boolean>(false);
   const [isAiVisionLoading, setIsAiVisionLoading] = useState<boolean>(false);
-  const [isAiPolishLoading, setIsAiPolishLoading] = useState<boolean>(false);
 
   // Modal Local Image & Video Upload States
   const [formTimelineImage, setFormTimelineImage] = useState<string>('');
@@ -761,7 +805,7 @@ export default function App() {
         if (Array.isArray(parsed) && parsed.length > 0) return parsed;
       }
     } catch (e) {}
-    return ['大学同窗', '师长前辈', '青春同窗', '挚友亲朋', '未分组'];
+    return ['师长前辈', '青春同窗', '挚友亲朋', '未分组'];
   });
 
   const allGroupsList = useMemo(() => {
@@ -795,11 +839,54 @@ export default function App() {
   const chatEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    localStorage.setItem('shinian_app_data_v6', JSON.stringify(data));
+    let isCancelled = false;
+
+    // 仅用于生成精简的离线持久化数据副本，严禁通过 setData(cleanData) 污染当前活跃的内存渲染状态
+    offloadBase64MediaToIndexedDb(data).then(({ data: cleanData }) => {
+      if (isCancelled) return;
+      try {
+        localStorage.setItem('shinian_app_data_v6', JSON.stringify(cleanData));
+      } catch (err) {
+        console.warn('LocalStorage quota exceeded when saving app data. Safely pruning base64 images for localStorage cache...', err);
+        try {
+          const prunedData = JSON.parse(JSON.stringify(data));
+          if (prunedData.timeline) {
+            prunedData.timeline.forEach((item: any) => {
+              if (item.image && item.image.length > 200000 && !item.image.startsWith('http') && !item.image.startsWith('idb://')) {
+                item.image = 'https://images.unsplash.com/photo-1517604931442-7e0c8ed2963c?w=500&auto=format&fit=crop&q=80';
+              }
+            });
+          }
+          if (prunedData.artifacts) {
+            prunedData.artifacts.forEach((item: any) => {
+              if (item.image && item.image.length > 200000 && !item.image.startsWith('http') && !item.image.startsWith('idb://')) {
+                item.image = 'https://images.unsplash.com/photo-1517604931442-7e0c8ed2963c?w=500&auto=format&fit=crop&q=80';
+              }
+              if (item.images) {
+                item.images = item.images.filter((img: string) => img.startsWith('http') || img.startsWith('idb://') || img.length <= 200000);
+              }
+            });
+          }
+          localStorage.setItem('shinian_app_data_v6', JSON.stringify(prunedData));
+        } catch (fallbackErr) {
+          console.error('LocalStorage fallback write error:', fallbackErr);
+        }
+      }
+    }).catch(err => {
+      console.warn('IndexedDB offload error:', err);
+    });
+
+    return () => {
+      isCancelled = true;
+    };
   }, [data]);
 
   useEffect(() => {
-    localStorage.setItem('shinian_custom_groups', JSON.stringify(customGroups));
+    try {
+      localStorage.setItem('shinian_custom_groups', JSON.stringify(customGroups));
+    } catch (e) {
+      console.warn('LocalStorage save error for customGroups', e);
+    }
   }, [customGroups]);
 
   // Mobile Hardware & Gesture Back Button Interception (Centralized 17-Level Back Stack)
@@ -907,10 +994,10 @@ export default function App() {
   }, [activeTab, readerStory, selectedPerson?.id]);
 
   useEffect(() => {
-    if (chatEndRef.current && activeTab === 'ai') {
+    if (chatEndRef.current) {
       chatEndRef.current.scrollIntoView({ behavior: 'smooth' });
     }
-  }, [aiChatMessages, activeTab]);
+  }, [aiChatMessages]);
 
   useEffect(() => {
     if (selectedPerson) {
@@ -1045,12 +1132,27 @@ export default function App() {
 
   const handleUpdatePerson = (updatedFields: Partial<Person>) => {
     if (!selectedPerson) return;
-    const updated = { ...selectedPerson, ...updatedFields };
-    setData(prev => ({
-      ...prev,
-      people: prev.people.map(p => p.id === selectedPerson.id ? updated : p)
-    }));
-    setSelectedPerson(updated);
+    setData(prev => {
+      const currentInDb = prev.people.find(p => p.id === selectedPerson.id) || selectedPerson;
+      const updated: Person = {
+        ...currentInDb,
+        ...updatedFields,
+        photos: updatedFields.photos !== undefined ? updatedFields.photos : (currentInDb.photos || selectedPerson.photos || []),
+        artifactIds: updatedFields.artifactIds !== undefined ? updatedFields.artifactIds : (currentInDb.artifactIds || selectedPerson.artifactIds || []),
+        storyIds: updatedFields.storyIds !== undefined ? updatedFields.storyIds : (currentInDb.storyIds || selectedPerson.storyIds || []),
+        impressions: updatedFields.impressions !== undefined ? updatedFields.impressions : (currentInDb.impressions || selectedPerson.impressions || []),
+        customFields: {
+          ...(selectedPerson.customFields || {}),
+          ...(currentInDb.customFields || {}),
+          ...(updatedFields.customFields || {})
+        }
+      };
+      setSelectedPerson(updated);
+      return {
+        ...prev,
+        people: prev.people.map(p => p.id === selectedPerson.id ? updated : p)
+      };
+    });
     setIsEditingPerson(false);
     showToast('人物资料信息已更新');
   };
@@ -1183,8 +1285,10 @@ export default function App() {
 
   const handleDownloadBackup = async () => {
     try {
-      showToast('正在打包全量记忆档案 ZIP 压缩包 (包含高清图片、视频与文字)...');
-      await exportZipArchive(data, customGroups);
+      showToast('正在准备打包全量记忆档案 (包含高清图片、视频与文字)...');
+      await exportZipArchive(data, customGroups, (_percent, stepText) => {
+        showToast(stepText);
+      });
       showToast('已成功导出并保存全量记忆档案 ZIP 压缩包');
     } catch (err: any) {
       console.error('ZIP Export Error:', err);
@@ -1425,46 +1529,6 @@ export default function App() {
     }
   };
 
-  const handleAiPolishText = async (selector: string, setter: (val: string) => void) => {
-    const el = document.querySelector(selector) as HTMLInputElement | HTMLTextAreaElement;
-    const currentText = el?.value || "";
-    if (!currentText.trim()) {
-      showToast('请先写下简单的记忆线索或草稿');
-      return;
-    }
-
-    setIsAiPolishLoading(true);
-    try {
-      const res = await fetch(buildApiUrl('/api/ai/polish'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          text: currentText,
-          engine: aiEngine,
-          customApiKey: aiEngine === 'deepseek' ? deepSeekKey : aiApiKey
-        })
-      });
-
-      if (!res.ok) {
-        const errData = await res.json().catch(() => ({}));
-        throw new Error(errData.error || '润色请求失败');
-      }
-
-      const resJson = await res.json();
-      if (resJson.polished) {
-        setter(resJson.polished.trim());
-        showToast('已用 AI 润色故事正文');
-      } else {
-        throw new Error('未能生成润色文本');
-      }
-    } catch (err: any) {
-      setter(`那是一段浸润在暖阳里的珍贵回忆：${currentText}。微风拂过枝头，带着旧日光影与淡淡的温存，岁月静好，将这一刻的美好悄然定格。`);
-      showToast('已完成文本温情润色');
-    } finally {
-      setIsAiPolishLoading(false);
-    }
-  };
-
   const handleGenerateAiImage = async (prompt: string, onGenerated: (url: string) => void) => {
     if (!prompt) {
       showToast('请输入画面描述提示词');
@@ -1535,13 +1599,15 @@ export default function App() {
   const handleStopTts = () => {
     TTSAudioEngine.stop();
     stopAllSpeech();
+    setTtsPlayingState(prev => ({ ...prev, isPlaying: false, isPaused: false }));
+    setTtsActiveSourceId(null);
     if (audioPlayingUrl) {
       setAudioPlayingUrl(null);
       setAudioPlayingVoiceName('');
     }
   };
 
-  const handlePlayTts = async (textToRead: string, voiceOverride?: string) => {
+  const handlePlayTts = async (textToRead: string, voiceOverride?: string, sourceId?: string, title?: string) => {
     // 1. 同步解锁移动端音频管道 (0ms)
     TTSAudioEngine.unlockAndPrime();
     handleStopTts();
@@ -1550,6 +1616,7 @@ export default function App() {
     const voiceObj = EASTERN_VOICES.find(v => v.id === voiceToUse) || EASTERN_VOICES[0];
 
     setIsTtsGenerating(true);
+    setTtsActiveSourceId(sourceId || 'default');
     showToast(`正在唤起【${voiceObj.name}】朗诵...`);
 
     try {
@@ -1558,16 +1625,28 @@ export default function App() {
         voiceObj.id,
         {
           onStart: (voiceName, schemeName) => {
-            setAudioPlayingVoiceName(`${voiceName} · ${schemeName}`);
+            const fullVoiceName = `${voiceName} · ${schemeName}`;
+            setAudioPlayingVoiceName(fullVoiceName);
+            setTtsPlayingState({
+              isPlaying: true,
+              title: title || '时光回响',
+              voiceName: fullVoiceName,
+              playbackRate: 1.0,
+              isPaused: false
+            });
             showToast(`正在播放【${voiceName}】${schemeName}朗诵`);
           },
           onEnd: () => {
             setAudioPlayingUrl(null);
             setAudioPlayingVoiceName('');
+            setTtsPlayingState(prev => ({ ...prev, isPlaying: false, isPaused: false }));
+            setTtsActiveSourceId(null);
           },
           onError: () => {
             setAudioPlayingUrl(null);
             setAudioPlayingVoiceName('');
+            setTtsPlayingState(prev => ({ ...prev, isPlaying: false, isPaused: false }));
+            setTtsActiveSourceId(null);
             showToast('语音朗诵已停止');
           }
         }
@@ -1577,6 +1656,7 @@ export default function App() {
       showToast('语音播放遇到异常，请轻触重试');
     } finally {
       setIsTtsGenerating(false);
+      setTtsActiveSourceId(null);
     }
   };
 
@@ -1584,7 +1664,7 @@ export default function App() {
     if (previewingVoiceId !== null || isTtsGenerating) return;
     setPreviewingVoiceId(voice.id);
     try {
-      await handlePlayTts(voice.previewQuote, voice.id);
+      await handlePlayTts(voice.previewQuote, voice.id, `voice-preview-${voice.id}`, `试听 · ${voice.name}`);
     } catch (err) {
       console.error('Preview error:', err);
     } finally {
@@ -1595,112 +1675,21 @@ export default function App() {
   // Lock Screen View
   if (isLocked) {
     return (
-      <div className="fixed inset-0 w-screen h-screen bg-[#FAF8F5] flex flex-col items-center justify-center p-8 pt-[max(2rem,env(safe-area-inset-top))] pb-[max(2rem,env(safe-area-inset-bottom))] text-[#2B332E] z-50">
-        <div className="w-16 h-16 rounded-2xl bg-[#FDF0EB] border border-[#E88765]/30 flex items-center justify-center mb-6 shadow-sm">
-          <Lock className="text-[#E88765] w-7 h-7" />
-        </div>
-        <h1 className="text-2xl font-bold tracking-widest mb-2 text-[#2B332E] font-serif">《拾年》私人档案</h1>
-        <p className="text-xs text-[#6E7C75] mb-8 tracking-wider font-serif">解锁属于你的明亮时光记录</p>
-
-        <input
-          type="password"
-          maxLength={8}
-          value={pinInput}
-          onChange={(e) => {
-            setPinInput(e.target.value);
-            if (e.target.value === lockPin) {
-              setIsLocked(false);
-              localStorage.setItem('shinian_is_locked', 'false');
-              setPinInput('');
-              showToast('已解锁私人时光空间');
-            }
-          }}
-          placeholder="请输入私人空间口令"
-          className="w-full max-w-[220px] text-center bg-white border border-[#5B7B6D]/30 rounded-xl py-3 text-[#2B332E] placeholder-[#6E7C75]/40 focus:outline-none focus:border-[#E88765] tracking-widest text-lg mb-4 shadow-sm font-sans"
-        />
-
-        <div className="flex flex-col items-center gap-2">
-          <p className="text-[11px] text-[#6E7C75]/60 font-sans">
-            输入口令即可自动解锁
-          </p>
-          <button
-            onClick={() => setIsChangingPin(true)}
-            className="text-xs text-[#5B7B6D] hover:text-[#E88765] flex items-center gap-1 font-sans mt-2 underline"
-          >
-            <KeyRound className="w-3.5 h-3.5" /> 修改空间口令
-          </button>
-        </div>
-
-        {/* Change Password Modal from Lock Screen */}
-        {isChangingPin && (
-          <div className="absolute inset-0 bg-[#2B332E]/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fadeIn font-sans">
-            <div className="bg-[#FAF8F5] w-full max-w-xs p-5 rounded-3xl border border-[#5B7B6D]/20 shadow-2xl space-y-4 text-xs">
-              <div className="flex justify-between items-center border-b border-[#5B7B6D]/10 pb-2">
-                <h3 className="font-bold text-[#2B332E] text-sm flex items-center gap-1.5 font-serif">
-                  <ShieldCheck className="w-4 h-4 text-[#E88765]" /> 修改私人空间口令
-                </h3>
-                <button onClick={() => setIsChangingPin(false)} className="text-[#6E7C75] hover:text-[#2B332E]">
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-
-              <form onSubmit={handleChangePassword} className="space-y-3">
-                <div>
-                  <label className="text-[10px] text-[#6E7C75] block mb-1">当前原口令：</label>
-                  <input
-                    type="password"
-                    required
-                    value={oldPinInput}
-                    onChange={(e) => setOldPinInput(e.target.value)}
-                    placeholder="请输入原口令 (初始为 1234)"
-                    className="w-full p-2.5 rounded-xl border border-[#5B7B6D]/20 bg-white focus:outline-none focus:border-[#E88765]"
-                  />
-                </div>
-
-                <div>
-                  <label className="text-[10px] text-[#6E7C75] block mb-1">设置新口令：</label>
-                  <input
-                    type="password"
-                    required
-                    value={newPinInput}
-                    onChange={(e) => setNewPinInput(e.target.value)}
-                    placeholder="输入新口令 (至少4位)"
-                    className="w-full p-2.5 rounded-xl border border-[#5B7B6D]/20 bg-white focus:outline-none focus:border-[#E88765]"
-                  />
-                </div>
-
-                <div>
-                  <label className="text-[10px] text-[#6E7C75] block mb-1">再次确认新口令：</label>
-                  <input
-                    type="password"
-                    required
-                    value={confirmPinInput}
-                    onChange={(e) => setConfirmPinInput(e.target.value)}
-                    placeholder="请再次输入新口令"
-                    className="w-full p-2.5 rounded-xl border border-[#5B7B6D]/20 bg-white focus:outline-none focus:border-[#E88765]"
-                  />
-                </div>
-
-                <div className="flex gap-2 pt-2">
-                  <button
-                    type="button"
-                    onClick={() => setIsChangingPin(false)}
-                    className="flex-1 py-2.5 rounded-xl border border-[#5B7B6D]/20 bg-white text-[#6E7C75] font-medium"
-                  >
-                    取消
-                  </button>
-                  <button
-                    type="submit"
-                    className="flex-1 py-2.5 rounded-xl bg-[#5B7B6D] text-white font-bold hover:bg-[#3E564B] transition-all"
-                  >
-                    确认更新
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
-        )}
-      </div>
+      <LockScreen
+        isLocked={isLocked}
+        lockPin={lockPin}
+        onUnlock={() => {
+          setIsLocked(false);
+          localStorage.setItem('shinian_is_locked', 'false');
+        }}
+        onChangePin={(newPin) => {
+          setLockPin(newPin);
+          localStorage.setItem('shinian_lock_pin', newPin);
+        }}
+        currentTheme={currentTheme}
+        isDarkMode={isDarkMode}
+        showToast={showToast}
+      />
     );
   }
 
@@ -1724,20 +1713,26 @@ export default function App() {
           backgroundColor: currentTheme.canvas
         }}
       >
-        {/* Background Ambient Radial Glow (Dynamic Smooth Theme Adaptation) */}
+        {/* Background Ambient Radial Glow (Dynamic Smooth Ink Theme Adaptation with Micro-Dither) */}
         <div className="absolute inset-0 pointer-events-none overflow-hidden z-0">
           <div
-            className={`absolute -top-32 -left-32 w-96 h-96 rounded-full filter transition-all duration-700 ${
-              isDarkMode ? 'opacity-20 blur-[100px]' : 'opacity-25 blur-3xl'
+            className={`absolute -top-28 -left-28 w-[26rem] h-[26rem] rounded-full smooth-radial-glow transition-all duration-700 ${
+              isDarkMode ? 'opacity-25' : 'opacity-30'
             }`}
-            style={{ backgroundColor: currentTheme.primary }}
+            style={{
+              background: `radial-gradient(circle at 50% 50%, ${currentTheme.primary} 0%, ${currentTheme.primary}80 30%, ${currentTheme.primary}20 65%, transparent 100%)`
+            }}
           />
           <div
-            className={`absolute -bottom-32 -right-32 w-96 h-96 rounded-full filter transition-all duration-700 ${
-              isDarkMode ? 'opacity-15 blur-[100px]' : 'opacity-20 blur-3xl'
+            className={`absolute -bottom-28 -right-28 w-[26rem] h-[26rem] rounded-full smooth-radial-glow transition-all duration-700 ${
+              isDarkMode ? 'opacity-20' : 'opacity-25'
             }`}
-            style={{ backgroundColor: currentTheme.accent }}
+            style={{
+              background: `radial-gradient(circle at 50% 50%, ${currentTheme.accent} 0%, ${currentTheme.accent}80 30%, ${currentTheme.accent}20 65%, transparent 100%)`
+            }}
           />
+          {/* 微米级仿生宣纸微噪点层：消除低算力机型色阶断层 (Color Banding Dither) */}
+          <div className="absolute inset-0 ambient-glow-dither opacity-70" />
         </div>
 
         {/* Apple Dynamic Unified Floating Aura Island Top Navigation */}
@@ -1811,6 +1806,24 @@ export default function App() {
                   )}
                 </motion.button>
               )}
+
+              {/* Cloud Sync Quick Pill */}
+              <motion.button
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.92 }}
+                transition={{ type: 'spring', stiffness: 420, damping: 24 }}
+                onClick={() => {
+                  sound.playHapticClick(1050);
+                  setIsCloudSyncModalOpen(true);
+                }}
+                className="w-8 h-8 rounded-full flex items-center justify-center transition-all border border-black/5 dark:border-white/10 bg-black/[0.03] dark:bg-white/[0.08] hover:bg-black/[0.06] dark:hover:bg-white/[0.14] active:scale-95 cursor-pointer shadow-2xs"
+                title="云境 · 跨端漫游与云端归档"
+              >
+                <Cloud
+                  className="w-4 h-4 transition-colors"
+                  style={{ color: currentTheme.accent || currentTheme.primary }}
+                />
+              </motion.button>
 
               {/* Menu Trigger Capsule */}
               <div className="relative">
@@ -1973,7 +1986,7 @@ export default function App() {
                             sound.playWaterDrop(880);
                             setTopNavSubView('settings');
                           }}
-                          className={`w-full px-3 py-2 rounded-2xl flex items-center justify-between transition-all text-left text-xs group ${
+                          className={`w-full px-3 py-2 rounded-2xl flex items-center justify-between transition-all text-left text-xs group cursor-pointer ${
                             isDarkMode
                               ? 'hover:bg-white/10 active:bg-white/20 text-[#FAF8F5]'
                               : 'hover:bg-white/80 active:bg-white text-[#2B332E]'
@@ -1989,12 +2002,88 @@ export default function App() {
                             >
                               <Settings className="w-3.5 h-3.5" />
                             </div>
-                            <span className="font-serif font-medium">设置</span>
+                            <span className="font-serif font-medium">偏好与设置</span>
                           </div>
                           <ChevronRight className="w-3 h-3 opacity-60 group-hover:opacity-100 transition-colors" />
                         </button>
 
-                        {/* Item 4: 锁定空间 */}
+                        {/* Item 4: 我的 · 独立一级主入口 (置于设置正下方，深度适配主题调色板) */}
+                        <button
+                          onClick={() => {
+                            sound.playWaterDrop(880);
+                            setIsTopNavMenuOpen(false);
+                            if (currentDomesticUser) {
+                              setIsMyProfileModalOpen(true);
+                            } else {
+                              setIsAuthPortalOpen(true);
+                            }
+                          }}
+                          className={`w-full p-2.5 rounded-2xl flex items-center justify-between transition-all text-left text-xs group cursor-pointer border shadow-2xs ${
+                            isDarkMode
+                              ? 'hover:bg-white/10 active:bg-white/20 text-[#FAF8F5] border-white/15'
+                              : 'hover:bg-white/90 active:bg-white text-[#2B332E] border-black/5'
+                          }`}
+                          style={{
+                            background: isDarkMode
+                              ? `linear-gradient(135deg, ${currentTheme.primary}20 0%, ${currentTheme.primary}08 100%)`
+                              : `linear-gradient(135deg, ${currentTheme.primary}15 0%, ${currentTheme.primary}05 100%)`
+                          }}
+                        >
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <div
+                              className="w-7 h-7 rounded-xl overflow-hidden flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform border border-amber-400/50 shadow-xs"
+                              style={{
+                                backgroundColor: currentTheme.primary,
+                                color: '#FFF'
+                              }}
+                            >
+                              {currentDomesticUser?.photoURL ? (
+                                <MediaImage src={currentDomesticUser.photoURL} alt="Avatar" className="w-full h-full object-cover" />
+                              ) : (
+                                <User className="w-4 h-4" />
+                              )}
+                            </div>
+                            <div className="min-w-0">
+                              <div className="font-serif font-bold text-xs truncate">
+                                {currentDomesticUser ? currentDomesticUser.displayName : '我的 · 拾年归客'}
+                              </div>
+                              <div className="text-[10px] font-mono truncate text-amber-600 dark:text-amber-400 font-medium">
+                                {currentDomesticUser ? `NO. ${currentDomesticUser.userNumber} 号` : '未登录 · 点击入卷'}
+                              </div>
+                            </div>
+                          </div>
+                          <ChevronRight className="w-3.5 h-3.5 opacity-60 group-hover:opacity-100 transition-colors shrink-0 ml-1" />
+                        </button>
+
+                        {/* Item 5: 关于软件 (点击直接展开诗意打字画卷演播) */}
+                        <button
+                          onClick={() => {
+                            sound.playWaterDrop(880);
+                            setIsTopNavMenuOpen(false);
+                            setIsPrologueOpen(true);
+                          }}
+                          className={`w-full px-3 py-2 rounded-2xl flex items-center justify-between transition-all text-left text-xs group cursor-pointer ${
+                            isDarkMode
+                              ? 'hover:bg-white/10 active:bg-white/20 text-[#FAF8F5]'
+                              : 'hover:bg-white/80 active:bg-white text-[#2B332E]'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2.5">
+                            <div
+                              className="w-6 h-6 rounded-xl flex items-center justify-center group-hover:scale-105 transition-transform"
+                              style={{
+                                backgroundColor: isDarkMode ? `${currentTheme.primary}25` : `${currentTheme.primary}18`,
+                                color: isDarkMode ? currentTheme.primary : currentTheme.primaryDark
+                              }}
+                            >
+                              <Info className="w-3.5 h-3.5" />
+                            </div>
+                            <span className="font-serif font-medium">关于软件</span>
+                          </div>
+                          <span className="text-[10px] opacity-50 font-serif">序章启卷</span>
+                        </button>
+
+                        {/* Item 6: 锁定空间 */}
                         <button
                           onClick={() => {
                             sound.playWaterDrop(880);
@@ -2003,7 +2092,7 @@ export default function App() {
                             localStorage.setItem('shinian_is_locked', 'true');
                             showToast('已锁定私人空间');
                           }}
-                          className={`w-full px-3 py-2 rounded-2xl flex items-center justify-between transition-all text-left text-xs group ${
+                          className={`w-full px-3 py-2 rounded-2xl flex items-center justify-between transition-all text-left text-xs group cursor-pointer ${
                             isDarkMode
                               ? 'hover:bg-white/10 active:bg-white/20 text-[#FAF8F5]'
                               : 'hover:bg-white/80 active:bg-white text-[#2B332E]'
@@ -2441,7 +2530,7 @@ export default function App() {
                               </div>
                               <div className="min-w-0">
                                 <div className="text-xs font-serif font-medium text-[#2B332E] truncate">离线档案备份</div>
-                                <div className="text-[10px] text-[#6E7C75] truncate">JSON 导入导出全量备份</div>
+                                <div className="text-[10px] text-[#6E7C75] truncate">ZIP 导入导出全量备份</div>
                               </div>
                             </div>
                             <ChevronRight className="w-3.5 h-3.5 text-[#6E7C75]/60 group-hover:text-[#2B332E] shrink-0 ml-1" />
@@ -2478,7 +2567,7 @@ export default function App() {
                               sound.playWaterDrop(880);
                               setTopNavSubView('security');
                             }}
-                            className="w-full p-2.5 rounded-2xl flex items-center justify-between hover:bg-white/80 active:bg-white transition-all text-left group border border-transparent hover:border-white/60"
+                            className="w-full p-2.5 rounded-2xl flex items-center justify-between hover:bg-white/80 active:bg-white transition-all text-left group border border-transparent hover:border-white/60 cursor-pointer"
                           >
                             <div className="flex items-center gap-2.5 min-w-0">
                               <div
@@ -2488,33 +2577,8 @@ export default function App() {
                                 <ShieldCheck className="w-4 h-4" />
                               </div>
                               <div className="min-w-0">
-                                <div className="text-xs font-serif font-medium text-[#2B332E] truncate">空间访问口令</div>
+                                <div className="text-xs font-serif font-medium text-[#2B332E] dark:text-[#FAF8F5] truncate">空间访问口令</div>
                                 <div className="text-[10px] text-[#6E7C75] truncate">修改 4 位锁屏加密口令</div>
-                              </div>
-                            </div>
-                            <ChevronRight className="w-3.5 h-3.5 text-[#6E7C75]/60 group-hover:text-[#2B332E] shrink-0 ml-1" />
-                          </button>
-
-                          {/* Sub 4: AI 智能引擎 */}
-                          <button
-                            onClick={() => {
-                              sound.playWaterDrop(880);
-                              setTopNavSubView('ai');
-                            }}
-                            className="w-full p-2.5 rounded-2xl flex items-center justify-between hover:bg-white/80 active:bg-white transition-all text-left group border border-transparent hover:border-white/60"
-                          >
-                            <div className="flex items-center gap-2.5 min-w-0">
-                              <div
-                                className="w-7 h-7 rounded-xl flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform"
-                                style={{ backgroundColor: `${currentTheme.primary}18`, color: currentTheme.primaryDark }}
-                              >
-                                <Cpu className="w-4 h-4" />
-                              </div>
-                              <div className="min-w-0">
-                                <div className="text-xs font-serif font-medium text-[#2B332E] truncate">AI 智能引擎</div>
-                                <div className="text-[10px] text-[#6E7C75] truncate">
-                                  {aiEngine === 'deepseek' ? 'DeepSeek 引擎' : '标准 AI 模型'}
-                                </div>
                               </div>
                             </div>
                             <ChevronRight className="w-3.5 h-3.5 text-[#6E7C75]/60 group-hover:text-[#2B332E] shrink-0 ml-1" />
@@ -2851,159 +2915,7 @@ export default function App() {
                       </motion.div>
                     )}
 
-                    {/* Level 3: AI 智能引擎 Sub-Card */}
-                    {topNavSubView === 'ai' && (
-                      <motion.div
-                        key="ai-card"
-                        initial={{ opacity: 0, scale: 0.94, y: -6 }}
-                        animate={{ opacity: 1, scale: 1, y: 0 }}
-                        exit={{ opacity: 0, scale: 0.94, y: -6 }}
-                        transition={{ duration: 0.2, ease: [0.25, 1, 0.5, 1] }}
-                        className={`absolute top-full right-0 mt-2 w-72 p-4 apple-liquid-glass rounded-3xl shadow-none border z-50 font-sans space-y-3 ${
-                          isDarkMode
-                            ? 'bg-[#141B18]/92 border-white/15 text-[#FAF8F5]'
-                            : 'bg-white/90 border-white/85 text-[#2B332E]'
-                        }`}
-                      >
-                        {/* Header */}
-                        <div className={`flex items-center justify-between pb-2 border-b ${
-                          isDarkMode ? 'border-white/10' : 'border-black/5'
-                        }`}>
-                          <button
-                            onClick={() => {
-                              sound.playWaterDrop(760);
-                              setTopNavSubView('settings');
-                            }}
-                            className="flex items-center gap-1 text-xs hover:underline font-serif font-semibold active:scale-95 transition-all cursor-pointer"
-                            style={{ color: currentTheme.primary }}
-                          >
-                            <ChevronLeft className="w-4 h-4" />
-                            <span>返回设置</span>
-                          </button>
-                          <h4 className="text-xs font-bold font-serif">AI 智能引擎</h4>
-                          <button
-                            onClick={() => setIsTopNavMenuOpen(false)}
-                            className="p-1 text-[#6E7C75]/60 hover:text-[#2B332E] dark:hover:text-white rounded-full hover:bg-black/5 cursor-pointer"
-                          >
-                            <X className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
 
-                        {/* Radios */}
-                        <div className="space-y-1.5">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setAiEngine('gemini');
-                              localStorage.setItem('shinian_ai_engine', 'gemini');
-                              showToast('已切换为标准 AI 模型');
-                            }}
-                            className={`w-full p-2.5 rounded-2xl border text-left transition-all ${
-                              aiEngine === 'gemini'
-                                ? 'bg-white/90 border-[#5B7B6D] shadow-xs'
-                                : 'bg-white/50 border-transparent hover:bg-white/70'
-                            }`}
-                          >
-                            <div className="flex items-center justify-between">
-                              <span className="font-serif font-bold text-xs text-[#2B332E]">⚡ 标准模型</span>
-                              {aiEngine === 'gemini' && <Check className="w-3.5 h-3.5 text-[#5B7B6D]" />}
-                            </div>
-                            <p className="text-[10px] text-[#6E7C75] font-serif mt-0.5">内置快速响应，支持回忆对谈与识图</p>
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setAiEngine('deepseek');
-                              localStorage.setItem('shinian_ai_engine', 'deepseek');
-                              showToast('已切换为 DeepSeek 引擎');
-                            }}
-                            className={`w-full p-2.5 rounded-2xl border text-left transition-all ${
-                              aiEngine === 'deepseek'
-                                ? 'bg-white/90 border-[#5B7B6D] shadow-xs'
-                                : 'bg-white/50 border-transparent hover:bg-white/70'
-                            }`}
-                          >
-                            <div className="flex items-center justify-between">
-                              <span className="font-serif font-bold text-xs text-[#2B332E] dark:text-[#FAF8F5] flex items-center gap-1.5">
-                                <svg className="w-4 h-4 text-[#1D72F3] shrink-0" viewBox="0 0 24 24" fill="currentColor">
-                                  <path d="M21.8 12.8c-.4-3.3-2.9-6-6.2-6.8-4-1-8.2.2-11 3.2-1.9 2.1-2.8 4.8-2.3 7.6.3 1.6 1.3 2.9 2.7 3.8 2.4 1.5 5.4 1.7 8 .8 3.4-1 6-3.6 7.4-6.8.3-.5.9-.8 1.5-.7.6.1 1.1.5 1.2 1.1.2 1.2.9 2.3 2 2.8.4.2 1 .1 1.3-.2.3-.3.4-.8.2-1.3-1.1-2.2-1-2.9-4.7-3.5zm-8.2-2.5c.7 0 1.3.6 1.3 1.3s-.6 1.3-1.3 1.3-1.3-.6-1.3-1.3.6-1.3 1.3-1.3z" />
-                                </svg>
-                                DeepSeek 引擎
-                              </span>
-                              {aiEngine === 'deepseek' && <Check className="w-3.5 h-3.5 text-[#5B7B6D]" />}
-                            </div>
-                            <p className="text-[10px] text-[#6E7C75] font-serif mt-0.5">DeepSeek-V3 深度文本推理</p>
-                          </button>
-                        </div>
-
-                        {/* Gemini / Standard API Key Input */}
-                        {aiEngine === 'gemini' && (
-                          <div className="p-2.5 rounded-2xl bg-white/90 dark:bg-black/40 border border-[#5B7B6D]/20 dark:border-white/15 space-y-1">
-                            <label className="text-[10px] font-bold block opacity-90">Gemini API 密钥（选填）：</label>
-                            <input
-                              type="password"
-                              value={aiApiKey}
-                              onChange={(e) => {
-                                setAiApiKey(e.target.value);
-                                localStorage.setItem('shinian_gemini_key', e.target.value);
-                              }}
-                              placeholder="AIzaSy..."
-                              className="w-full p-2 rounded-xl border border-[#5B7B6D]/20 dark:border-white/15 bg-[#FAF8F5] dark:bg-black/30 focus:outline-none font-mono text-[10px]"
-                            />
-                          </div>
-                        )}
-
-                        {/* DeepSeek API Key Input */}
-                        {aiEngine === 'deepseek' && (
-                          <div className="p-2.5 rounded-2xl bg-white/90 dark:bg-black/40 border border-[#5B7B6D]/20 dark:border-white/15 space-y-1">
-                            <label className="text-[10px] font-bold block opacity-90">DeepSeek API 密钥：</label>
-                            <input
-                              type="password"
-                              value={deepSeekKey}
-                              onChange={(e) => {
-                                setDeepSeekKey(e.target.value);
-                                localStorage.setItem('shinian_deepseek_key', e.target.value);
-                              }}
-                              placeholder="sk-..."
-                              className="w-full p-2 rounded-xl border border-[#5B7B6D]/20 dark:border-white/15 bg-[#FAF8F5] dark:bg-black/30 focus:outline-none font-mono text-[10px]"
-                            />
-                          </div>
-                        )}
-
-                        {/* Custom API Server Base URL */}
-                        <div className="p-2.5 rounded-2xl bg-white/90 dark:bg-black/40 border border-[#5B7B6D]/20 dark:border-white/15 space-y-1">
-                          <div className="flex items-center justify-between">
-                            <label className="text-[10px] font-bold block opacity-90">云端服务节点：</label>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                localStorage.removeItem('shinian_api_server_url');
-                                showToast('已恢复预设官方云端节点');
-                              }}
-                              className="text-[9px] text-[#5B7B6D] dark:text-[#A0B0A7] hover:underline cursor-pointer"
-                            >
-                              恢复预设
-                            </button>
-                          </div>
-                          <input
-                            type="text"
-                            defaultValue={localStorage.getItem('shinian_api_server_url') || ''}
-                            onBlur={(e) => {
-                              const val = e.target.value.trim();
-                              if (val) {
-                                localStorage.setItem('shinian_api_server_url', val);
-                                showToast('已保存云端服务节点');
-                              } else {
-                                localStorage.removeItem('shinian_api_server_url');
-                              }
-                            }}
-                            placeholder="默认已预设官方云端解析节点"
-                            className="w-full p-2 rounded-xl border border-[#5B7B6D]/20 dark:border-white/15 bg-[#FAF8F5] dark:bg-black/30 focus:outline-none font-mono text-[10px]"
-                          />
-                        </div>
-                      </motion.div>
-                    )}
                   </>
                 )}
               </AnimatePresence>
@@ -3015,50 +2927,89 @@ export default function App() {
         {/* Refactored Literary Paper Themed Toast Notification */}
         <ThemedToast toast={toast} theme={currentTheme} isDarkMode={isDarkMode} />
 
-        {/* Floating Audio Player Bar */}
-        {audioPlayingUrl && (
-          <div className="absolute top-[68px] sm:top-[72px] left-3.5 right-3.5 sm:left-4 sm:right-4 apple-liquid-glass rounded-2xl px-3.5 py-2 flex items-center justify-between text-xs text-[#2B332E] animate-fadeIn z-25 shadow-md border border-white/80">
-            <div className="flex items-center gap-2 min-w-0 mr-2">
-              <div className="w-7 h-7 rounded-full bg-[#FDF0EB] border border-[#E88765]/30 flex items-center justify-center text-[#E88765] shrink-0">
-                <Volume2 className="w-3.5 h-3.5 animate-pulse" />
-              </div>
-              <div className="min-w-0">
-                <div className="flex items-center gap-1.5">
-                  <span className="font-bold text-[#3E564B] text-[11px] truncate font-serif">
-                    {audioPlayingVoiceName || 'AI 情感朗读'}
-                  </span>
+        {/* Floating Apple Liquid Glass Voice Control Capsule Bar */}
+        <AnimatePresence>
+          {ttsPlayingState.isPlaying && (
+            <motion.div
+              initial={{ opacity: 0, y: -20, scale: 0.95 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: -20, scale: 0.95 }}
+              transition={{ duration: 0.28, ease: [0.25, 1, 0.5, 1] }}
+              className="absolute top-[66px] sm:top-[70px] left-3.5 right-3.5 sm:left-6 sm:right-6 max-w-lg mx-auto z-40 select-none"
+            >
+              <div className="apple-liquid-glass rounded-full px-3.5 py-2 flex items-center justify-between text-xs text-[#2B332E] dark:text-[#FAF8F5] shadow-xl border border-white/80 dark:border-white/20">
+                {/* Voice Icon & Soundwave Animation */}
+                <div className="flex items-center gap-2.5 min-w-0 mr-2">
+                  <div className="w-7 h-7 rounded-full bg-[#5B7B6D]/15 dark:bg-white/10 flex items-center justify-center text-[#5B7B6D] dark:text-white shrink-0">
+                    <Volume2 className={`w-3.5 h-3.5 ${ttsPlayingState.isPaused ? 'opacity-50' : 'animate-pulse'}`} />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-1.5">
+                      <span className="font-bold text-xs truncate font-serif">
+                        {ttsPlayingState.title || '时光回响'}
+                      </span>
+                      <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-[#5B7B6D]/10 dark:bg-white/10 font-mono text-[#5B7B6D] dark:text-[#A7B4AD] truncate">
+                        {ttsPlayingState.voiceName || '温婉墨香'}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Controls: Pause/Resume, Speed Rate Switcher, Close */}
+                <div className="flex items-center gap-1.5 shrink-0">
+                  {/* Play / Pause toggle */}
                   <button
-                    onClick={() => setIsVoicePickerModalOpen(true)}
-                    className="text-[10px] text-[#E88765] hover:underline font-sans whitespace-nowrap"
+                    type="button"
+                    onClick={() => {
+                      if (ttsPlayingState.isPaused) {
+                        resumeCurrentSpeech();
+                        setTtsPlayingState(prev => ({ ...prev, isPaused: false }));
+                      } else {
+                        pauseCurrentSpeech();
+                        setTtsPlayingState(prev => ({ ...prev, isPaused: true }));
+                      }
+                      sound.playWaterDrop(840);
+                    }}
+                    className="p-1.5 rounded-full bg-white/70 dark:bg-white/15 hover:bg-white text-[#2B332E] dark:text-white transition-all shadow-2xs cursor-pointer active:scale-90"
+                    title={ttsPlayingState.isPaused ? '继续播放' : '暂停'}
                   >
-                    换音色
+                    {ttsPlayingState.isPaused ? <Play className="w-3.5 h-3.5 fill-current ml-0.5" /> : <Pause className="w-3.5 h-3.5 fill-current" />}
+                  </button>
+
+                  {/* Playback Rate Switcher (0.8x -> 1.0x -> 1.25x -> 1.5x) */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const rates = [0.8, 1.0, 1.25, 1.5];
+                      const curIdx = rates.indexOf(ttsPlayingState.playbackRate);
+                      const nextRate = rates[(curIdx + 1) % rates.length];
+                      setSpeechRate(nextRate);
+                      setTtsPlayingState(prev => ({ ...prev, playbackRate: nextRate }));
+                      sound.playWaterDrop(920);
+                    }}
+                    className="px-2 py-1 rounded-full bg-black/5 dark:bg-white/10 hover:bg-black/10 text-[10px] font-mono font-bold transition-all cursor-pointer active:scale-95"
+                    title="调节语速"
+                  >
+                    {ttsPlayingState.playbackRate}x
+                  </button>
+
+                  {/* Close / Stop */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      handleStopTts();
+                      sound.playWaterDrop(640);
+                    }}
+                    className="p-1.5 rounded-full hover:bg-black/5 dark:hover:bg-white/10 text-[#6E7C75] dark:text-[#A0B0A7] transition-colors cursor-pointer"
+                    title="停止朗诵"
+                  >
+                    <X className="w-3.5 h-3.5" />
                   </button>
                 </div>
               </div>
-            </div>
-            <div className="flex items-center gap-1.5 shrink-0">
-              <audio
-                src={audioPlayingUrl}
-                autoPlay
-                controls
-                className="h-7 w-32 xs:w-40 sm:w-48"
-                onEnded={() => {
-                  setAudioPlayingUrl(null);
-                  setAudioPlayingVoiceName('');
-                }}
-              />
-              <button
-                onClick={() => {
-                  handleStopTts();
-                }}
-                className="p-1 text-[#6E7C75]/60 hover:text-[#2B332E] hover:bg-stone-200/50 rounded-lg transition-colors"
-                title="关闭音频"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-          </div>
-        )}
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {/* Main Content Area: Elevated layer above ambient glow with robust CSS clearance for floating island */}
         <main ref={mainContentRef} id="main-content-scroll" className="flex-1 overflow-y-auto custom-scrollbar p-4 main-content-clearance pb-28 sm:pb-32 space-y-4 overscroll-contain relative z-10">
@@ -3158,7 +3109,7 @@ export default function App() {
                             </div>
                           ) : todayHighlight.image ? (
                             <div className="h-44 sm:h-48 w-full rounded-xl overflow-hidden relative">
-                              <img
+                              <MediaImage
                                 src={todayHighlight.image}
                                 alt={todayHighlight.title || 'cover'}
                                 className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
@@ -3181,16 +3132,16 @@ export default function App() {
                       <div className="flex items-center gap-2 shrink-0 self-end sm:self-auto flex-wrap">
                         <button
                           type="button"
-                          onClick={() => handlePlayTts(todayHighlight.content)}
-                          disabled={isTtsGenerating}
+                          onClick={() => handlePlayTts(todayHighlight.content, undefined, 'home-highlight', todayHighlight.title || '今日回响')}
+                          disabled={isTtsGenerating && ttsActiveSourceId === 'home-highlight'}
                           className={`px-3 py-1.5 rounded-full border font-medium flex items-center gap-1.5 transition-all text-xs active:scale-95 shadow-2xs whitespace-nowrap ${
                             isDarkMode
                               ? 'bg-[#222B26] hover:bg-[#2A3630] border-white/15 text-[#FAF8F5]'
                               : 'bg-[#FAF8F5] hover:bg-[#F2EFE9] border-[#5B7B6D]/20 text-[#2B332E]'
                           }`}
                         >
-                          <Volume2 className={`w-3.5 h-3.5 text-[#E88765] shrink-0 ${isTtsGenerating ? 'animate-bounce' : ''}`} />
-                          <span>{isTtsGenerating ? '准备语音...' : '听回忆'}</span>
+                          <Volume2 className={`w-3.5 h-3.5 text-[#E88765] shrink-0 ${isTtsGenerating && ttsActiveSourceId === 'home-highlight' ? 'animate-bounce' : ''}`} />
+                          <span>{isTtsGenerating && ttsActiveSourceId === 'home-highlight' ? '准备语音...' : '听回忆'}</span>
                         </button>
                         <button
                           type="button"
@@ -3434,7 +3385,7 @@ export default function App() {
                         <div className="flex items-start justify-between gap-3">
                           <div className="flex items-center gap-3 min-w-0 flex-1">
                             <div className="relative shrink-0">
-                              <img
+                              <MediaImage
                                 src={person.avatar}
                                 alt={person.name}
                                 className="w-13 h-13 rounded-2xl object-cover border border-[#D9CFC1] shadow-2xs group-hover:scale-105 transition-transform duration-300"
@@ -3590,7 +3541,7 @@ export default function App() {
                 {/* Hero Avatar & Identity Section */}
                 <div className="flex flex-col sm:flex-row items-center sm:items-start gap-4 sm:gap-5 text-center sm:text-left">
                   <div className="relative shrink-0">
-                    <img 
+                    <MediaImage 
                       src={selectedPerson.avatar} 
                       alt={selectedPerson.name} 
                       className="w-20 h-20 sm:w-22 sm:h-22 rounded-3xl object-cover border-2 border-[#E88765]/30 shadow-xs" 
@@ -3873,7 +3824,7 @@ export default function App() {
           )}
 
           {/* Reading Mode View: Universal immersive reader scroll with paper texture */}
-          {readerStory && (
+          {(activeTab === 'stories' || (activeTab === 'people' && selectedPerson)) && readerStory && (
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
@@ -3921,12 +3872,12 @@ export default function App() {
                     </button>
                     <button
                       type="button"
-                      onClick={() => handlePlayTts(`${readerStory.title}。${readerStory.content}`)}
-                      disabled={isTtsGenerating}
+                      onClick={() => handlePlayTts(`${readerStory.title}。${readerStory.content}`, undefined, `story-${readerStory.id}`, readerStory.title)}
+                      disabled={isTtsGenerating && ttsActiveSourceId === `story-${readerStory.id}`}
                       className="flex items-center gap-1 text-xs px-3.5 py-1.5 bg-[#FDF0EB] text-[#E88765] rounded-xl border border-[#E88765]/30 font-medium hover:bg-[#E88765] hover:text-white transition-all font-sans active:scale-95 cursor-pointer disabled:opacity-50"
                     >
-                      <Volume2 className={`w-3.5 h-3.5 ${isTtsGenerating ? 'animate-bounce' : ''}`} />
-                      <span>{isTtsGenerating ? 'AI 语音合成中...' : '朗读'}</span>
+                      <Volume2 className={`w-3.5 h-3.5 ${isTtsGenerating && ttsActiveSourceId === `story-${readerStory.id}` ? 'animate-bounce' : ''}`} />
+                      <span>{isTtsGenerating && ttsActiveSourceId === `story-${readerStory.id}` ? '准备朗诵中...' : '朗读'}</span>
                     </button>
                   </div>
                 </div>
@@ -4003,17 +3954,15 @@ export default function App() {
                         <div className="relative z-10">
                           {/* Polaroid Stack or Single Media Container */}
                           <div className="relative h-28 w-full mb-2">
-                            {item.images && item.images.length > 1 && (
+                            {((item.images && item.images.length > 1) || (item.videos && item.videos.length > 0)) && (
                               <div className="absolute inset-0 rounded-2xl bg-[#F2EFE9] dark:bg-black/40 border border-[#5B7B6D]/15 dark:border-white/10 rotate-2 translate-x-1 translate-y-0.5 pointer-events-none" />
                             )}
                             <div className="relative h-full w-full rounded-2xl overflow-hidden bg-[#FAF8F5] dark:bg-black/30 border border-[#5B7B6D]/15 dark:border-white/10 group-hover:opacity-95 transition-opacity shadow-2xs">
-                              <img src={item.image} alt={item.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
-                              {item.images && item.images.length > 1 && (
-                                <span className="absolute bottom-1.5 right-1.5 px-2 py-0.5 rounded-full bg-black/60 backdrop-blur-xs text-white text-[9px] font-sans font-medium flex items-center gap-1 shadow-sm">
-                                  <ImageIcon className="w-2.5 h-2.5" />
-                                  <span>{item.images.length}张</span>
-                                </span>
-                              )}
+                              <MediaImage
+                                src={item.image || item.videoPoster || item.videos?.[0]?.poster}
+                                alt=""
+                                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                              />
                             </div>
                           </div>
 
@@ -4077,44 +4026,51 @@ export default function App() {
               className="space-y-5"
             >
               {/* Header */}
-              <div className="flex justify-between items-center">
-                <div className="flex items-center gap-2.5">
-                  <button
-                    type="button"
-                    onClick={() => setActiveTab('home')}
-                    className="text-xs text-[#526058] hover:text-[#5B7B6D] font-medium flex items-center gap-1 bg-white px-3 py-1.5 rounded-xl border border-[#5B7B6D]/20 shadow-2xs hover:shadow-xs transition-all active:scale-95"
-                  >
-                    ← 返回
-                  </button>
-                  <div>
-                    <h2 className="text-lg font-bold text-[#2B332E] tracking-wide font-serif">寄年 · 时光胶囊</h2>
-                    <span className="text-[10px] text-[#6E7C75] font-sans">封存时光 · 见字如晤</span>
-                  </div>
-                </div>
+              <div className="flex items-center gap-2.5 sm:gap-3 flex-wrap">
                 <button
                   type="button"
-                  onClick={() => setActiveModal('addLetter')}
-                  className="flex items-center gap-1.5 text-xs px-4 py-2 bg-[#5B7B6D] hover:bg-[#3E564B] text-white rounded-xl shadow-xs font-bold transition-all active:scale-95"
+                  onClick={() => setActiveTab('home')}
+                  className={`text-xs font-medium flex items-center gap-1 px-3 py-1.5 rounded-xl border shadow-2xs hover:shadow-xs transition-all active:scale-95 cursor-pointer ${
+                    isDarkMode
+                      ? 'bg-[#161D19] text-[#A7B4AD] hover:text-[#FAF8F5] border-white/15'
+                      : 'bg-white text-[#526058] hover:text-[#2B332E] border-black/10'
+                  }`}
                 >
-                  <Plus className="w-3.5 h-3.5" /> 封存信件
+                  ← 返回
                 </button>
+
+                <div className="flex items-center gap-2 sm:gap-2.5 flex-wrap">
+                  <h2 className={`text-base sm:text-lg font-bold tracking-wide font-serif leading-none ${
+                    isDarkMode ? 'text-[#FAF8F5]' : 'text-[#2B332E]'
+                  }`}>
+                    寄年 · 时光胶囊
+                  </h2>
+                  <span className={`text-[11px] sm:text-xs font-sans pl-2 border-l leading-none ${
+                    isDarkMode ? 'text-[#A0B0A7] border-white/15' : 'text-[#6E7C75] border-black/15'
+                  }`}>
+                    封存时光 · 见字如晤
+                  </span>
+                </div>
               </div>
 
               {/* Letters Capsule Grid / List */}
               {data.letters.length === 0 ? (
-                <div className="bg-white p-8 rounded-3xl border border-dashed border-[#5B7B6D]/20 text-center space-y-3 shadow-2xs">
-                  <div className="w-12 h-12 rounded-full bg-[#FAF8F5] border border-[#5B7B6D]/20 text-[#5B7B6D] flex items-center justify-center mx-auto text-xl">
+                <div className={`p-8 rounded-3xl border border-dashed text-center space-y-3 shadow-2xs ${
+                  isDarkMode
+                    ? 'bg-[#161D19]/90 border-white/15 text-[#FAF8F5]'
+                    : 'bg-white border-[#5B7B6D]/20 text-[#2B332E]'
+                }`}>
+                  <div className={`w-12 h-12 rounded-full border flex items-center justify-center mx-auto text-xl shadow-2xs ${
+                    isDarkMode
+                      ? 'bg-white/10 border-white/15 text-[#FAF8F5]'
+                      : 'bg-[#FAF8F5] border-[#5B7B6D]/20 text-[#5B7B6D]'
+                  }`}>
                     ✉️
                   </div>
-                  <h3 className="font-bold text-[#2B332E] text-sm font-serif">暂无时光信笺</h3>
-                  <p className="text-xs text-[#6E7C75]">封存一封给未来的信，写下此刻的心情与期许</p>
-                  <button
-                    type="button"
-                    onClick={() => setActiveModal('addLetter')}
-                    className="px-4 py-1.5 bg-[#5B7B6D] text-white text-xs rounded-xl font-medium shadow-2xs"
-                  >
-                    封存信件
-                  </button>
+                  <h3 className="font-bold text-sm font-serif">暂无时光信笺</h3>
+                  <p className={`text-xs ${isDarkMode ? 'text-[#A0B0A7]' : 'text-[#6E7C75]'}`}>
+                    封存一封给未来的信，写下此刻的心情与期许
+                  </p>
                 </div>
               ) : (
                 <div className="grid grid-cols-1 gap-3.5">
@@ -4318,21 +4274,7 @@ export default function App() {
 
                   {/* Content Narrative Card */}
                   <div className="bg-white/80 dark:bg-white/[0.04] p-3 rounded-2xl border border-black/5 dark:border-white/10 space-y-1.5 shadow-2xs">
-                    <div className="flex justify-between items-center px-0.5">
-                      <label className="text-[11px] font-serif font-medium text-[#526058] dark:text-[#A7B4AD]">记忆详述</label>
-                      <button
-                        type="button"
-                        onClick={() => handleAiPolishText('textarea[name="content"]', (val) => {
-                          const area = document.querySelector('textarea[name="content"]') as HTMLTextAreaElement;
-                          if (area) area.value = val;
-                        })}
-                        disabled={isAiPolishLoading}
-                        className="text-[11px] font-serif hover:underline flex items-center gap-1 transition-opacity"
-                        style={{ color: currentTheme.primary }}
-                      >
-                        <Feather className="w-3 h-3" /> {isAiPolishLoading ? '润色中...' : '文墨润色'}
-                      </button>
-                    </div>
+                    <label className="text-[11px] font-serif font-medium text-[#526058] dark:text-[#A7B4AD] block px-0.5">记忆详述</label>
                     <textarea
                       name="content"
                       required
@@ -4664,21 +4606,7 @@ export default function App() {
 
                   {/* Segmented Narrative Textarea */}
                   <div className="bg-white/80 dark:bg-white/[0.04] p-3 rounded-2xl border border-black/5 dark:border-white/10 space-y-1.5 shadow-2xs">
-                    <div className="flex justify-between items-center px-0.5">
-                      <label className="text-[11px] font-serif font-medium text-[#526058] dark:text-[#A7B4AD]">正文笔墨</label>
-                      <button
-                        type="button"
-                        onClick={() => handleAiPolishText('textarea[name="content"]', (val) => {
-                          const area = document.querySelector('textarea[name="content"]') as HTMLTextAreaElement;
-                          if (area) area.value = val;
-                        })}
-                        disabled={isAiPolishLoading}
-                        className="text-[11px] font-serif hover:underline flex items-center gap-1 transition-opacity"
-                        style={{ color: currentTheme.primary }}
-                      >
-                        <Feather className="w-3 h-3" /> {isAiPolishLoading ? '润色中...' : '文墨润色'}
-                      </button>
-                    </div>
+                    <label className="text-[11px] font-serif font-medium text-[#526058] dark:text-[#A7B4AD] block px-0.5">正文笔墨</label>
                     <textarea
                       name="content"
                       required
@@ -4715,6 +4643,7 @@ export default function App() {
                     images: formArtifactImages.length > 0 ? formArtifactImages : undefined,
                     video: formArtifactVideo,
                     videoPoster: formArtifactVideoPoster,
+                    videos: formArtifactVideos.length > 0 ? formArtifactVideos : undefined,
                     mediaType: formArtifactMediaType
                   });
 
@@ -4723,6 +4652,7 @@ export default function App() {
                   setFormArtifactImages([]);
                   setFormArtifactVideo(undefined);
                   setFormArtifactVideoPoster(undefined);
+                  setFormArtifactVideos([]);
                   setFormArtifactMediaType('image');
                   setFormArtifactDate(new Date().toISOString().slice(0, 10));
                   setActiveModal(null);
@@ -4739,25 +4669,22 @@ export default function App() {
                     />
                   </div>
 
-                  {/* Multi-Media Uploader: Multi-photos & Short Video */}
+                  {/* Multi-Media Uploader: Multi-photos & Multi-Videos */}
                   <ArtifactMediaUploader
                     image={formArtifactImage}
                     images={formArtifactImages}
                     video={formArtifactVideo}
                     videoPoster={formArtifactVideoPoster}
+                    videos={formArtifactVideos}
                     mediaType={formArtifactMediaType}
                     onChange={(media) => {
                       setFormArtifactImage(media.image);
                       setFormArtifactImages(media.images);
                       setFormArtifactVideo(media.video);
                       setFormArtifactVideoPoster(media.videoPoster);
+                      setFormArtifactVideos(media.videos);
                       setFormArtifactMediaType(media.mediaType);
                     }}
-                    onGenerateAiImage={(callback) => {
-                      const name = (document.querySelector('input[name="name"]') as HTMLInputElement)?.value || '古老纪念物';
-                      handleGenerateAiImage(name, callback);
-                    }}
-                    isAiGenLoading={isAiGenImageLoading}
                   />
 
                   {/* Segmented Metadata Card */}
@@ -4786,20 +4713,7 @@ export default function App() {
 
                   {/* Segmented Narrative Textarea */}
                   <div className="bg-white/90 dark:bg-white/[0.04] p-3.5 rounded-2xl border border-black/5 dark:border-white/10 space-y-2 shadow-2xs">
-                    <div className="flex justify-between items-center px-0.5">
-                      <label className="text-[11px] font-serif font-medium text-[#526058] dark:text-[#A7B4AD]">物品回忆与纪念意义</label>
-                      <button
-                        type="button"
-                        onClick={() => handleAiPolishText('textarea[name="story"]', (val) => {
-                          const area = document.querySelector('textarea[name="story"]') as HTMLTextAreaElement;
-                          if (area) area.value = val;
-                        })}
-                        disabled={isAiPolishLoading}
-                        className="text-[11px] font-serif hover:underline flex items-center gap-1 transition-opacity text-[#5B7B6D]"
-                      >
-                        <Feather className="w-3 h-3" /> {isAiPolishLoading ? '润色中...' : '文墨润色'}
-                      </button>
-                    </div>
+                    <label className="text-[11px] font-serif font-medium text-[#526058] dark:text-[#A7B4AD] block px-0.5">物品回忆与纪念意义</label>
                     <textarea
                       name="story"
                       required
@@ -5165,8 +5079,8 @@ export default function App() {
 
         {/* Selected Artifact Detail Modal */}
         {selectedArtifact && (
-          <div className="absolute inset-0 bg-[#2B332E]/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fadeIn">
-            <div className="bg-white dark:bg-[#1A221E] w-full max-w-lg max-h-[90%] overflow-y-auto p-5 sm:p-6 rounded-3xl border border-[#5B7B6D]/20 shadow-2xl space-y-4 relative paper-texture">
+          <div className="absolute inset-0 bg-[#2B332E]/50 backdrop-blur-sm z-50 flex items-center justify-center p-3 sm:p-5 animate-fadeIn">
+            <div className="bg-white dark:bg-[#1A221E] w-full max-w-2xl sm:max-w-3xl max-h-[92%] overflow-y-auto p-4 sm:p-6 rounded-3xl border border-[#5B7B6D]/20 shadow-2xl space-y-4 relative paper-texture custom-scrollbar">
               <div className="flex justify-between items-center border-b border-[#5B7B6D]/10 dark:border-white/10 pb-3">
                 <div
                   className="flex items-center gap-1.5 text-base sm:text-lg font-bold font-mono tracking-tight"
@@ -5178,25 +5092,29 @@ export default function App() {
                 <div className="flex items-center gap-1.5">
                   <button
                     type="button"
-                    onClick={() => handlePlayTts(`${selectedArtifact.name}。${selectedArtifact.story}`)}
+                    onClick={() => handlePlayTts(`${selectedArtifact.name}。${selectedArtifact.story}`, undefined, `artifact-${selectedArtifact.id}`, selectedArtifact.name)}
+                    disabled={isTtsGenerating && ttsActiveSourceId === `artifact-${selectedArtifact.id}`}
                     className="px-3 py-1 rounded-full text-xs font-medium flex items-center gap-1 transition-all font-sans cursor-pointer shadow-2xs"
                     style={{
                       backgroundColor: `${currentTheme.primary}15`,
                       color: currentTheme.primary
                     }}
                   >
-                    <Volume2 className="w-3 h-3" /> 听回忆
+                    <Volume2 className={`w-3 h-3 ${isTtsGenerating && ttsActiveSourceId === `artifact-${selectedArtifact.id}` ? 'animate-bounce' : ''}`} />
+                    <span>{isTtsGenerating && ttsActiveSourceId === `artifact-${selectedArtifact.id}` ? '准备中...' : '听回忆'}</span>
                   </button>
                   <button
                     type="button"
                     onClick={() => {
                       setEditingArtifact(selectedArtifact);
                       setEditArtifactDate(selectedArtifact.date || new Date().toISOString().slice(0, 10));
-                      setEditArtifactImage(selectedArtifact.image || '');
-                      setEditArtifactImages(selectedArtifact.images || (selectedArtifact.image ? [selectedArtifact.image] : []));
+                      const isArtifactVideo = Boolean(selectedArtifact.video || (selectedArtifact.videos && selectedArtifact.videos.length > 0) || selectedArtifact.mediaType === 'video');
+                      setEditArtifactImage(!isArtifactVideo ? (selectedArtifact.image || '') : '');
+                      setEditArtifactImages(selectedArtifact.images || (!isArtifactVideo && selectedArtifact.image ? [selectedArtifact.image] : []));
                       setEditArtifactVideo(selectedArtifact.video);
                       setEditArtifactVideoPoster(selectedArtifact.videoPoster);
-                      setEditArtifactMediaType(selectedArtifact.mediaType || (selectedArtifact.video ? 'video' : 'image'));
+                      setEditArtifactVideos(selectedArtifact.videos || []);
+                      setEditArtifactMediaType(selectedArtifact.mediaType || (isArtifactVideo ? 'video' : 'image'));
                       setSelectedArtifact(null);
                     }}
                     className="p-1.5 text-[#5B7B6D] hover:text-[#3E564B] dark:text-[#A7B4AD] dark:hover:text-white rounded-xl hover:bg-black/5 transition-all cursor-pointer"
@@ -5210,50 +5128,16 @@ export default function App() {
                 </div>
               </div>
 
-              {/* Media Display: Video or Multi-Photo Gallery */}
-              {selectedArtifact.video ? (
-                <div className="w-full rounded-2xl overflow-hidden shadow-sm aspect-video">
-                  <VintageVideoPlayer
-                    src={selectedArtifact.video}
-                    poster={selectedArtifact.videoPoster}
-                    title={selectedArtifact.name}
-                    date={selectedArtifact.date}
-                    className="w-full h-full"
-                  />
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  <div className="h-64 w-full rounded-2xl overflow-hidden bg-[#FAF8F5] dark:bg-black/30 border border-[#5B7B6D]/15 shadow-sm">
-                    <img
-                      src={selectedArtifactImagePreview || selectedArtifact.image}
-                      alt={selectedArtifact.name}
-                      className="w-full h-full object-cover transition-all duration-300"
-                    />
-                  </div>
-                  {/* Photo Switcher Row if multiple photos */}
-                  {selectedArtifact.images && selectedArtifact.images.length > 1 && (
-                    <div className="flex items-center gap-2 overflow-x-auto custom-scrollbar py-1">
-                      {selectedArtifact.images.map((imgUrl, idx) => {
-                        const isCurrent = (selectedArtifactImagePreview || selectedArtifact.image) === imgUrl;
-                        return (
-                          <button
-                            key={idx}
-                            type="button"
-                            onClick={() => setSelectedArtifactImagePreview(imgUrl)}
-                            className={`w-13 h-13 rounded-xl overflow-hidden shrink-0 border-2 transition-all cursor-pointer ${
-                              isCurrent
-                                ? 'border-[#5B7B6D] ring-2 ring-[#5B7B6D]/30 scale-105 shadow-xs'
-                                : 'border-[#5B7B6D]/15 opacity-70 hover:opacity-100'
-                            }`}
-                          >
-                            <img src={imgUrl} alt={`缩略图 ${idx + 1}`} className="w-full h-full object-cover" />
-                          </button>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              )}
+              {/* Bento Multi-Media Gallery Viewer */}
+              <ArtifactGalleryViewer
+                image={selectedArtifact.image}
+                images={selectedArtifact.images}
+                video={selectedArtifact.video}
+                videoPoster={selectedArtifact.videoPoster}
+                videos={selectedArtifact.videos}
+                name={selectedArtifact.name}
+                theme={currentTheme}
+              />
 
               <div className="space-y-3">
                 <h2 className="text-xl sm:text-2xl font-bold text-[#2B332E] dark:text-[#FAF8F5] font-serif">{selectedArtifact.name}</h2>
@@ -5308,7 +5192,7 @@ export default function App() {
                   const fd = new FormData(e.currentTarget);
                   const updatedName = (fd.get('name') as string)?.trim() || editingArtifact.name;
                   const updatedStory = (fd.get('story') as string) || '';
-                  const primaryImage = editArtifactImage || editArtifactImages[0] || editingArtifact.image;
+                  const primaryImage = editArtifactImage || editArtifactImages[0] || (editArtifactVideos[0]?.poster) || editingArtifact.image;
 
                   const updated: Artifact = {
                     ...editingArtifact,
@@ -5319,6 +5203,7 @@ export default function App() {
                     images: editArtifactImages.length > 0 ? editArtifactImages : undefined,
                     video: editArtifactVideo,
                     videoPoster: editArtifactVideoPoster,
+                    videos: editArtifactVideos.length > 0 ? editArtifactVideos : undefined,
                     mediaType: editArtifactMediaType
                   };
 
@@ -5344,19 +5229,16 @@ export default function App() {
                   images={editArtifactImages}
                   video={editArtifactVideo}
                   videoPoster={editArtifactVideoPoster}
+                  videos={editArtifactVideos}
                   mediaType={editArtifactMediaType}
                   onChange={(media) => {
                     setEditArtifactImage(media.image);
                     setEditArtifactImages(media.images);
                     setEditArtifactVideo(media.video);
                     setEditArtifactVideoPoster(media.videoPoster);
+                    setEditArtifactVideos(media.videos);
                     setEditArtifactMediaType(media.mediaType);
                   }}
-                  onGenerateAiImage={(callback) => {
-                    const name = (document.querySelector('input[name="name"]') as HTMLInputElement)?.value || editingArtifact.name;
-                    handleGenerateAiImage(name, callback);
-                  }}
-                  isAiGenLoading={isAiGenImageLoading}
                 />
 
                 {/* Date Setting Card */}
@@ -5385,20 +5267,7 @@ export default function App() {
 
                 {/* Story Textarea */}
                 <div className="bg-white/90 dark:bg-white/[0.04] p-3.5 rounded-2xl border border-black/5 dark:border-white/10 space-y-2 shadow-2xs">
-                  <div className="flex justify-between items-center px-0.5">
-                    <label className="text-[11px] font-serif font-medium text-[#526058] dark:text-[#A7B4AD]">物品回忆与纪念意义</label>
-                    <button
-                      type="button"
-                      onClick={() => handleAiPolishText('textarea[name="story"]', (val) => {
-                        const area = document.querySelector('textarea[name="story"]') as HTMLTextAreaElement;
-                        if (area) area.value = val;
-                      })}
-                      disabled={isAiPolishLoading}
-                      className="text-[11px] font-serif hover:underline flex items-center gap-1 transition-opacity text-[#5B7B6D]"
-                    >
-                      <Feather className="w-3 h-3" /> {isAiPolishLoading ? '润色中...' : '文墨润色'}
-                    </button>
-                  </div>
+                  <label className="text-[11px] font-serif font-medium text-[#526058] dark:text-[#A7B4AD] block px-0.5">物品回忆与纪念意义</label>
                   <textarea
                     name="story"
                     required
@@ -5637,7 +5506,7 @@ export default function App() {
                               sound.playWaterDrop(840);
                               handlePreviewVoice(v);
                             }}
-                            disabled={isTtsGenerating || previewingVoiceId !== null}
+                            disabled={previewingVoiceId !== null && previewingVoiceId !== v.id}
                             className={`text-[11px] px-3 py-1 rounded-xl flex items-center gap-1.5 transition-all font-medium font-sans shrink-0 cursor-pointer active:scale-95 ${
                               isPreviewing
                                 ? 'bg-[#E88765] text-white animate-pulse shadow-xs'
@@ -5862,10 +5731,12 @@ export default function App() {
                   {(selectedLetter.isUnlocked || new Date().toISOString().slice(0, 10) >= selectedLetter.unlockDate) && (
                     <button
                       type="button"
-                      onClick={() => handlePlayTts(selectedLetter.content)}
+                      onClick={() => handlePlayTts(selectedLetter.content, undefined, `letter-${selectedLetter.id}`, selectedLetter.title || '慢递时光信')}
+                      disabled={isTtsGenerating && ttsActiveSourceId === `letter-${selectedLetter.id}`}
                       className="text-xs px-3.5 py-2 bg-[#FDF0EB] text-[#E88765] rounded-xl border border-[#E88765]/25 flex items-center gap-1.5 font-medium hover:bg-[#E88765] hover:text-white transition-all font-sans active:scale-95 shadow-2xs"
                     >
-                      <Volume2 className="w-3.5 h-3.5" /> <span>朗读</span>
+                      <Volume2 className={`w-3.5 h-3.5 ${isTtsGenerating && ttsActiveSourceId === `letter-${selectedLetter.id}` ? 'animate-bounce' : ''}`} />
+                      <span>{isTtsGenerating && ttsActiveSourceId === `letter-${selectedLetter.id}` ? '准备中...' : '朗读'}</span>
                     </button>
                   )}
                   <button
@@ -5963,21 +5834,7 @@ export default function App() {
 
                 {/* Segmented Narrative Textarea */}
                 <div className="bg-white/80 dark:bg-white/[0.04] p-3 rounded-2xl border border-black/5 dark:border-white/10 space-y-1.5 shadow-2xs">
-                  <div className="flex justify-between items-center px-0.5">
-                    <label className="text-[11px] font-serif font-medium text-[#526058] dark:text-[#A7B4AD]">篇章正文</label>
-                    <button
-                      type="button"
-                      onClick={() => handleAiPolishText('textarea[name="editStoryContent"]', (val) => {
-                        const area = document.querySelector('textarea[name="editStoryContent"]') as HTMLTextAreaElement;
-                        if (area) area.value = val;
-                      })}
-                      disabled={isAiPolishLoading}
-                      className="text-[11px] font-serif hover:underline flex items-center gap-1 transition-opacity"
-                      style={{ color: currentTheme.primary }}
-                    >
-                      <Feather className="w-3 h-3" /> {isAiPolishLoading ? '润色中...' : '文墨润色'}
-                    </button>
-                  </div>
+                  <label className="text-[11px] font-serif font-medium text-[#526058] dark:text-[#A7B4AD] block px-0.5">篇章正文</label>
                   <textarea
                     name="editStoryContent"
                     required
@@ -6152,17 +6009,17 @@ export default function App() {
           </div>
         )}
 
-        {/* Apple Dynamic Liquid Glass Floating Capsule Dock - 自适应安卓三键导航栏与全面屏安全区抬升 */}
-        <div className="absolute bottom-[calc(0.75rem+env(safe-area-inset-bottom,0px))] sm:bottom-4 left-3 right-3 sm:left-4 sm:right-4 z-30 pointer-events-none select-none">
+        {/* Apple Dynamic Liquid Glass Floating Capsule Dock - 自适应安卓三键导航栏与全面屏安全区黄金贴合 (8px-10px) */}
+        <div className="absolute bottom-[calc(8px+env(safe-area-inset-bottom,0px))] sm:bottom-3.5 left-3 right-3 sm:left-4 sm:right-4 z-30 pointer-events-none select-none">
           <nav 
             id="dynamic-bottom-nav" 
             className="apple-liquid-glass pointer-events-auto relative rounded-full px-2 py-1.5 flex justify-around items-center shadow-lg"
           >
-            <NavItem id="home" label="首页" icon={Landmark} active={activeTab} onClick={() => setActiveTab('home')} />
-            <NavItem id="timeline" label="拾光轴" icon={Clock} active={activeTab} onClick={() => setActiveTab('timeline')} />
-            <NavItem id="people" label="拾人册" icon={Users} active={activeTab} onClick={() => { setSelectedPerson(null); setActiveTab('people'); }} />
+            <NavItem id="home" label="首页" icon={Landmark} active={activeTab} onClick={() => { setReaderStory(null); setActiveTab('home'); }} />
+            <NavItem id="timeline" label="拾光轴" icon={Clock} active={activeTab} onClick={() => { setReaderStory(null); setActiveTab('timeline'); }} />
+            <NavItem id="people" label="拾人册" icon={Users} active={activeTab} onClick={() => { setReaderStory(null); setSelectedPerson(null); setActiveTab('people'); }} />
             <NavItem id="stories" label="拾忆篇" icon={BookOpen} active={activeTab} onClick={() => { setReaderStory(null); setActiveTab('stories'); }} />
-            <NavItem id="artifacts" label="拾物阁" icon={Package} active={activeTab} onClick={() => setActiveTab('artifacts')} />
+            <NavItem id="artifacts" label="拾物阁" icon={Package} active={activeTab} onClick={() => { setReaderStory(null); setActiveTab('artifacts'); }} />
           </nav>
         </div>
 
@@ -6273,10 +6130,84 @@ export default function App() {
           {showSplash && (
             <SplashScreen
               theme={currentTheme}
-              onDismiss={() => setShowSplash(false)}
+              onDismiss={() => {
+                setShowSplash(false);
+                const user = getLocalDomesticUser();
+                if (!user) {
+                  setIsAuthPortalOpen(true);
+                } else {
+                  try {
+                    const hasSeenPrologue = localStorage.getItem('shinian_prologue_v1_seen');
+                    if (hasSeenPrologue !== 'true') {
+                      setIsPrologueOpen(true);
+                    }
+                  } catch {}
+                }
+              }}
             />
           )}
         </AnimatePresence>
+
+        {/* 拾年 · 国内用户入卷启封 / 登录认证门禁 */}
+        <AuthPortalModal
+          isOpen={isAuthPortalOpen}
+          onSuccess={(user) => {
+            setCurrentDomesticUser(user);
+            setIsAuthPortalOpen(false);
+            try {
+              const hasSeenPrologue = localStorage.getItem('shinian_prologue_v1_seen');
+              if (hasSeenPrologue !== 'true') {
+                setIsPrologueOpen(true);
+              }
+            } catch {}
+          }}
+          currentTheme={currentTheme}
+          isDarkMode={isDarkMode}
+          showToast={(msg) => showToast(msg)}
+        />
+
+        {/* 首次打开与关于软件：诗意引导序章（星海微光与文学级哲思题跋演播） */}
+        <PoeticPrologueModal
+          isOpen={isPrologueOpen}
+          onClose={() => setIsPrologueOpen(false)}
+          currentTheme={currentTheme}
+          isDarkMode={isDarkMode}
+        />
+
+        {/* 我的 · 个人中枢与云境跨端漫游 */}
+        <MyProfileModal
+          isOpen={isMyProfileModalOpen}
+          onClose={() => setIsMyProfileModalOpen(false)}
+          currentUser={currentDomesticUser}
+          onUserUpdated={(updated) => setCurrentDomesticUser(updated)}
+          appData={data}
+          onRestoreData={(restored) => {
+            setData(restored);
+            localStorage.setItem('shinian_app_data_v1', JSON.stringify(restored));
+          }}
+          onOpenAdminPortal={() => setIsAdminPortalOpen(true)}
+          currentTheme={currentTheme}
+          isDarkMode={isDarkMode}
+          showToast={(msg) => showToast(msg)}
+        />
+
+        {/* 版本热更新公告通知 */}
+        <UpdateNoticeModal
+          isOpen={isUpdateModalOpen}
+          onClose={() => setIsUpdateModalOpen(false)}
+          version={newAppVersion}
+          currentTheme={currentTheme}
+          isDarkMode={isDarkMode}
+        />
+
+        {/* 灵台 · 独立后端管理控制中枢 */}
+        <AdminPortal
+          isOpen={isAdminPortalOpen}
+          onClose={() => setIsAdminPortalOpen(false)}
+          currentTheme={currentTheme}
+          isDarkMode={isDarkMode}
+          showToast={(msg) => showToast(msg)}
+        />
 
         {/* 记忆卡片艺术工坊（拍立得 / 电影票根高清海报生成与多端分享） */}
         <MemoirCardStudioModal
@@ -6299,6 +6230,13 @@ export default function App() {
           isOpen={isFullscreenClockOpen}
           onClose={() => setIsFullscreenClockOpen(false)}
           theme={currentTheme}
+        />
+
+        {/* 全局美化文本选取悬浮胶囊操作面板 (主题调色板联动) */}
+        <CustomTextSelectionBar
+          theme={currentTheme}
+          isDarkMode={isDarkMode}
+          onToast={(msg) => showToast(msg)}
         />
 
       </div>
@@ -6372,16 +6310,13 @@ function SplashScreen({ theme, onDismiss }: SplashScreenProps) {
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.7, delay: 0.18, ease: [0.16, 1, 0.3, 1] }}
-          className="space-y-2"
+          className="space-y-1"
         >
           <p
             className="text-base sm:text-lg font-serif font-bold tracking-[0.3em] pl-[0.3em] select-none"
             style={{ color: theme.primaryDark }}
           >
             岁华清照 · 拾年归处
-          </p>
-          <p className="text-xs text-[#6E7C75] font-serif tracking-[0.2em] pl-[0.2em] opacity-80 select-none">
-            愿岁月不负所期 · 拾光长卷
           </p>
         </motion.div>
       </div>
@@ -7601,7 +7536,7 @@ function FriendGroupPickerModal({
                     }`}>
                       <div className="flex items-center">
                         {members.slice(0, 3).map((m) => (
-                          <img
+                          <MediaImage
                             key={m.id}
                             src={m.avatar}
                             alt={m.name}

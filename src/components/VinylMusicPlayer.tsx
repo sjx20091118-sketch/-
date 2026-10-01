@@ -168,25 +168,26 @@ export const VinylMusicPlayer: React.FC<VinylMusicPlayerProps> = ({ onShowToast 
     if (!targetUrl || isRetry) {
       setIsLoadingUrl(true);
       try {
-        targetUrl = await fetchSongPlayUrl(track.id, track.title, track.artist, (enriched) => {
+        const resolvedUrl = await fetchSongPlayUrl(track.id, track.title, track.artist, (enriched) => {
           if (enriched.cover && (!track.cover || track.cover === DEFAULT_FALLBACK_COVER)) {
             track.cover = enriched.cover;
           }
         });
-        if (targetUrl) {
-          track.url = targetUrl;
+        if (resolvedUrl) {
+          targetUrl = resolvedUrl;
+          track.url = resolvedUrl;
           setPlaylist((prev) => {
-            const updated = prev.map((s) => (s.id === track.id ? { ...s, url: targetUrl, cover: track.cover || s.cover } : s));
+            const updated = prev.map((s) => (s.id === track.id ? { ...s, url: resolvedUrl, cover: track.cover || s.cover } : s));
             savePlaylist(updated);
             return updated;
           });
         } else {
-          onShowToast?.(`暂未获取到《${track.title}》可用音频`);
+          onShowToast?.(`暂未获取到《${track.title}》的可用音频`);
           setIsLoadingUrl(false);
           return;
         }
       } catch {
-        onShowToast?.(`获取《${track.title}》音源失败`);
+        onShowToast?.(`获取《${track.title}》音源超时，请稍后重试`);
         setIsLoadingUrl(false);
         return;
       } finally {
@@ -200,22 +201,12 @@ export const VinylMusicPlayer: React.FC<VinylMusicPlayerProps> = ({ onShowToast 
       if (autoPlay) {
         audioRef.current
           .play()
-          .then(() => setIsPlaying(true))
+          .then(() => {
+            setIsPlaying(true);
+          })
           .catch((err) => {
             console.warn('Playback autoplay hindered', err);
-            // If primary direct stream fails on first attempt, auto-engage secondary engine
-            if (!isRetry && (track.title || track.id)) {
-              console.log('Engaging secondary auto-failover engine for:', track.title);
-              const fallbackUrl = buildApiUrl(`/api/music/play-url?title=${encodeURIComponent(track.title)}&artist=${encodeURIComponent(track.artist || '')}`);
-              if (fallbackUrl && fallbackUrl !== targetUrl) {
-                track.url = fallbackUrl;
-                playTrack(track, autoPlay, true);
-              } else {
-                setIsPlaying(false);
-              }
-            } else {
-              setIsPlaying(false);
-            }
+            setIsPlaying(false);
           });
       }
     }
@@ -424,7 +415,7 @@ export const VinylMusicPlayer: React.FC<VinylMusicPlayerProps> = ({ onShowToast 
       />
 
       {/* ================= 页面右下角优雅悬浮黑胶胶囊 (The Ambient Vinyl Capsule) ================= */}
-      <div className="fixed bottom-[calc(5rem+env(safe-area-inset-bottom,0px))] right-4 sm:bottom-6 sm:right-6 z-40 flex items-center">
+      <div className="fixed bottom-[calc(4.5rem+env(safe-area-inset-bottom,0px))] right-3.5 sm:bottom-5 sm:right-5 z-40 flex items-center">
         <motion.div
           initial={{ scale: 0.8, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
@@ -563,11 +554,11 @@ export const VinylMusicPlayer: React.FC<VinylMusicPlayerProps> = ({ onShowToast 
               </div>
 
               {/* 唱机内容区 */}
-              <div className="flex-1 overflow-y-auto p-4 sm:p-5">
+              <div className={`flex-1 ${viewMode === 'player' ? 'p-3 sm:p-5 flex flex-col justify-between overflow-hidden' : 'overflow-y-auto p-4 sm:p-5'}`}>
                 {viewMode === 'player' && (
-                  <div className="flex flex-col items-center gap-3 sm:gap-3.5 py-0.5">
-                    {/* 拟物黑胶唱片台架构 */}
-                    <div className="relative w-56 h-56 sm:w-64 sm:h-64 rounded-3xl bg-gradient-to-br from-[#1E2621] to-[#121614] border-4 border-[#3D4741] p-3.5 shadow-[inset_0_4px_16px_rgba(0,0,0,0.6),0_12px_32px_rgba(0,0,0,0.2)] flex items-center justify-center overflow-hidden shrink-0">
+                  <div className="h-full flex flex-col justify-between items-center select-none py-1 sm:py-2">
+                    {/* 拟物黑胶唱片台架构 - 扩大比例居中饱满，消解大片留白 */}
+                    <div className="relative w-62 h-62 sm:w-70 sm:h-70 rounded-3xl bg-gradient-to-br from-[#1E2621] to-[#121614] border-4 border-[#3D4741] p-3 shadow-[inset_0_4px_18px_rgba(0,0,0,0.65),0_14px_34px_rgba(0,0,0,0.22)] flex items-center justify-center overflow-hidden shrink-0">
                       {/* 唱片机金属拉丝铭牌印记 */}
                       <div className="absolute left-3 bottom-2 text-[8px] font-mono tracking-wider text-white/30 select-none">
                         SHINIAN · HIFI TURNTABLE
@@ -575,7 +566,7 @@ export const VinylMusicPlayer: React.FC<VinylMusicPlayerProps> = ({ onShowToast 
 
                       {/* 黑胶大唱盘 (Spinning Vinyl Disc) */}
                       <div
-                        className={`relative w-44 h-44 sm:w-50 sm:h-50 rounded-full bg-[#0D100F] shadow-[0_0_20px_rgba(0,0,0,0.8)] flex items-center justify-center transition-transform ${
+                        className={`relative w-48 h-48 sm:w-56 sm:h-56 rounded-full bg-[#0D100F] shadow-[0_0_22px_rgba(0,0,0,0.85)] flex items-center justify-center transition-transform ${
                           isPlaying ? 'animate-[spin_18s_linear_infinite]' : ''
                         }`}
                         style={{
@@ -596,7 +587,7 @@ export const VinylMusicPlayer: React.FC<VinylMusicPlayerProps> = ({ onShowToast 
                         <div className="absolute inset-0 rounded-full bg-gradient-to-tr from-transparent via-white/5 to-transparent pointer-events-none" />
 
                         {/* 唱片中心封面 (Album Artwork Center) */}
-                        <div className="w-18 h-18 sm:w-20 sm:h-20 rounded-full overflow-hidden border-2 border-white/60 shadow-lg relative z-10 bg-[#5B7B6D]">
+                        <div className="w-19 h-19 sm:w-22 sm:h-22 rounded-full overflow-hidden border-2 border-white/60 shadow-lg relative z-10 bg-[#5B7B6D]">
                           {currentTrack?.cover ? (
                             <img
                               src={currentTrack.cover}
@@ -618,7 +609,7 @@ export const VinylMusicPlayer: React.FC<VinylMusicPlayerProps> = ({ onShowToast 
 
                       {/* 机械拟物唱针 (Mechanical Tonearm with Physics Swing) */}
                       <div
-                        className="absolute right-3 top-2 w-16 h-30 origin-[75%_12%] transition-transform duration-700 ease-out pointer-events-none z-20"
+                        className="absolute right-3.5 top-2 w-18 h-32 origin-[75%_12%] transition-transform duration-700 ease-out pointer-events-none z-20"
                         style={{
                           transform: isPlaying ? 'rotate(22deg)' : 'rotate(0deg)',
                         }}
@@ -626,16 +617,16 @@ export const VinylMusicPlayer: React.FC<VinylMusicPlayerProps> = ({ onShowToast 
                         {/* 唱针转轴底座 */}
                         <div className="absolute right-2.5 top-1.5 w-6 h-6 rounded-full bg-gradient-to-b from-[#A0A9A3] to-[#4F5953] border border-white/40 shadow-md" />
                         {/* 唱针金属杆 */}
-                        <div className="absolute right-5 top-5 w-1 h-20 bg-gradient-to-b from-[#C4CAC6] via-[#7B8680] to-[#505954] shadow-xs" />
+                        <div className="absolute right-5 top-5 w-1 h-21 bg-gradient-to-b from-[#C4CAC6] via-[#7B8680] to-[#505954] shadow-xs" />
                         {/* 唱针磁头 */}
-                        <div className="absolute right-3.5 top-24 w-3.5 h-5 rounded-xs bg-[#E88765] border border-white/50 shadow-md transform rotate-12" />
+                        <div className="absolute right-3.5 top-25 w-3.5 h-5 rounded-xs bg-[#E88765] border border-white/50 shadow-md transform rotate-12" />
                       </div>
                     </div>
 
                     {/* 歌曲信息与时光标签 */}
-                    <div className="text-center space-y-0.5 w-full max-w-xs px-2 relative">
+                    <div className="text-center space-y-0.5 w-full max-w-xs px-2 relative my-1">
                       <div className="flex items-center justify-center gap-2">
-                        <h3 className="text-base sm:text-lg font-serif font-bold text-[#17201B] truncate">
+                        <h3 className="text-base sm:text-lg font-serif font-bold text-[#17201B] truncate tracking-tight">
                           {currentTrack?.title || '拾年留声机'}
                         </h3>
                         {currentTrack && (
@@ -645,7 +636,7 @@ export const VinylMusicPlayer: React.FC<VinylMusicPlayerProps> = ({ onShowToast 
                             className="p-1 rounded-full hover:bg-black/5 transition-transform active:scale-125 cursor-pointer"
                           >
                             <Heart
-                              className={`w-3.5 h-3.5 transition-colors ${
+                              className={`w-4 h-4 transition-colors ${
                                 isCurrentFavorited
                                   ? 'fill-rose-500 text-rose-500'
                                   : 'text-[#6E7C75] hover:text-rose-500'
@@ -654,13 +645,13 @@ export const VinylMusicPlayer: React.FC<VinylMusicPlayerProps> = ({ onShowToast 
                           </button>
                         )}
                       </div>
-                      <p className="text-[11px] text-[#6E7C75] font-serif truncate">
+                      <p className="text-[11px] sm:text-xs text-[#6E7C75] font-serif truncate">
                         {currentTrack?.artist || '暂未选定曲目'} {currentTrack?.album ? `· ${currentTrack.album}` : ''}
                       </p>
                     </div>
 
                     {/* 进度控制滑块 */}
-                    <div className="w-full max-w-sm space-y-1 px-1">
+                    <div className="w-full max-w-sm space-y-1 px-2 my-1">
                       <input
                         type="range"
                         min={0}
@@ -669,15 +660,15 @@ export const VinylMusicPlayer: React.FC<VinylMusicPlayerProps> = ({ onShowToast 
                         onChange={handleSeek}
                         className="w-full h-1.5 bg-[#5B7B6D]/20 rounded-lg appearance-none cursor-pointer accent-[#5B7B6D]"
                       />
-                      <div className="flex justify-between text-[10px] text-[#6E7C75] font-mono">
+                      <div className="flex justify-between text-[10px] sm:text-[11px] text-[#6E7C75] font-mono tabular-nums">
                         <span>{formatTime(currentTime)}</span>
                         <span>{formatTime(duration)}</span>
                       </div>
                     </div>
 
-                    {/* 播放控制按钮群 */}
-                    <div className="flex items-center justify-center gap-5 sm:gap-6 pt-0.5">
-                      {/* 循环模式：包含标准带1的单曲循环 Repeat1 图标 */}
+                    {/* 播放控制按钮群 (垂直居中舒展，向上提拉保持安全留白，消除空出一大片) */}
+                    <div className="flex items-center justify-center gap-5 sm:gap-7 pb-2 sm:pb-3">
+                      {/* 循环模式 */}
                       <button
                         onClick={() => {
                           const modes: ('all' | 'one' | 'shuffle')[] = ['all', 'one', 'shuffle'];
@@ -717,11 +708,11 @@ export const VinylMusicPlayer: React.FC<VinylMusicPlayerProps> = ({ onShowToast 
                         <SkipBack className="w-5 h-5 fill-current" />
                       </button>
 
-                      {/* 主播放/暂停 (大号质感按钮) */}
+                      {/* 主播放/暂停 (大号拟物玉石质感按钮) */}
                       <button
                         onClick={togglePlay}
                         disabled={isLoadingUrl || playlist.length === 0}
-                        className="w-14 h-14 rounded-full bg-[#5B7B6D] hover:bg-[#3E564B] text-white flex items-center justify-center shadow-lg transition-transform active:scale-95 disabled:opacity-50 cursor-pointer"
+                        className="w-14 h-14 sm:w-15 sm:h-15 rounded-full bg-[#5B7B6D] hover:bg-[#3E564B] text-white flex items-center justify-center shadow-lg transition-transform active:scale-95 disabled:opacity-50 cursor-pointer"
                       >
                         {isLoadingUrl ? (
                           <span className="w-5 h-5 border-2 border-white/40 border-t-white rounded-full animate-spin" />
@@ -753,46 +744,44 @@ export const VinylMusicPlayer: React.FC<VinylMusicPlayerProps> = ({ onShowToast 
 
                 {viewMode === 'search' && (
                   <div className="space-y-4">
-                    {/* 搜索输入框（适配移动端软键盘与即触提交） */}
+                    {/* 搜索框 */}
                     <form
-                      action="javascript:void(0)"
                       onSubmit={(e) => {
                         e.preventDefault();
                         handleSearch();
                       }}
-                      className="relative"
+                      className="relative flex items-center"
                     >
                       <input
                         type="text"
-                        inputMode="search"
-                        enterKeyHint="search"
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
-                        placeholder="搜索全网歌曲、歌手（如：周杰伦、晴天、起风了）"
-                        className="w-full pl-10 pr-20 py-2.5 rounded-2xl bg-white border border-[#2B332E]/15 focus:outline-none focus:border-[#5B7B6D] text-xs font-serif shadow-2xs appearance-none [&::-webkit-search-cancel-button]:hidden [&::-webkit-search-cancel-button]:appearance-none [&::-webkit-search-decoration]:hidden [&::-webkit-search-results-button]:hidden"
+                        placeholder="搜索歌曲、歌手（如：周杰伦、晴天、起风了）"
+                        className="w-full pl-9 pr-20 py-2 rounded-xl bg-white/80 border border-[#2B332E]/10 focus:border-[#5B7B6D] focus:ring-1 focus:ring-[#5B7B6D] text-xs font-serif text-[#17201B] placeholder:text-[#6E7C75]/60 outline-none transition-all"
                       />
-                      <Search className="absolute left-3.5 top-3 w-4 h-4 text-[#6E7C75] pointer-events-none" />
+                      <Search className="absolute left-3 top-2.5 w-4 h-4 text-[#6E7C75]" />
                       <button
                         type="submit"
                         disabled={isSearching}
-                        className="absolute right-1.5 top-1.5 px-3 py-1.5 bg-[#5B7B6D] hover:bg-[#3E564B] text-white text-xs rounded-xl font-medium transition-colors cursor-pointer active:scale-95 disabled:opacity-50"
+                        className="absolute right-1 top-1 bottom-1 px-3 bg-[#5B7B6D] hover:bg-[#3E564B] text-white text-xs rounded-lg font-serif transition-colors disabled:opacity-50 cursor-pointer"
                       >
-                        {isSearching ? '搜索中' : '搜索'}
+                        {isSearching ? '搜索中...' : '搜索'}
                       </button>
                     </form>
 
-                    {/* 推荐热搜标签 */}
+                    {/* 热门搜索标签 */}
                     <div className="space-y-1.5">
-                      <span className="text-[11px] text-[#6E7C75] font-serif">推荐搜索：</span>
+                      <p className="text-[11px] text-[#6E7C75] font-serif">推荐热搜：</p>
                       <div className="flex flex-wrap gap-1.5">
                         {['三叶的主题曲', 'Sparkle', '晴天', '起风了', '七里香', '蒲公英的约定', '夏天的风', 'Lemon', 'Summer'].map((kw) => (
                           <button
                             key={kw}
+                            type="button"
                             onClick={() => {
                               setSearchQuery(kw);
                               handleSearch(kw);
                             }}
-                            className="text-[11px] px-2.5 py-1 rounded-full bg-white border border-[#2B332E]/10 text-[#2B332E] hover:border-[#5B7B6D] hover:text-[#5B7B6D] transition-colors cursor-pointer"
+                            className="text-[11px] font-serif px-2.5 py-1 rounded-full bg-white/60 hover:bg-white text-[#17201B] border border-[#2B332E]/10 hover:border-[#5B7B6D] transition-colors cursor-pointer"
                           >
                             {kw}
                           </button>
@@ -800,24 +789,26 @@ export const VinylMusicPlayer: React.FC<VinylMusicPlayerProps> = ({ onShowToast 
                       </div>
                     </div>
 
-                    {/* 扩展功能区：本地导入与直链 */}
-                    <div className="pt-2 border-t border-[#2B332E]/[0.06] flex items-center justify-between text-xs">
+                    {/* 扩展功能区：本地导入与网络直链 */}
+                    <div className="pt-2 border-t border-[#2B332E]/10 flex items-center justify-between text-xs">
                       <button
+                        type="button"
                         onClick={() => fileInputRef.current?.click()}
-                        className="flex items-center gap-1.5 text-[#5B7B6D] hover:underline font-serif"
+                        className="flex items-center gap-1.5 text-[#5B7B6D] hover:text-[#3E564B] font-serif transition-colors cursor-pointer"
                       >
-                        <Upload className="w-3.5 h-3.5" /> 导入设备本地 MP3
+                        <Upload className="w-3.5 h-3.5" /> 导入本地音轨 (MP3/FLAC)
                       </button>
                       <button
+                        type="button"
                         onClick={() => setShowCustomModal(true)}
-                        className="flex items-center gap-1.5 text-[#E88765] hover:underline font-serif"
+                        className="flex items-center gap-1.5 text-[#C5A059] hover:text-[#9A7D43] font-serif transition-colors cursor-pointer"
                       >
                         <Link className="w-3.5 h-3.5" /> 粘贴网络音频直链
                       </button>
                     </div>
 
-                    {/* 搜索结果或精选灵感曲库 */}
-                    <div className="space-y-2 mt-3">
+                    {/* 搜索结果或精选推荐 */}
+                    <div className="space-y-2 mt-2">
                       {searchResults.length > 0 ? (
                         <div className="space-y-2">
                           <div className="flex items-center justify-between">
@@ -830,21 +821,89 @@ export const VinylMusicPlayer: React.FC<VinylMusicPlayerProps> = ({ onShowToast 
                                 setSearchResults([]);
                                 setSearchQuery('');
                               }}
-                              className="text-[11px] text-[#5B7B6D] hover:underline font-serif"
+                              className="text-[11px] text-[#5B7B6D] hover:underline font-serif cursor-pointer"
                             >
                               返回精选推荐
                             </button>
                           </div>
                           <div className="space-y-1.5 max-h-[300px] overflow-y-auto pr-1">
-                            {searchResults.map((song) => (
-                              <div
-                                key={song.id}
-                                onClick={() => selectSearchResult(song)}
-                                className="flex items-center justify-between p-2.5 rounded-2xl bg-white/80 hover:bg-white border border-[#2B332E]/[0.06] shadow-2xs hover:shadow-xs cursor-pointer group transition-all"
-                              >
-                                <div className="flex items-center gap-3 min-w-0">
-                                  <div className="w-10 h-10 rounded-xl overflow-hidden bg-[#5B7B6D]/20 shrink-0">
-                                    {song.cover ? (
+                            {searchResults.map((song) => {
+                              const isCurrent = currentTrack?.id === song.id;
+                              return (
+                                <div
+                                  key={song.id}
+                                  onClick={() => selectSearchResult(song)}
+                                  className={`flex items-center justify-between p-2 rounded-xl border transition-all cursor-pointer ${
+                                    isCurrent && isPlaying
+                                      ? 'bg-white border-[#5B7B6D] shadow-xs'
+                                      : 'bg-white/70 hover:bg-white border-[#2B332E]/5 hover:border-[#5B7B6D]/30'
+                                  }`}
+                                >
+                                  <div className="flex items-center gap-2.5 min-w-0">
+                                    <div className="w-9 h-9 rounded-lg overflow-hidden bg-[#5B7B6D]/10 shrink-0">
+                                      <img
+                                        src={song.cover || DEFAULT_FALLBACK_COVER}
+                                        alt={song.title}
+                                        onError={(e) => {
+                                          (e.currentTarget as HTMLImageElement).src = DEFAULT_FALLBACK_COVER;
+                                        }}
+                                        className="w-full h-full object-cover"
+                                      />
+                                    </div>
+                                    <div className="min-w-0">
+                                      <h4 className="text-xs font-serif font-bold text-[#17201B] truncate">
+                                        {song.title}
+                                      </h4>
+                                      <p className="text-[10px] text-[#6E7C75] font-serif truncate">
+                                        {song.artist} {song.album ? `· ${song.album}` : ''}
+                                      </p>
+                                    </div>
+                                  </div>
+                                  <div className="flex items-center gap-1 shrink-0 ml-2">
+                                    <button
+                                      type="button"
+                                      onClick={(e) => handleAddToQueue(song, e)}
+                                      title="加入待奏列表"
+                                      className="p-1 rounded hover:bg-black/5 text-[#6E7C75] hover:text-[#17201B] transition-colors"
+                                    >
+                                      <Plus className="w-3.5 h-3.5" />
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => selectSearchResult(song)}
+                                      className="p-1 rounded-full bg-[#5B7B6D] text-white hover:bg-[#3E564B] transition-colors"
+                                    >
+                                      {isCurrent && isPlaying ? (
+                                        <Pause className="w-3 h-3 fill-current" />
+                                      ) : (
+                                        <Play className="w-3 h-3 fill-current ml-0.5" />
+                                      )}
+                                    </button>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      ) : (
+                        /* 精选推荐歌曲列表 */
+                        <div className="space-y-1.5 pt-1">
+                          <p className="text-xs font-serif font-bold text-[#17201B]">精选时光曲目：</p>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 max-h-[300px] overflow-y-auto pr-1">
+                            {CURATED_TIME_SONGS.map((song) => {
+                              const isCurrent = currentTrack?.id === song.id;
+                              return (
+                                <div
+                                  key={song.id}
+                                  onClick={() => selectSearchResult(song)}
+                                  className={`flex items-center justify-between p-2 rounded-xl border transition-all cursor-pointer ${
+                                    isCurrent && isPlaying
+                                      ? 'bg-white border-[#5B7B6D] shadow-xs'
+                                      : 'bg-white/70 hover:bg-white border-[#2B332E]/5 hover:border-[#5B7B6D]/30'
+                                  }`}
+                                >
+                                  <div className="flex items-center gap-2 min-w-0">
+                                    <div className="w-8 h-8 rounded-lg overflow-hidden bg-[#5B7B6D]/10 shrink-0">
                                       <img
                                         src={song.cover}
                                         alt={song.title}
@@ -853,93 +912,30 @@ export const VinylMusicPlayer: React.FC<VinylMusicPlayerProps> = ({ onShowToast 
                                         }}
                                         className="w-full h-full object-cover"
                                       />
+                                    </div>
+                                    <div className="min-w-0">
+                                      <h4 className="text-xs font-serif font-bold text-[#17201B] truncate">
+                                        {song.title}
+                                      </h4>
+                                      <p className="text-[10px] text-[#6E7C75] truncate font-serif">
+                                        {song.artist}
+                                      </p>
+                                    </div>
+                                  </div>
+                                  <button
+                                    type="button"
+                                    onClick={() => selectSearchResult(song)}
+                                    className="p-1 rounded-full bg-[#5B7B6D] text-white hover:bg-[#3E564B] transition-colors shrink-0 ml-1"
+                                  >
+                                    {isCurrent && isPlaying ? (
+                                      <Pause className="w-3 h-3 fill-current" />
                                     ) : (
-                                      <div className="w-full h-full flex items-center justify-center text-[#5B7B6D]">
-                                        <Disc3 className="w-5 h-5" />
-                                      </div>
+                                      <Play className="w-3 h-3 fill-current ml-0.5" />
                                     )}
-                                  </div>
-                                  <div className="min-w-0">
-                                    <h4 className="text-xs font-serif font-bold text-[#17201B] truncate group-hover:text-[#5B7B6D] transition-colors">
-                                      {song.title}
-                                    </h4>
-                                    <p className="text-[10px] text-[#6E7C75] truncate">
-                                      {song.artist} · {song.album}
-                                    </p>
-                                  </div>
-                                </div>
-                                <div className="flex items-center gap-1 shrink-0 ml-2">
-                                  <button
-                                    type="button"
-                                    onClick={(e) => handleAddToQueue(song, e)}
-                                    title="加入播放歌单"
-                                    className="p-1.5 rounded-lg text-[#6E7C75] hover:text-[#5B7B6D] hover:bg-[#FAF8F5] transition-colors active:scale-90"
-                                  >
-                                    <Plus className="w-3.5 h-3.5" />
-                                  </button>
-                                  <button 
-                                    type="button"
-                                    onClick={() => selectSearchResult(song)}
-                                    title="立即播放"
-                                    className="p-1.5 rounded-full bg-[#FAF8F5] text-[#5B7B6D] group-hover:bg-[#5B7B6D] group-hover:text-white transition-colors shrink-0"
-                                  >
-                                    <Play className="w-3.5 h-3.5 fill-current ml-0.5" />
                                   </button>
                                 </div>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      ) : (
-                        /* 精选时光推荐歌曲列表：极简纯净 */
-                        <div className="space-y-2 pt-1">
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-[300px] overflow-y-auto pr-1">
-                            {CURATED_TIME_SONGS.map((song) => (
-                              <div
-                                key={song.id}
-                                onClick={() => selectSearchResult(song)}
-                                className="flex items-center justify-between p-2.5 rounded-2xl bg-white/85 hover:bg-white border border-[#2B332E]/[0.08] hover:border-[#5B7B6D]/40 shadow-2xs hover:shadow-xs cursor-pointer group transition-all"
-                              >
-                                <div className="flex items-center gap-2.5 min-w-0">
-                                  <div className="w-10 h-10 rounded-xl overflow-hidden bg-[#5B7B6D]/15 shrink-0 shadow-2xs">
-                                    <img
-                                      src={song.cover}
-                                      alt={song.title}
-                                      onError={(e) => {
-                                        (e.currentTarget as HTMLImageElement).src = DEFAULT_FALLBACK_COVER;
-                                      }}
-                                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                                    />
-                                  </div>
-                                  <div className="min-w-0">
-                                    <h4 className="text-xs font-serif font-bold text-[#17201B] truncate group-hover:text-[#5B7B6D] transition-colors">
-                                      {song.title}
-                                    </h4>
-                                    <p className="text-[10px] text-[#6E7C75] truncate font-serif mt-0.5">
-                                      {song.artist} · {song.durationFormatted}
-                                    </p>
-                                  </div>
-                                </div>
-                                <div className="flex items-center gap-1 shrink-0 ml-2">
-                                  <button
-                                    type="button"
-                                    onClick={(e) => handleAddToQueue(song, e)}
-                                    title="添入播放歌单"
-                                    className="p-1.5 rounded-lg text-[#6E7C75] hover:text-[#5B7B6D] hover:bg-[#FAF8F5] transition-colors active:scale-90"
-                                  >
-                                    <Plus className="w-3.5 h-3.5" />
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => selectSearchResult(song)}
-                                    title="立即试听"
-                                    className="p-1.5 rounded-full bg-[#FAF8F5] text-[#5B7B6D] group-hover:bg-[#5B7B6D] group-hover:text-white transition-colors"
-                                  >
-                                    <Play className="w-3 h-3 fill-current ml-0.5" />
-                                  </button>
-                                </div>
-                              </div>
-                            ))}
+                              );
+                            })}
                           </div>
                         </div>
                       )}

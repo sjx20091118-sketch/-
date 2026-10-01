@@ -1,11 +1,12 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
-import { Package, Plus, Trash2, X, Check } from 'lucide-react';
+import { Package, Plus, X, Check } from 'lucide-react';
 import { Artifact } from '../types';
 import { sound } from '../utils/soundEngine';
 import { TiltCard } from './TiltCard';
 import { useBackHandler } from '../hooks/useAndroidBackHandler';
+import { MediaImage } from './MediaImage';
 
 interface PersonArtifactsShelfProps {
   personName: string;
@@ -19,24 +20,39 @@ interface PersonArtifactsShelfProps {
 export const PersonArtifactsShelf: React.FC<PersonArtifactsShelfProps> = ({
   personName,
   boundArtifactIds = [],
-  allArtifacts,
+  allArtifacts = [],
   onUpdateBoundArtifacts,
   onSelectArtifact,
   showToast
 }) => {
   const [isPickerOpen, setIsPickerOpen] = useState(false);
-  const [selectedIds, setSelectedIds] = useState<string[]>(boundArtifactIds);
+
+  // 严格过滤仅属于当前拾物阁存在旧物的合法ID，防止出现虚空勾选或已删除旧物幽灵计数
+  const validBoundIds = useMemo(() => {
+    const validSet = new Set(allArtifacts.map(a => a.id));
+    return (boundArtifactIds || []).filter(id => validSet.has(id));
+  }, [boundArtifactIds, allArtifacts]);
+
+  const [selectedIds, setSelectedIds] = useState<string[]>(validBoundIds);
+
+  // 当外部绑定的 boundArtifactIds 或 allArtifacts 变化时，实时同步
+  useEffect(() => {
+    setSelectedIds(validBoundIds);
+  }, [validBoundIds]);
 
   // Level 3: 物理返回拦截：从拾物阁拣选信物弹窗 (Priority 80)
   useBackHandler('person-artifacts-picker', 80, isPickerOpen, () => {
     setIsPickerOpen(false);
   });
 
-  const boundArtifacts = allArtifacts.filter(a => boundArtifactIds.includes(a.id));
+  const boundArtifacts = useMemo(() => {
+    const boundSet = new Set(validBoundIds);
+    return allArtifacts.filter(a => boundSet.has(a.id));
+  }, [allArtifacts, validBoundIds]);
 
   const handleOpenPicker = () => {
     sound.playWaterDrop(880);
-    setSelectedIds([...boundArtifactIds]);
+    setSelectedIds([...validBoundIds]);
     setIsPickerOpen(true);
   };
 
@@ -49,17 +65,18 @@ export const PersonArtifactsShelf: React.FC<PersonArtifactsShelfProps> = ({
 
   const handleSaveSelection = () => {
     sound.playWaterDrop(960);
-    onUpdateBoundArtifacts(selectedIds);
+    const validSet = new Set(allArtifacts.map(a => a.id));
+    const cleanSelection = selectedIds.filter(id => validSet.has(id));
+    onUpdateBoundArtifacts(cleanSelection);
     setIsPickerOpen(false);
     showToast(`已更新与【${personName}】相系的信物`);
   };
 
-  const handleRemoveSingle = (id: string, name: string) => {
-    sound.playPaperRustle();
-    const updated = boundArtifactIds.filter(item => item !== id);
-    onUpdateBoundArtifacts(updated);
-    showToast(`已将【${name}】从信物柜移出`);
-  };
+  // 当前在弹窗中有效勾选的信物数量
+  const validSelectedCount = useMemo(() => {
+    const validSet = new Set(allArtifacts.map(a => a.id));
+    return selectedIds.filter(id => validSet.has(id)).length;
+  }, [selectedIds, allArtifacts]);
 
   return (
     <div className="bg-white dark:bg-[#1E2822] rounded-3xl p-5 border border-[#5B7B6D]/20 dark:border-white/10 shadow-2xs space-y-4 relative z-10 isolate">
@@ -111,7 +128,7 @@ export const PersonArtifactsShelf: React.FC<PersonArtifactsShelfProps> = ({
                 className="rounded-2xl border border-[#5B7B6D]/15 dark:border-white/10 bg-white dark:bg-[#141C18] p-2.5 space-y-2 group shadow-2xs hover:shadow-sm hover:border-[#5B7B6D]/40 transition-all"
               >
                 <div className="relative aspect-square rounded-xl overflow-hidden bg-[#FAF8F5] dark:bg-black/30 border border-[#5B7B6D]/10">
-                  <img
+                  <MediaImage
                     src={art.image}
                     alt={art.name}
                     className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
@@ -162,7 +179,7 @@ export const PersonArtifactsShelf: React.FC<PersonArtifactsShelfProps> = ({
                       <h3 className="font-bold text-[#2B332E] text-sm font-serif flex items-center gap-1.5">
                         <span>从拾物阁拣选信物</span>
                         <span className="text-[11px] font-sans font-normal text-[#6E7C75]">
-                          (已选 {selectedIds.length}/{allArtifacts.length})
+                          (已选 {validSelectedCount}/{allArtifacts.length})
                         </span>
                       </h3>
                       <p className="text-[10px] text-[#6E7C75] font-serif mt-0.5">
@@ -199,7 +216,7 @@ export const PersonArtifactsShelf: React.FC<PersonArtifactsShelfProps> = ({
                           }`}
                         >
                           <div className="relative aspect-square rounded-xl overflow-hidden bg-stone-100 mb-2">
-                            <img
+                            <MediaImage
                               src={artifact.image}
                               alt={artifact.name}
                               className="w-full h-full object-cover"
@@ -222,7 +239,7 @@ export const PersonArtifactsShelf: React.FC<PersonArtifactsShelfProps> = ({
 
                 {/* 弹窗底部操作 */}
                 <div className="p-3.5 bg-white/95 border-t border-[#5B7B6D]/15 flex justify-between items-center shrink-0">
-                  <span className="text-xs text-[#6E7C75] font-mono">已选中 {selectedIds.length} 件信物</span>
+                  <span className="text-xs text-[#6E7C75] font-mono">已选中 {validSelectedCount} 件信物</span>
                   <div className="flex gap-2">
                     <button
                       type="button"

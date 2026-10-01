@@ -1,0 +1,118 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "User account profile and sync metadata",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "maxLength": 128 },
+        "account": { "type": "string", "maxLength": 128 },
+        "email": { "type": "string", "maxLength": 256 },
+        "displayName": { "type": "string", "maxLength": 128 },
+        "userNumber": { "type": "string", "maxLength": 32 },
+        "passwordHash": { "type": "string", "maxLength": 256 },
+        "photoURL": { "type": "string", "maxLength": 1024 },
+        "createdAt": { "type": "string", "maxLength": 64 },
+        "updatedAt": { "type": "string", "maxLength": 64 },
+        "lastSyncAt": { "type": "string", "maxLength": 64 },
+        "role": { "type": "string", "enum": ["user", "admin"], "maxLength": 32 }
+      },
+      "required": ["uid", "account", "userNumber", "createdAt"]
+    },
+    "UserBackup": {
+      "title": "UserBackup",
+      "description": "Encrypted or structured cloud backup snapshot of user data",
+      "type": "object",
+      "properties": {
+        "backupId": { "type": "string", "maxLength": 128 },
+        "userId": { "type": "string", "maxLength": 128 },
+        "version": { "type": "string", "maxLength": 32 },
+        "createdAt": { "type": "string", "maxLength": 64 },
+        "title": { "type": "string", "maxLength": 128 },
+        "summary": { "type": "string", "maxLength": 512 },
+        "dataPayload": { "type": "string", "maxLength": 1048576 }
+      },
+      "required": ["backupId", "userId", "createdAt", "dataPayload"]
+    },
+    "SystemCounter": {
+      "title": "SystemCounter",
+      "description": "Sequential numbering counters for registration order",
+      "type": "object",
+      "properties": {
+        "counterId": { "type": "string", "maxLength": 64 },
+        "currentCount": { "type": "integer" },
+        "updatedAt": { "type": "string", "maxLength": 64 }
+      },
+      "required": ["counterId", "currentCount"]
+    },
+    "AppVersion": {
+      "title": "AppVersion",
+      "description": "Published app versions and changelog releases",
+      "type": "object",
+      "properties": {
+        "versionId": { "type": "string", "maxLength": 64 },
+        "versionNumber": { "type": "string", "maxLength": 32 },
+        "title": { "type": "string", "maxLength": 128 },
+        "releaseDate": { "type": "string", "maxLength": 64 },
+        "changelog": { "type": "string", "maxLength": 8192 },
+        "isForceUpdate": { "type": "boolean" },
+        "downloadUrl": { "type": "string", "maxLength": 1024 },
+        "author": { "type": "string", "maxLength": 64 },
+        "createdAt": { "type": "string", "maxLength": 64 }
+      },
+      "required": ["versionId", "versionNumber", "title", "releaseDate", "changelog"]
+    },
+    "SystemNotice": {
+      "title": "SystemNotice",
+      "description": "System wide broadcast notices and greeting announcements",
+      "type": "object",
+      "properties": {
+        "noticeId": { "type": "string", "maxLength": 128 },
+        "title": { "type": "string", "maxLength": 128 },
+        "content": { "type": "string", "maxLength": 4096 },
+        "level": { "type": "string", "enum": ["info", "poem", "warning", "celebration"], "maxLength": 32 },
+        "isPublished": { "type": "boolean" },
+        "createdAt": { "type": "string", "maxLength": 64 },
+        "updatedAt": { "type": "string", "maxLength": 64 }
+      },
+      "required": ["noticeId", "title", "content", "createdAt"]
+    },
+    "AdminRecord": {
+      "title": "AdminRecord",
+      "description": "Whitelisted administrator accounts",
+      "type": "object",
+      "properties": {
+        "adminUid": { "type": "string", "maxLength": 128 },
+        "email": { "type": "string", "maxLength": 256 },
+        "assignedAt": { "type": "string", "maxLength": 64 }
+      },
+      "required": ["adminUid", "email"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "User profile metadata"
+    },
+    "/users/{userId}/backups/{backupId}": {
+      "schema": { "$ref": "#/entities/UserBackup" },
+      "description": "User individual memory backups and sync archives"
+    },
+    "/system_counters/{counterId}": {
+      "schema": { "$ref": "#/entities/SystemCounter" },
+      "description": "System sequential numbering counters"
+    },
+    "/app_versions/{versionId}": {
+      "schema": { "$ref": "#/entities/AppVersion" },
+      "description": "App version releases and changelog logs"
+    },
+    "/system_notices/{noticeId}": {
+      "schema": { "$ref": "#/entities/SystemNotice" },
+      "description": "Public system announcements and poetic notices"
+    },
+    "/admins/{adminUid}": {
+      "schema": { "$ref": "#/entities/AdminRecord" },
+      "description": "Administrator whitelist registry"
+    }
+  }
+}

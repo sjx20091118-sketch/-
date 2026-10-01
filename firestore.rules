@@ -1,0 +1,133 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isAdmin() {
+      return (isSignedIn() && (
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid)) ||
+        (request.auth.token.email == 'sjx20091118@gmail.com' && request.auth.token.email_verified == true)
+      ));
+    }
+
+    function isValidUserProfile(data) {
+      return data.keys().hasAll(['uid', 'account', 'userNumber', 'createdAt']) &&
+             data.keys().hasOnly(['uid', 'account', 'email', 'displayName', 'userNumber', 'passwordHash', 'photoURL', 'createdAt', 'updatedAt', 'lastSyncAt', 'role']) &&
+             data.uid is string && data.uid.size() <= 128 &&
+             data.account is string && data.account.size() <= 128 &&
+             data.userNumber is string && data.userNumber.size() <= 32 &&
+             data.createdAt is string && data.createdAt.size() <= 64 &&
+             (!('email' in data) || (data.email is string && data.email.size() <= 256)) &&
+             (!('displayName' in data) || (data.displayName is string && data.displayName.size() <= 128)) &&
+             (!('passwordHash' in data) || (data.passwordHash is string && data.passwordHash.size() <= 256)) &&
+             (!('photoURL' in data) || (data.photoURL is string && data.photoURL.size() <= 1024)) &&
+             (!('updatedAt' in data) || (data.updatedAt is string && data.updatedAt.size() <= 64)) &&
+             (!('lastSyncAt' in data) || (data.lastSyncAt is string && data.lastSyncAt.size() <= 64)) &&
+             (!('role' in data) || (data.role in ['user', 'admin']));
+    }
+
+    function isValidUserBackup(data, userId) {
+      return data.keys().hasAll(['backupId', 'userId', 'createdAt', 'dataPayload']) &&
+             data.keys().hasOnly(['backupId', 'userId', 'version', 'createdAt', 'title', 'summary', 'dataPayload']) &&
+             data.backupId is string && data.backupId.size() <= 128 &&
+             data.userId == userId &&
+             data.createdAt is string && data.createdAt.size() <= 64 &&
+             data.dataPayload is string && data.dataPayload.size() <= 1048576 &&
+             (!('version' in data) || (data.version is string && data.version.size() <= 32)) &&
+             (!('title' in data) || (data.title is string && data.title.size() <= 128)) &&
+             (!('summary' in data) || (data.summary is string && data.summary.size() <= 512));
+    }
+
+    function isValidSystemCounter(data) {
+      return data.keys().hasAll(['counterId', 'currentCount']) &&
+             data.keys().hasOnly(['counterId', 'currentCount', 'updatedAt']) &&
+             data.counterId is string && data.counterId.size() <= 64 &&
+             data.currentCount is int && data.currentCount >= 0 &&
+             (!('updatedAt' in data) || (data.updatedAt is string && data.updatedAt.size() <= 64));
+    }
+
+    function isValidAppVersion(data) {
+      return data.keys().hasAll(['versionId', 'versionNumber', 'title', 'releaseDate', 'changelog']) &&
+             data.keys().hasOnly(['versionId', 'versionNumber', 'title', 'releaseDate', 'changelog', 'isForceUpdate', 'downloadUrl', 'author', 'createdAt']) &&
+             data.versionId is string && data.versionId.size() <= 64 &&
+             data.versionNumber is string && data.versionNumber.size() <= 32 &&
+             data.title is string && data.title.size() <= 128 &&
+             data.releaseDate is string && data.releaseDate.size() <= 64 &&
+             data.changelog is string && data.changelog.size() <= 8192 &&
+             (!('isForceUpdate' in data) || data.isForceUpdate is bool) &&
+             (!('downloadUrl' in data) || (data.downloadUrl is string && data.downloadUrl.size() <= 1024)) &&
+             (!('author' in data) || (data.author is string && data.author.size() <= 64)) &&
+             (!('createdAt' in data) || (data.createdAt is string && data.createdAt.size() <= 64));
+    }
+
+    function isValidSystemNotice(data) {
+      return data.keys().hasAll(['noticeId', 'title', 'content', 'createdAt']) &&
+             data.keys().hasOnly(['noticeId', 'title', 'content', 'level', 'isPublished', 'createdAt', 'updatedAt']) &&
+             data.noticeId is string && data.noticeId.size() <= 128 &&
+             data.title is string && data.title.size() <= 128 &&
+             data.content is string && data.content.size() <= 4096 &&
+             data.createdAt is string && data.createdAt.size() <= 64 &&
+             (!('level' in data) || (data.level in ['info', 'poem', 'warning', 'celebration'])) &&
+             (!('isPublished' in data) || data.isPublished is bool) &&
+             (!('updatedAt' in data) || (data.updatedAt is string && data.updatedAt.size() <= 64));
+    }
+
+    // User Profile matching (Allow domestic account lookup & registration)
+    match /users/{userId} {
+      allow get: if true;
+      allow list: if true;
+      allow create: if isValidUserProfile(request.resource.data);
+      allow update: if isValidUserProfile(request.resource.data);
+      allow delete: if isAdmin();
+
+      // User Backups subcollection
+      match /backups/{backupId} {
+        allow get, list: if true;
+        allow create, update: if isValidUserBackup(request.resource.data, userId);
+        allow delete: if true;
+      }
+    }
+
+    // System Counters for Sequential Registration Numbers
+    match /system_counters/{counterId} {
+      allow read: if true;
+      allow create, update: if isValidSystemCounter(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+    // App Versions
+    match /app_versions/{versionId} {
+      allow read: if true;
+      allow create, update, delete: if true;
+    }
+
+    // System Notices
+    match /system_notices/{noticeId} {
+      allow read: if true;
+      allow create, update, delete: if true;
+    }
+
+    // Admins Whitelist
+    match /admins/{adminUid} {
+      allow read: if true;
+      allow write: if true;
+    }
+  }
+}

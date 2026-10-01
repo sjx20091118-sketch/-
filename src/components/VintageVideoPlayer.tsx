@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Play, Pause, Volume2, VolumeX, Maximize2, X, RotateCcw, Film } from 'lucide-react';
 import { formatVideoDuration } from '../utils/mediaStorage';
 import { resolveMediaUrl, isIndexedDbMedia } from '../services/indexedDbMedia';
+import { WaterInkVideoScrubber } from './WaterInkVideoScrubber';
 
 interface VintageVideoPlayerProps {
   src: string;
@@ -52,6 +53,28 @@ export const VintageVideoPlayer: React.FC<VintageVideoPlayerProps> = ({
   const [duration, setDuration] = useState(0);
   const [isFullscreenModalOpen, setIsFullscreenModalOpen] = useState(false);
   const [playbackRate, setPlaybackRate] = useState<number>(1);
+  const [generatedPoster, setGeneratedPoster] = useState<string>('');
+  const [resolvedPoster, setResolvedPoster] = useState<string>(() => {
+    if (!poster) return '';
+    if (isIndexedDbMedia(poster)) return '';
+    return poster;
+  });
+
+  useEffect(() => {
+    let isMounted = true;
+    if (poster && isIndexedDbMedia(poster)) {
+      resolveMediaUrl(poster).then((url) => {
+        if (isMounted) setResolvedPoster(url);
+      });
+    } else {
+      setResolvedPoster(poster || '');
+    }
+    return () => {
+      isMounted = false;
+    };
+  }, [poster]);
+
+  const effectivePoster = resolvedPoster || generatedPoster;
 
   // 全局排他播放协调：确保同一时间全站仅有一个视频发出声音或播放，杜绝多视频重叠音频
   useEffect(() => {
@@ -193,27 +216,54 @@ export const VintageVideoPlayer: React.FC<VintageVideoPlayerProps> = ({
 
   return (
     <div
-      className={`relative group rounded-3xl overflow-hidden bg-black/90 border border-white/10 shadow-md select-none ${className}`}
+      className={`relative group rounded-2xl overflow-hidden bg-black select-none ${className}`}
     >
       {/* 内嵌卡片视频容器 */}
       <div className="relative w-full h-full flex items-center justify-center cursor-pointer" onClick={handleTogglePlay}>
         <video
           ref={videoRef}
           src={resolvedSrc}
-          poster={poster}
+          poster={effectivePoster}
           playsInline
           loop
           muted={isMuted}
           onTimeUpdate={handleTimeUpdate}
           onLoadedMetadata={handleLoadedMetadata}
+          onLoadedData={(e) => {
+            if (!effectivePoster) {
+              try {
+                const vid = e.currentTarget;
+                if (vid.videoWidth > 0 && vid.videoHeight > 0) {
+                  const canvas = document.createElement('canvas');
+                  canvas.width = Math.min(vid.videoWidth, 640);
+                  canvas.height = Math.round((canvas.width * vid.videoHeight) / vid.videoWidth);
+                  const ctx = canvas.getContext('2d');
+                  if (ctx) {
+                    ctx.drawImage(vid, 0, 0, canvas.width, canvas.height);
+                    const d = canvas.toDataURL('image/jpeg', 0.84);
+                    if (d && d.length > 200) setGeneratedPoster(d);
+                  }
+                }
+              } catch (err) {}
+            }
+          }}
           className="w-full h-full object-cover max-h-[360px]"
         />
 
-        {/* 胶片颗粒纹理与四周暗角微晕 */}
-        <div className="absolute inset-0 pointer-events-none bg-gradient-to-t from-black/60 via-transparent to-black/30" />
+        {/* 智能抽帧封面图层（未放映时 100% 呈现鲜活画面，杜绝移动端黑屏与闪烁，保持原真色彩） */}
+        {!isPlaying && effectivePoster && (
+          <img
+            src={effectivePoster}
+            alt=""
+            onError={(e) => {
+              e.currentTarget.style.display = 'none';
+            }}
+            className="absolute inset-0 w-full h-full object-cover pointer-events-none transition-opacity duration-300"
+          />
+        )}
 
         {/* 胶片放映标识（左上角微型标 - 苹果液态玻璃风格） */}
-        <div className="absolute top-2.5 left-2.5 pointer-events-none z-10 flex items-center gap-1.5 px-3 py-1 rounded-full bg-black/40 backdrop-blur-md border border-white/15 text-white/90 text-[10px] font-mono shadow-xs">
+        <div className="absolute top-2.5 left-2.5 pointer-events-none z-10 flex items-center gap-1.5 px-3 py-1 rounded-full bg-black/45 backdrop-blur-md border border-white/20 text-white/90 text-[10px] font-mono shadow-xs">
           <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
           <span>{isPlaying && !isFullscreenModalOpen ? '放映中' : '岁月影像'}</span>
           {duration > 0 && <span className="opacity-70 font-mono">· {formatVideoDuration(duration)}</span>}
@@ -254,19 +304,22 @@ export const VintageVideoPlayer: React.FC<VintageVideoPlayerProps> = ({
           </motion.div>
         )}
 
-        {/* 底部时光极细刻度与进度条 */}
-        <div className="absolute bottom-0 inset-x-0 z-20 bg-gradient-to-t from-black/80 via-black/40 to-transparent p-2.5 pt-4 transition-opacity">
-          <div className="w-full bg-white/20 h-1 rounded-full overflow-hidden mb-1.5 relative">
-            <div
-              className="h-full bg-white rounded-full transition-all duration-100 shadow-[0_0_6px_rgba(255,255,255,0.8)]"
-              style={{ width: `${progressPercent}%` }}
-            />
-          </div>
-
-          <div className="flex items-center justify-between text-[10px] text-white/85 font-mono px-0.5">
-            <span>{formatVideoDuration(currentTime)}</span>
-            <span>{formatVideoDuration(duration)}</span>
-          </div>
+        {/* 底部水墨晕染可拖拽刻度条 */}
+        <div
+          className="absolute bottom-0 inset-x-0 z-20 bg-gradient-to-t from-black/90 via-black/50 to-transparent p-2.5 pt-5"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <WaterInkVideoScrubber
+            currentTime={currentTime}
+            duration={duration}
+            onSeek={(time) => {
+              if (videoRef.current) {
+                videoRef.current.currentTime = time;
+                setCurrentTime(time);
+              }
+            }}
+            themeColor="#ffffff"
+          />
         </div>
       </div>
 

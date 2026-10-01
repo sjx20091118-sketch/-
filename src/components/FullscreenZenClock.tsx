@@ -149,7 +149,7 @@ export const FullscreenZenClock: React.FC<FullscreenZenClockProps> = ({
             transition={{ delay: 0.2, duration: 0.5 }}
             className="text-xs sm:text-sm font-serif italic text-[#6E7C75] tracking-widest pt-3 max-w-md"
           >
-            {theme.quote || '岁华清照，十年归处。愿岁月不负所期。'}
+            {theme.quote || '岁华清照，拾年归处。'}
           </motion.p>
         </div>
 

@@ -47,6 +47,12 @@ export interface Story {
   date: string;
 }
 
+export interface ArtifactVideoItem {
+  id: string;
+  url: string;
+  poster?: string;
+}
+
 export interface Artifact {
   id: string;
   name: string;
@@ -54,8 +60,9 @@ export interface Artifact {
   story: string;
   image: string; // 主封面相片 (向下兼容)
   images?: string[]; // 多张照片画廊
-  video?: string; // 关联的短视频 URL / Base64
-  videoPoster?: string; // 视频封面海报
+  video?: string; // 关联的短视频 URL / Base64 (向下兼容)
+  videoPoster?: string; // 视频封面海报 (向下兼容)
+  videos?: ArtifactVideoItem[]; // 多个短视频画廊
   mediaType?: 'image' | 'video'; // 主要媒体类型
 }
 

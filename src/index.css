@@ -62,11 +62,40 @@ html, body {
 }
 
 /* Global Eastern Typography & High-Contrast Ink Text for Inputs & Controls */
-input, textarea, select {
+input, textarea, select, [contenteditable="true"] {
   -webkit-tap-highlight-color: transparent;
   font-family: "Noto Serif SC", "Ma Shan Zheng", Georgia, serif !important;
   color: #2B332E !important;
   caret-color: var(--theme-primary, #5B7B6D);
+  -webkit-user-select: text !important;
+  user-select: text !important;
+  pointer-events: auto !important;
+  touch-action: manipulation !important;
+}
+
+/* 主题调色板动态半透明水墨晕染文本高亮 (Theme Palette Reactive Water-Ink Selection Highlight) */
+::selection {
+  background-color: rgba(var(--primary-rgb, 91, 123, 109), 0.28) !important;
+  color: inherit !important;
+  text-shadow: 0 0 1px rgba(var(--primary-rgb, 91, 123, 109), 0.3);
+}
+
+::-moz-selection {
+  background-color: rgba(var(--primary-rgb, 91, 123, 109), 0.28) !important;
+  color: inherit !important;
+  text-shadow: 0 0 1px rgba(var(--primary-rgb, 91, 123, 109), 0.3);
+}
+
+.dark ::selection, .dark-zen-theme ::selection {
+  background-color: rgba(var(--primary-rgb, 78, 186, 134), 0.42) !important;
+  color: #FAF8F5 !important;
+  text-shadow: 0 0 2px rgba(var(--primary-rgb, 78, 186, 134), 0.5);
+}
+
+.dark ::-moz-selection, .dark-zen-theme ::-moz-selection {
+  background-color: rgba(var(--primary-rgb, 78, 186, 134), 0.42) !important;
+  color: #FAF8F5 !important;
+  text-shadow: 0 0 2px rgba(var(--primary-rgb, 78, 186, 134), 0.5);
 }
 
 /* Ensure placeholder visibility */
@@ -83,6 +112,8 @@ input::placeholder, textarea::placeholder {
 [class*="bg-[#F2EFE9]"] input, [class*="bg-[#F2EFE9]"] textarea,
 form input, form textarea {
   color: #2B332E !important;
+  -webkit-user-select: text !important;
+  user-select: text !important;
 }
 
 /* Dark Mode Input Overrides (Only when inside dark cards or with .dark-input) */
@@ -111,6 +142,24 @@ button {
 .select-text, .user-story-text, .user-bio-text, .memory-content {
   user-select: text !important;
   -webkit-user-select: text !important;
+}
+
+/* 微米级仿生宣纸微噪点与色阶平滑扩散 (Anti-Color Banding Dither) */
+.ambient-glow-dither {
+  background-image: radial-gradient(rgba(232, 135, 101, 0.05) 0.75px, transparent 0.75px),
+                    radial-gradient(rgba(91, 123, 109, 0.05) 0.75px, transparent 0.75px);
+  background-size: 6px 6px, 10px 10px;
+  background-position: 0 0, 3px 3px;
+  mix-blend-mode: overlay;
+  pointer-events: none;
+}
+
+.smooth-radial-glow {
+  filter: blur(64px);
+  -webkit-filter: blur(64px);
+  transform: translate3d(0, 0, 0);
+  -webkit-transform: translate3d(0, 0, 0);
+  will-change: transform, opacity;
 }
 
 /* Native Android Touch Interaction Micro-feedbacks */

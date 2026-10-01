@@ -1,25 +1,28 @@
 import React, { useRef, useState, useEffect } from 'react';
-import { ImagePlus, Trash2, RotateCw, Loader2, Play } from 'lucide-react';
+import { ImagePlus, Trash2, RotateCw, Loader2, Play, Pause, Plus, Video, Volume2, VolumeX } from 'lucide-react';
 import { sound } from '../utils/soundEngine';
 import { compressImageFile } from './LocalImageUploader';
-import { extractVideoPoster, isVideoMedia, formatVideoDuration } from '../utils/mediaStorage';
+import { extractVideoPoster, formatVideoDuration } from '../utils/mediaStorage';
 import { saveMediaBlob, resolveMediaUrl, isIndexedDbMedia } from '../services/indexedDbMedia';
+import { ArtifactVideoItem } from '../types';
+import { WaterInkVideoScrubber } from './WaterInkVideoScrubber';
+import { MediaImage } from './MediaImage';
 
 interface ArtifactMediaUploaderProps {
   image: string;
   images?: string[];
   video?: string;
   videoPoster?: string;
+  videos?: ArtifactVideoItem[];
   mediaType?: 'image' | 'video';
   onChange: (media: {
     image: string;
     images: string[];
     video?: string;
     videoPoster?: string;
+    videos: ArtifactVideoItem[];
     mediaType: 'image' | 'video';
   }) => void;
-  onGenerateAiImage?: (callback: (url: string) => void) => void;
-  isAiGenLoading?: boolean;
 }
 
 export const ArtifactMediaUploader: React.FC<ArtifactMediaUploaderProps> = ({
@@ -27,44 +30,107 @@ export const ArtifactMediaUploader: React.FC<ArtifactMediaUploaderProps> = ({
   images = [],
   video,
   videoPoster,
+  videos = [],
   mediaType = 'image',
   onChange
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const appendFileInputRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
+
   const [isProcessing, setIsProcessing] = useState(false);
   const [resolvedPlaybackUrl, setResolvedPlaybackUrl] = useState<string>('');
   const [isPlaying, setIsPlaying] = useState(false);
+  const [isMuted, setIsMuted] = useState(true);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
 
-  const currentCover = image || (images.length > 0 ? images[0] : '');
-  const isVideo = mediaType === 'video' || Boolean(video) || isVideoMedia(video || currentCover) || isIndexedDbMedia(video || '');
+  // Consolidate videos strictly (deduplicated by url)
+  const consolidatedVideos: ArtifactVideoItem[] = React.useMemo(() => {
+    const rawList = (videos && videos.length > 0)
+      ? videos
+      : (video ? [{ id: 'vid-legacy', url: video, poster: videoPoster }] : []);
 
-  // 异步解析 IndexedDB 虚拟 URI 为流式播放地址
+    const uniqueVideos: ArtifactVideoItem[] = [];
+    const seenUrls = new Set<string>();
+
+    for (const v of rawList) {
+      if (!v || !v.url || typeof v.url !== 'string') continue;
+      if (seenUrls.has(v.url)) continue;
+      seenUrls.add(v.url);
+      uniqueVideos.push({
+        id: v.id || `vid-${uniqueVideos.length}`,
+        url: v.url,
+        poster: v.poster || videoPoster
+      });
+    }
+    return uniqueVideos;
+  }, [videos, video, videoPoster]);
+
+  // Consolidate images strictly (source of truth: images, never double-push image, deduplicated by Set)
+  const consolidatedImages: string[] = React.useMemo(() => {
+    const rawList = (images && images.length > 0)
+      ? images
+      : (image && mediaType === 'image' ? [image] : []);
+
+    const uniqueList: string[] = [];
+    const seen = new Set<string>();
+
+    for (const img of rawList) {
+      if (!img || typeof img !== 'string') continue;
+      if (seen.has(img)) continue;
+      seen.add(img);
+      uniqueList.push(img);
+    }
+    return uniqueList;
+  }, [images, image, mediaType]);
+
+  const [selectedIndex, setSelectedIndex] = useState<{ type: 'image' | 'video'; index: number }>(() => {
+    if (consolidatedVideos.length > 0 && (mediaType === 'video' || consolidatedImages.length === 0)) {
+      return { type: 'video', index: 0 };
+    }
+    return { type: 'image', index: 0 };
+  });
+
+  // Keep selected index in sync when media changes
+  useEffect(() => {
+    if (selectedIndex.type === 'image') {
+      if (consolidatedImages.length === 0 && consolidatedVideos.length > 0) {
+        setSelectedIndex({ type: 'video', index: 0 });
+      } else if (selectedIndex.index >= consolidatedImages.length && consolidatedImages.length > 0) {
+        setSelectedIndex({ type: 'image', index: consolidatedImages.length - 1 });
+      }
+    } else {
+      if (consolidatedVideos.length === 0 && consolidatedImages.length > 0) {
+        setSelectedIndex({ type: 'image', index: 0 });
+      } else if (selectedIndex.index >= consolidatedVideos.length && consolidatedVideos.length > 0) {
+        setSelectedIndex({ type: 'video', index: consolidatedVideos.length - 1 });
+      }
+    }
+  }, [consolidatedImages.length, consolidatedVideos.length, selectedIndex]);
+
+  // Resolve video stream URL for playback
   useEffect(() => {
     let isCancelled = false;
-    const mediaToResolve = video || (isVideo ? currentCover : '');
-
-    if (mediaToResolve) {
-      if (isIndexedDbMedia(mediaToResolve)) {
-        resolveMediaUrl(mediaToResolve).then((url) => {
+    if (selectedIndex.type === 'video' && consolidatedVideos[selectedIndex.index]) {
+      const vidObj = consolidatedVideos[selectedIndex.index];
+      if (isIndexedDbMedia(vidObj.url)) {
+        resolveMediaUrl(vidObj.url).then((url) => {
           if (!isCancelled) setResolvedPlaybackUrl(url);
         });
       } else {
-        setResolvedPlaybackUrl(mediaToResolve);
+        setResolvedPlaybackUrl(vidObj.url);
       }
     } else {
       setResolvedPlaybackUrl('');
     }
-
     return () => {
       isCancelled = true;
     };
-  }, [video, currentCover, isVideo]);
+  }, [selectedIndex, consolidatedVideos]);
 
-  const handleTogglePlay = (e: React.MouseEvent) => {
-    e.stopPropagation();
+  const handleTogglePlay = (e?: React.MouseEvent) => {
+    e?.stopPropagation();
     const vid = videoRef.current;
     if (!vid) return;
     if (vid.paused) {
@@ -75,67 +141,124 @@ export const ArtifactMediaUploader: React.FC<ArtifactMediaUploaderProps> = ({
     }
   };
 
-  const handleTimeUpdate = (e: React.SyntheticEvent<HTMLVideoElement>) => {
-    const target = e.currentTarget;
-    setCurrentTime(target.currentTime);
-    if (!duration && target.duration) {
-      setDuration(target.duration);
+  const handleSeek = (targetTime: number) => {
+    if (videoRef.current) {
+      videoRef.current.currentTime = targetTime;
+      setCurrentTime(targetTime);
     }
   };
 
-  const handleLoadedMetadata = (e: React.SyntheticEvent<HTMLVideoElement>) => {
-    const target = e.currentTarget;
-    if (target.duration) {
-      setDuration(target.duration);
+  const handleToggleMute = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (videoRef.current) {
+      const next = !isMuted;
+      videoRef.current.muted = next;
+      setIsMuted(next);
     }
   };
 
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  const handleFiles = async (files: FileList | null, isAppend = false) => {
+    if (!files || files.length === 0) return;
 
     sound.playPaperRustle();
     setIsProcessing(true);
 
     try {
-      const isVid = file.type.startsWith('video/') || file.name.match(/\.(mp4|webm|mov|m4v)$/i);
+      const newImages: string[] = [];
+      const newVideos: ArtifactVideoItem[] = [];
 
-      if (isVid) {
-        // 1. 采用 IndexedDB 原生二进制流存储（避免超大视频导致内存崩溃）
-        const [idbUri, posterInfo] = await Promise.all([
-          saveMediaBlob(file),
-          extractVideoPoster(file)
-        ]);
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        const isVid = file.type.startsWith('video/') || file.name.match(/\.(mp4|webm|mov|m4v)$/i);
 
-        onChange({
-          image: posterInfo.poster || '',
-          images: posterInfo.poster ? [posterInfo.poster] : [],
-          video: idbUri,
-          videoPoster: posterInfo.poster,
-          mediaType: 'video'
-        });
-      } else {
-        // 2. 照片自动高清保真压缩
-        const compressedDataUrl = await compressImageFile(file, 1400, 1400, 0.86);
-        onChange({
-          image: compressedDataUrl,
-          images: [compressedDataUrl],
-          video: undefined,
-          videoPoster: undefined,
-          mediaType: 'image'
-        });
+        if (isVid) {
+          const [idbUri, posterInfo] = await Promise.all([
+            saveMediaBlob(file),
+            extractVideoPoster(file)
+          ]);
+          newVideos.push({
+            id: 'vid-' + Date.now() + '-' + i,
+            url: idbUri,
+            poster: posterInfo.poster
+          });
+        } else {
+          const compressed = await compressImageFile(file, 1600, 1600, 0.88);
+          newImages.push(compressed);
+        }
+      }
+
+      const updatedImages = isAppend ? [...consolidatedImages, ...newImages] : newImages;
+      const updatedVideos = isAppend ? [...consolidatedVideos, ...newVideos] : newVideos;
+
+      const finalMediaType: 'image' | 'video' = updatedImages.length > 0 ? 'image' : 'video';
+      const primaryCover = updatedImages[0] || updatedVideos[0]?.poster || '';
+
+      onChange({
+        image: primaryCover,
+        images: updatedImages,
+        videos: updatedVideos,
+        video: updatedVideos[0]?.url,
+        videoPoster: updatedVideos[0]?.poster,
+        mediaType: finalMediaType
+      });
+
+      if (updatedImages.length > 0 && newImages.length > 0) {
+        setSelectedIndex({ type: 'image', index: isAppend ? consolidatedImages.length : 0 });
+      } else if (updatedVideos.length > 0) {
+        setSelectedIndex({ type: 'video', index: isAppend ? consolidatedVideos.length : 0 });
       }
     } catch (err) {
       console.error('旧物影像处理失败:', err);
     } finally {
       setIsProcessing(false);
-      if (fileInputRef.current) {
-        fileInputRef.current.value = '';
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      if (appendFileInputRef.current) appendFileInputRef.current.value = '';
+    }
+  };
+
+  const handleRemoveItem = (type: 'image' | 'video', idx: number, e: React.MouseEvent) => {
+    e.stopPropagation();
+    sound.playPaperRustle();
+
+    if (type === 'image') {
+      const nextImages = consolidatedImages.filter((_, i) => i !== idx);
+      const nextPrimary = nextImages[0] || '';
+      const nextMediaType: 'image' | 'video' = nextImages.length > 0 ? 'image' : (consolidatedVideos.length > 0 ? 'video' : 'image');
+      onChange({
+        image: nextPrimary,
+        images: nextImages,
+        videos: consolidatedVideos,
+        video: consolidatedVideos[0]?.url,
+        videoPoster: consolidatedVideos[0]?.poster,
+        mediaType: nextMediaType
+      });
+      if (selectedIndex.type === 'image' && selectedIndex.index === idx) {
+        setSelectedIndex({
+          type: nextImages.length > 0 ? 'image' : 'video',
+          index: Math.max(0, idx - 1)
+        });
+      }
+    } else {
+      const nextVideos = consolidatedVideos.filter((_, i) => i !== idx);
+      const nextMediaType: 'image' | 'video' = consolidatedImages.length > 0 ? 'image' : (nextVideos.length > 0 ? 'video' : 'image');
+      onChange({
+        image: consolidatedImages[0] || '',
+        images: consolidatedImages,
+        videos: nextVideos,
+        video: nextVideos[0]?.url,
+        videoPoster: nextVideos[0]?.poster,
+        mediaType: nextMediaType
+      });
+      if (selectedIndex.type === 'video' && selectedIndex.index === idx) {
+        setSelectedIndex({
+          type: nextVideos.length > 0 ? 'video' : 'image',
+          index: Math.max(0, idx - 1)
+        });
       }
     }
   };
 
-  const handleClear = (e: React.MouseEvent) => {
+  const handleClearAll = (e: React.MouseEvent) => {
     e.stopPropagation();
     sound.playPaperRustle();
     setIsPlaying(false);
@@ -144,164 +267,239 @@ export const ArtifactMediaUploader: React.FC<ArtifactMediaUploaderProps> = ({
     onChange({
       image: '',
       images: [],
+      videos: [],
       video: undefined,
       videoPoster: undefined,
       mediaType: 'image'
     });
+    setSelectedIndex({ type: 'image', index: 0 });
   };
 
-  const hasMedia = isVideo ? Boolean(video || currentCover) : Boolean(currentCover);
-  const progressPercent = duration > 0 ? (currentTime / duration) * 100 : 0;
+  const hasMedia = consolidatedImages.length > 0 || consolidatedVideos.length > 0;
+  const totalCount = consolidatedImages.length + consolidatedVideos.length;
 
   return (
-    <div className="space-y-2 font-sans">
+    <div className="space-y-2.5 font-sans select-none">
+      {/* File input for initial upload / replace */}
       <input
         ref={fileInputRef}
         type="file"
+        multiple
         accept="image/*,video/*"
         className="hidden"
-        onChange={handleFileChange}
+        onChange={(e) => handleFiles(e.target.files, false)}
       />
 
-      {/* 已上传预览卡片 */}
+      {/* File input for appending more media */}
+      <input
+        ref={appendFileInputRef}
+        type="file"
+        multiple
+        accept="image/*,video/*"
+        className="hidden"
+        onChange={(e) => handleFiles(e.target.files, true)}
+      />
+
       {hasMedia ? (
-        <div className="relative group w-full h-48 sm:h-56 rounded-3xl overflow-hidden border border-white/10 bg-black/90 shadow-md select-none">
-          {isVideo ? (
-            /* 100% 对齐时光轴/拾物阁复古放映器：左上角放映状态/时长，居中毛玻璃播放键，底部进度条，右上角更换与清除 */
-            <div
-              onClick={handleTogglePlay}
-              className="relative w-full h-full flex items-center justify-center cursor-pointer bg-black/95"
-            >
-              {resolvedPlaybackUrl ? (
-                <video
-                  ref={videoRef}
-                  src={resolvedPlaybackUrl}
-                  poster={videoPoster || currentCover}
-                  playsInline
-                  loop
-                  onPlay={() => setIsPlaying(true)}
-                  onPause={() => setIsPlaying(false)}
-                  onTimeUpdate={handleTimeUpdate}
-                  onLoadedMetadata={handleLoadedMetadata}
-                  className="w-full h-full object-cover max-h-[360px]"
-                />
-              ) : (
-                <div className="flex items-center gap-2 text-white/70 text-xs font-serif">
-                  <Loader2 className="w-4 h-4 animate-spin text-[#5B7B6D]" />
-                  <span>正在载入影像...</span>
-                </div>
-              )}
-
-              {/* 胶片颗粒纹理与四周暗角微晕 */}
-              <div className="absolute inset-0 pointer-events-none bg-gradient-to-t from-black/60 via-transparent to-black/30" />
-
-              {/* 左上角放映状态胶囊（苹果液态玻璃风格，与拾物阁完全一致） */}
-              <div className="absolute top-2.5 left-2.5 pointer-events-none z-10 flex items-center gap-1.5 px-3 py-1 rounded-full bg-black/40 backdrop-blur-md border border-white/15 text-white/90 text-[10px] font-mono shadow-xs">
-                <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
-                <span>{isPlaying ? '放映中' : '岁月影像'}</span>
-                {duration > 0 && <span className="opacity-70 font-mono">· {formatVideoDuration(duration)}</span>}
-              </div>
-
-              {/* 右上角快捷控制区：专属更换与清除按键（苹果液态玻璃风格） */}
-              <div className="absolute top-2.5 right-2.5 z-20 flex items-center gap-1.5">
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    if (!isProcessing) fileInputRef.current?.click();
-                  }}
-                  disabled={isProcessing}
-                  className="px-2.5 py-1 rounded-full bg-black/40 hover:bg-black/60 text-white backdrop-blur-md transition-all active:scale-90 border border-white/15 cursor-pointer shadow-xs text-[10px] font-serif flex items-center gap-1 disabled:opacity-50"
-                  title="更换影像"
-                >
-                  <RotateCw className="w-3 h-3" />
-                  <span>更换</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={handleClear}
-                  disabled={isProcessing}
-                  className="p-1.5 rounded-full bg-black/40 hover:bg-red-500/80 text-white backdrop-blur-md transition-all active:scale-90 border border-white/15 cursor-pointer shadow-xs disabled:opacity-50"
-                  title="清除影像"
-                >
-                  <Trash2 className="w-3 h-3" />
-                </button>
-              </div>
-
-              {/* 居中毛玻璃液态微光播放键（暂停时浮现，拾物阁同款设计） */}
-              {!isPlaying && resolvedPlaybackUrl && (
-                <div className="absolute z-10 w-12 h-12 rounded-full bg-white/20 hover:bg-white/30 backdrop-blur-md border border-white/30 flex items-center justify-center text-white shadow-xl transition-transform group-hover:scale-110 active:scale-95 pointer-events-none">
-                  <Play className="w-5 h-5 fill-white translate-x-0.5" />
-                </div>
-              )}
-
-              {/* 底部时光细刻度与进度条（与 VintageVideoPlayer 完全一致） */}
-              <div className="absolute bottom-0 inset-x-0 z-20 bg-gradient-to-t from-black/80 via-black/40 to-transparent p-2.5 pt-4 transition-opacity">
-                <div className="w-full bg-white/20 h-1 rounded-full overflow-hidden mb-1.5 relative">
-                  <div
-                    className="h-full bg-white transition-all duration-100 rounded-full"
-                    style={{ width: `${progressPercent}%` }}
+        <div className="space-y-2">
+          {/* Main Preview Frame */}
+          <div className="relative group w-full h-52 sm:h-60 rounded-3xl overflow-hidden border border-black/10 dark:border-white/10 bg-black/95 shadow-md flex items-center justify-center">
+            {selectedIndex.type === 'video' && consolidatedVideos[selectedIndex.index] ? (
+              <div
+                onClick={() => handleTogglePlay()}
+                className="relative w-full h-full flex items-center justify-center cursor-pointer bg-black/95"
+              >
+                {resolvedPlaybackUrl ? (
+                  <video
+                    ref={videoRef}
+                    src={resolvedPlaybackUrl}
+                    poster={consolidatedVideos[selectedIndex.index]?.poster}
+                    playsInline
+                    loop
+                    muted={isMuted}
+                    onPlay={() => setIsPlaying(true)}
+                    onPause={() => setIsPlaying(false)}
+                    onTimeUpdate={(e) => setCurrentTime(e.currentTarget.currentTime)}
+                    onLoadedMetadata={(e) => setDuration(e.currentTarget.duration)}
+                    className="w-full h-full object-contain max-h-[360px]"
                   />
+                ) : (
+                  <div className="flex items-center gap-2 text-white/70 text-xs font-serif">
+                    <Loader2 className="w-4 h-4 animate-spin text-[#5B7B6D]" />
+                    <span>正在载入影像...</span>
+                  </div>
+                )}
+
+                {/* 智能抽帧封面图层（未放映时展示鲜活定格，杜绝黑屏） */}
+                {!isPlaying && consolidatedVideos[selectedIndex.index]?.poster && (
+                  <img
+                    src={consolidatedVideos[selectedIndex.index]?.poster}
+                    alt="poster"
+                    className="absolute inset-0 w-full h-full object-contain pointer-events-none"
+                  />
+                )}
+
+                <div className="absolute inset-0 pointer-events-none bg-gradient-to-t from-black/70 via-transparent to-black/30" />
+
+                {/* Status indicator */}
+                <div className="absolute top-2.5 left-2.5 pointer-events-none z-10 flex items-center gap-1.5 px-3 py-1 rounded-full bg-black/40 backdrop-blur-md border border-white/15 text-white/90 text-[10px] font-mono shadow-xs">
+                  <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
+                  <span>{isPlaying ? '放映中' : '岁月短片'}</span>
+                  {duration > 0 && <span className="opacity-70 font-mono">· {formatVideoDuration(duration)}</span>}
                 </div>
-                <div className="flex items-center justify-between text-[10px] font-mono text-white/80 px-0.5">
-                  <span>{formatVideoDuration(currentTime)}</span>
-                  <span>{formatVideoDuration(duration)}</span>
+
+                {/* Center Play Button */}
+                {!isPlaying && resolvedPlaybackUrl && (
+                  <div className="absolute z-10 w-12 h-12 rounded-full bg-white/20 hover:bg-white/30 backdrop-blur-md border border-white/30 flex items-center justify-center text-white shadow-xl transition-transform group-hover:scale-110 active:scale-95 pointer-events-none">
+                    <Play className="w-5 h-5 fill-white translate-x-0.5" />
+                  </div>
+                )}
+
+                {/* Bottom Seeker & Audio Bar */}
+                <div
+                  className="absolute bottom-0 inset-x-0 z-20 bg-gradient-to-t from-black/90 via-black/50 to-transparent p-3 pt-6"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => handleTogglePlay()}
+                      className="p-1.5 rounded-full bg-white/10 hover:bg-white/20 text-white transition-all cursor-pointer shrink-0"
+                    >
+                      {isPlaying ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5 fill-white" />}
+                    </button>
+
+                    <div className="flex-1 min-w-0">
+                      <WaterInkVideoScrubber
+                        currentTime={currentTime}
+                        duration={duration}
+                        onSeek={handleSeek}
+                        themeColor="#FFFFFF"
+                      />
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={handleToggleMute}
+                      className="p-1.5 rounded-full bg-white/10 hover:bg-white/20 text-white transition-all cursor-pointer shrink-0"
+                      title={isMuted ? '开启声音' : '静音'}
+                    >
+                      {isMuted ? <VolumeX className="w-3.5 h-3.5" /> : <Volume2 className="w-3.5 h-3.5" />}
+                    </button>
+                  </div>
                 </div>
               </div>
-            </div>
-          ) : (
-            <div className="relative w-full h-full">
-              <img
-                src={currentCover}
-                alt="旧物相片"
-                className="w-full h-full object-cover group-hover:scale-102 transition-transform duration-500"
-              />
+            ) : (
+              <div className="relative w-full h-full flex items-center justify-center bg-[#FAF8F5] dark:bg-black/40">
+                <MediaImage
+                  src={consolidatedImages[selectedIndex.index] || image}
+                  alt="预览"
+                  className="w-full h-full object-contain"
+                />
+              </div>
+            )}
 
-              {/* 右上角相片专属操作按键 */}
-              <div className="absolute top-2.5 right-2.5 flex items-center gap-1.5 z-20">
+            {/* Top Right Quick Controls */}
+            <div className="absolute top-2.5 right-2.5 z-20 flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (!isProcessing) fileInputRef.current?.click();
+                }}
+                disabled={isProcessing}
+                className="px-2.5 py-1 rounded-full bg-black/40 hover:bg-black/60 text-white backdrop-blur-md text-[10px] font-serif flex items-center gap-1 transition-all active:scale-90 border border-white/15 cursor-pointer shadow-xs disabled:opacity-50"
+                title="重新选择全部"
+              >
+                <RotateCw className="w-3 h-3" />
+                <span>更换</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={(e) => handleRemoveItem(selectedIndex.type, selectedIndex.index, e)}
+                disabled={isProcessing}
+                className="p-1.5 rounded-full bg-black/40 hover:bg-red-500/80 text-white backdrop-blur-md transition-all active:scale-90 border border-white/15 cursor-pointer shadow-xs disabled:opacity-50"
+                title="删除当前单项"
+              >
+                <Trash2 className="w-3 h-3" />
+              </button>
+            </div>
+          </div>
+
+          {/* Media thumbnail shelf: Always show when there is at least 1 media item, so user can always append via [+]! */}
+          {totalCount >= 1 && (
+            <div className="p-2 rounded-2xl bg-[#FAF8F5] dark:bg-white/[0.04] border border-black/5 dark:border-white/10">
+              <div className="flex items-center gap-2 overflow-x-auto py-0.5 custom-scrollbar">
+                {consolidatedImages.map((img, idx) => (
+                  <div
+                    key={`shelf-img-${idx}`}
+                    onClick={() => setSelectedIndex({ type: 'image', index: idx })}
+                    className={`relative shrink-0 w-14 h-14 rounded-xl overflow-hidden border-2 transition-all cursor-pointer bg-black/5 ${
+                      selectedIndex.type === 'image' && selectedIndex.index === idx
+                        ? 'border-[#5B7B6D] dark:border-white scale-105 shadow-xs ring-2 ring-[#5B7B6D]/20'
+                        : 'border-transparent opacity-70 hover:opacity-100'
+                    }`}
+                  >
+                    <MediaImage src={img} alt="" className="w-full h-full object-cover" />
+                  </div>
+                ))}
+
+                {consolidatedVideos.map((vid, idx) => (
+                  <div
+                    key={`shelf-vid-${idx}`}
+                    onClick={() => setSelectedIndex({ type: 'video', index: idx })}
+                    className={`relative shrink-0 w-14 h-14 rounded-xl overflow-hidden border-2 bg-black transition-all cursor-pointer ${
+                      selectedIndex.type === 'video' && selectedIndex.index === idx
+                        ? 'border-[#5B7B6D] dark:border-white scale-105 shadow-xs ring-2 ring-[#5B7B6D]/20'
+                        : 'border-transparent opacity-70 hover:opacity-100'
+                    }`}
+                  >
+                    {vid.poster ? (
+                      <MediaImage src={vid.poster} alt="" className="w-full h-full object-cover" />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center text-white/70">
+                        <Video className="w-4 h-4" />
+                      </div>
+                    )}
+                    <div className="absolute inset-0 flex items-center justify-center bg-black/30 pointer-events-none">
+                      <Play className="w-3 h-3 fill-white text-white" />
+                    </div>
+                  </div>
+                ))}
+
+                {/* [+] Continuous append button */}
                 <button
                   type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    if (!isProcessing) fileInputRef.current?.click();
-                  }}
-                  disabled={isProcessing}
-                  className="px-2.5 py-1 rounded-full bg-black/40 hover:bg-black/60 text-white backdrop-blur-md text-[10px] font-serif flex items-center gap-1 transition-all active:scale-90 border border-white/15 cursor-pointer shadow-xs disabled:opacity-50"
-                  title="更换相片"
+                  onClick={() => appendFileInputRef.current?.click()}
+                  className="shrink-0 w-14 h-14 rounded-xl border-2 border-dashed border-[#5B7B6D]/30 hover:border-[#5B7B6D] bg-white dark:bg-white/5 hover:bg-[#5B7B6D]/5 flex flex-col items-center justify-center gap-0.5 text-[#5B7B6D] transition-all cursor-pointer active:scale-95"
+                  title="继续添加相片或短片"
                 >
-                  <RotateCw className="w-3 h-3" />
-                  <span>更换</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={handleClear}
-                  disabled={isProcessing}
-                  className="p-1.5 rounded-full bg-black/40 hover:bg-red-500/80 backdrop-blur-md text-white transition-all cursor-pointer shadow-xs active:scale-90 disabled:opacity-50 border border-white/15"
-                  title="清除"
-                >
-                  <Trash2 className="w-3 h-3" />
+                  <Plus className="w-4 h-4" />
+                  <span className="text-[9px] font-serif font-medium leading-none">添加</span>
                 </button>
               </div>
             </div>
           )}
         </div>
       ) : (
-        /* 未上传引导框（极简雅致，无冗余文字） */
+        /* Empty Upload Box */
         <div
           onClick={() => !isProcessing && fileInputRef.current?.click()}
-          className="w-full h-40 sm:h-48 rounded-2xl border-2 border-dashed border-[#5B7B6D]/30 hover:border-[#5B7B6D] dark:border-white/20 dark:hover:border-white/40 bg-white/80 dark:bg-white/[0.03] hover:bg-[#FDF0EB]/30 transition-all cursor-pointer flex flex-col items-center justify-center p-4 text-center group active:scale-[0.99] shadow-2xs"
+          className="border-2 border-dashed border-[#5B7B6D]/20 hover:border-[#5B7B6D]/50 rounded-2xl p-4 bg-[#FAF8F5]/60 hover:bg-white transition-all cursor-pointer text-center group active:scale-[0.99] shadow-2xs"
         >
-          <div className="w-11 h-11 rounded-2xl bg-[#5B7B6D]/10 text-[#5B7B6D] dark:bg-white/10 dark:text-white flex items-center justify-center mb-2 group-hover:scale-110 transition-transform">
-            {isProcessing ? (
-              <Loader2 className="w-5 h-5 text-[#5B7B6D] animate-spin" />
-            ) : (
-              <ImagePlus className="w-5 h-5 stroke-[1.8]" />
-            )}
+          <div className="flex flex-col items-center justify-center gap-1.5 py-1">
+            <div className="w-10 h-10 rounded-2xl bg-white border border-[#5B7B6D]/15 flex items-center justify-center text-[#5B7B6D] group-hover:scale-105 group-hover:border-[#5B7B6D]/40 transition-all shadow-2xs">
+              {isProcessing ? (
+                <Loader2 className="w-5 h-5 text-[#5B7B6D] animate-spin" />
+              ) : (
+                <ImagePlus className="w-5 h-5 text-[#5B7B6D]" />
+              )}
+            </div>
+            <div className="text-xs font-serif font-bold text-[#2B332E] dark:text-[#FAF8F5]">
+              {isProcessing ? '正在处理影像附件...' : '点击上传相片或视频'}
+            </div>
           </div>
-          <p className="text-xs font-serif font-bold text-[#2B332E] dark:text-[#FAF8F5]">
-            {isProcessing ? '正在处理影像附件...' : '点击上传相片或录长视频'}
-          </p>
         </div>
       )}
     </div>

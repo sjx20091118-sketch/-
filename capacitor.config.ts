@@ -6,6 +6,16 @@ const config: CapacitorConfig = {
   appName: '拾年',
   webDir: 'dist',
   plugins: {
+    SplashScreen: {
+      launchShowDuration: 0,
+      launchAutoHide: true,
+      backgroundColor: '#FAF8F5',
+      androidSplashResourceName: 'splash',
+      androidScaleType: 'CENTER_CROP',
+      showSpinner: false,
+      splashFullScreen: true,
+      splashImmersive: true,
+    },
     Keyboard: {
       resize: KeyboardResize.Body,
       style: KeyboardStyle.Light,

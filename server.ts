@@ -104,11 +104,17 @@ function synthesizeMemoryResponse(prompt: string, memoryData: any): string {
   return `岁月如歌，拾年悠悠。\n\n在你的私人《拾年》记忆长卷中，已悉心封存着 ${timeline.length} 个时光瞬间、${people.length} 位重要同路人、${stories.length} 篇故事随笔与 ${artifacts.length} 件旧物藏品。\n\n时光不语，却在每一笔记录中留下了最长情的注脚。想聊聊哪一位老朋友，或是哪一段难忘的时光瞬间？`;
 }
 
-// Literary polisher fallback
+// Natural warm narrative polisher fallback
 function synthesizeTextPolish(rawText: string): string {
   const clean = (rawText || '').trim();
   if (!clean) return '岁月沉香，往昔如歌。那一抹温存的光影，在静默中悄然定格。';
-  return `那是一段浸润在暖阳里的珍贵时光：${clean}。清风拂过枝头，掠起旧日泛黄的衣角与细碎的欢笑，时光不曾走远，只是将那些真切的温度，悄然镌刻成了心底永恒的诗行。`;
+  
+  // Clean up existing punctuation
+  const sentences = clean.split(/[。！？\n]+/).map(s => s.trim()).filter(Boolean);
+  if (sentences.length === 1) {
+    return `${sentences[0]}。时光在静默中徐徐流淌，那些初见时的欣喜与日常里的温存，如今想来依旧鲜活动人。`;
+  }
+  return `${sentences.join('。')}。这些微小而确切的瞬间，如同沉淀在岁月长河里的珍珠，泛着温润的光泽。`;
 }
 
 // Helper: Try Gemini model with fallback list
@@ -322,21 +328,24 @@ ${memorySummary}`;
   }
 });
 
-// 2. AI Polish Text (Story/Timeline Polishing)
+// 2. AI Polish Text (Story/Timeline Polishing with Natural Warm Narrative style)
 app.post('/api/ai/polish', async (req, res) => {
   const { text, engine = 'gemini', customApiKey = '' } = req.body;
   if (!text || !text.trim()) {
     return res.status(400).json({ error: '缺少待润色的文本内容' });
   }
 
-  const systemPrompt =
-    '你是一位文采斐然且情感细腻的记忆故事润色师。将用户的简短随笔或草稿润色成富有画面感、温情细腻的记忆文字（约120-180字），保留原意，增强文学美感。只输出润色后的正文，不要带有任何额外的解释或标记。';
+  const systemPrompt = `你是一位深谙东方审美与现代温情叙事的岁月回忆录润色大师。
+你的使命是将用户的记忆线索、日记随笔或旧物叙述，润色为【自然温润叙事风】的优美篇章：
+1. 文风规范：自然温润、细腻真实，不造作、不生硬堆砌华丽辞藻，字里行间如春水缓流般温存动人；
+2. 内容准则：严格保留用户原有的关键事实、时间、人物、地点和情感脉络，在此基础上进行遣词修饰与意境升华；
+3. 输出要求：直接输出润色后的正文内容，禁止附带任何前缀问候、解析说明、评分或引号包裹。`;
 
   if (engine === 'deepseek' || (customApiKey && customApiKey.startsWith('sk-'))) {
     try {
       const reply = await callDeepSeekAPI({
         apiKey: customApiKey,
-        messages: [{ role: 'user', content: `请润色这段记忆随笔：\n${text}` }],
+        messages: [{ role: 'user', content: `请以自然温润叙事风润色以下记忆文字：\n${text}` }],
         systemPrompt,
       });
       return res.json({ polished: reply.trim(), engineUsed: 'DeepSeek' });
@@ -347,7 +356,7 @@ app.post('/api/ai/polish', async (req, res) => {
 
   try {
     const ai = getGeminiClient(customApiKey);
-    const result = await generateGeminiContentWithFallback(ai, `请润色这段记忆随笔：\n${text}`, systemPrompt);
+    const result = await generateGeminiContentWithFallback(ai, `请以自然温润叙事风润色以下记忆文字：\n${text}`, systemPrompt);
     const polished = result.text?.trim() || synthesizeTextPolish(text);
     return res.json({ polished, engineUsed: `Gemini (${result.modelUsed})` });
   } catch (err: any) {
@@ -749,7 +758,7 @@ app.get('/api/music/play-url', async (req, res) => {
               if (fbRes.ok) {
                 const fbData = await fbRes.json();
                 if (fbData?.url && fbData.url.startsWith('http')) {
-                  return res.json({ id: fallbackRid, url: fbData.url });
+                  return res.json({ id, fallbackRid, url: fbData.url });
                 }
               }
             }

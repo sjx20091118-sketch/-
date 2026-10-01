@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { BookOpen, Plus, X, Check, FileText } from 'lucide-react';
@@ -18,40 +18,63 @@ interface PersonStoriesShelfProps {
 export const PersonStoriesShelf: React.FC<PersonStoriesShelfProps> = ({
   personName,
   boundStoryIds = [],
-  allStories,
+  allStories = [],
   onUpdateBoundStories,
   onReadStory,
   showToast
 }) => {
   const [isPickerOpen, setIsPickerOpen] = useState(false);
-  const [selectedIds, setSelectedIds] = useState<string[]>(boundStoryIds);
+
+  // 严格过滤仅属于当前拾忆篇实际存在文章的合法ID，彻底杜绝虚假幽灵计数
+  const validBoundIds = useMemo(() => {
+    const validSet = new Set(allStories.map(s => s.id));
+    return (boundStoryIds || []).filter(id => validSet.has(id));
+  }, [boundStoryIds, allStories]);
+
+  const [selectedIds, setSelectedIds] = useState<string[]>(validBoundIds);
+
+  // 当外部 boundStoryIds 或 allStories 变动时保持同步
+  useEffect(() => {
+    setSelectedIds(validBoundIds);
+  }, [validBoundIds]);
 
   // Level 3: 物理返回拦截：关联拾忆篇章拣选弹窗 (Priority 80)
   useBackHandler('person-stories-picker', 80, isPickerOpen, () => {
     setIsPickerOpen(false);
   });
 
-  const boundStories = allStories.filter((s) => boundStoryIds.includes(s.id));
+  const boundStories = useMemo(() => {
+    const boundSet = new Set(validBoundIds);
+    return allStories.filter(s => boundSet.has(s.id));
+  }, [allStories, validBoundIds]);
 
   const handleOpenPicker = () => {
     sound.playWaterDrop(880);
-    setSelectedIds([...boundStoryIds]);
+    setSelectedIds([...validBoundIds]);
     setIsPickerOpen(true);
   };
 
   const handleToggleStory = (id: string) => {
     sound.playWaterDrop(780);
-    setSelectedIds((prev) =>
-      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
+    setSelectedIds(prev =>
+      prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]
     );
   };
 
   const handleSaveSelection = () => {
     sound.playWaterDrop(960);
-    onUpdateBoundStories(selectedIds);
+    const validSet = new Set(allStories.map(s => s.id));
+    const cleanSelection = selectedIds.filter(id => validSet.has(id));
+    onUpdateBoundStories(cleanSelection);
     setIsPickerOpen(false);
-    showToast(`已更新【${personName}】的关联忆篇 (${selectedIds.length} 篇)`);
+    showToast(`已更新【${personName}】的关联忆篇 (${cleanSelection.length} 篇)`);
   };
+
+  // 当前在弹窗中有效勾选的篇章数量
+  const validSelectedCount = useMemo(() => {
+    const validSet = new Set(allStories.map(s => s.id));
+    return selectedIds.filter(id => validSet.has(id)).length;
+  }, [selectedIds, allStories]);
 
   return (
     <div className="bg-white dark:bg-[#1E2822] p-5 sm:p-6 rounded-3xl border border-[#5B7B6D]/20 dark:border-white/10 shadow-2xs space-y-4 relative z-10 isolate">
@@ -159,7 +182,7 @@ export const PersonStoriesShelf: React.FC<PersonStoriesShelfProps> = ({
                         <h3 className="font-bold text-[#2B332E] text-sm font-serif flex items-center gap-1.5">
                           <span>从拾忆篇拣选关联文章</span>
                           <span className="text-[11px] font-sans font-normal text-[#6E7C75]">
-                            (已选 {selectedIds.length}/{allStories.length})
+                            (已选 {validSelectedCount})
                           </span>
                         </h3>
                       </div>
@@ -167,7 +190,7 @@ export const PersonStoriesShelf: React.FC<PersonStoriesShelfProps> = ({
                     <button
                       type="button"
                       onClick={() => setIsPickerOpen(false)}
-                      className="p-1 rounded-full text-[#6E7C75] hover:text-[#2B332E] hover:bg-black/5"
+                      className="p-1 rounded-full text-[#6E7C75] hover:text-[#2B332E] hover:bg-black/5 cursor-pointer"
                     >
                       <X className="w-5 h-5" />
                     </button>
@@ -188,7 +211,7 @@ export const PersonStoriesShelf: React.FC<PersonStoriesShelfProps> = ({
                             onClick={() => handleToggleStory(story.id)}
                             className={`flex items-center justify-between p-3 rounded-2xl border cursor-pointer transition-all ${
                               isChecked
-                                ? 'bg-white border-[#5B7B6D] shadow-xs'
+                                ? 'bg-white border-[#5B7B6D] shadow-xs ring-1 ring-[#5B7B6D]/30'
                                 : 'bg-white/60 hover:bg-white border-[#5B7B6D]/15'
                             }`}
                           >
@@ -224,22 +247,25 @@ export const PersonStoriesShelf: React.FC<PersonStoriesShelfProps> = ({
                     )}
                   </div>
 
-                  {/* 弹窗底部保存 */}
-                  <div className="p-3 bg-white border-t border-[#5B7B6D]/15 flex justify-end gap-2 shrink-0">
-                    <button
-                      type="button"
-                      onClick={() => setIsPickerOpen(false)}
-                      className="px-4 py-2 rounded-xl text-xs font-serif text-[#6E7C75] hover:bg-black/5"
-                    >
-                      取消
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleSaveSelection}
-                      className="px-5 py-2 rounded-xl text-xs font-serif font-medium bg-[#5B7B6D] text-white hover:bg-[#3E564B] shadow-xs"
-                    >
-                      确认并陈列
-                    </button>
+                  {/* 弹窗底部操作栏 */}
+                  <div className="p-3.5 bg-white/95 border-t border-[#5B7B6D]/15 flex justify-between items-center shrink-0">
+                    <span className="text-xs text-[#6E7C75] font-mono">已选 {validSelectedCount}</span>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setIsPickerOpen(false)}
+                        className="px-4 py-2 rounded-xl text-xs font-serif text-[#6E7C75] hover:bg-black/5 cursor-pointer"
+                      >
+                        取消
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleSaveSelection}
+                        className="px-5 py-2 rounded-xl text-xs font-serif font-medium bg-[#5B7B6D] text-white hover:bg-[#3E564B] shadow-xs cursor-pointer active:scale-95"
+                      >
+                        确认并陈列
+                      </button>
+                    </div>
                   </div>
                 </motion.div>
               </div>

@@ -65,7 +65,9 @@ export function isIndexedDbMedia(url?: string): boolean {
  * @returns 虚拟存储 URI，形如 "idb://video_1680000000"
  */
 export async function saveMediaBlob(blob: Blob | File, customKey?: string): Promise<string> {
-  const id = customKey || `media_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  const isVid = (blob.type && blob.type.startsWith('video/')) || false;
+  const prefix = isVid ? 'video' : 'img';
+  const id = customKey || `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
   const db = await getDb();
 
   return new Promise((resolve, reject) => {
@@ -76,7 +78,7 @@ export async function saveMediaBlob(blob: Blob | File, customKey?: string): Prom
       const record: MediaRecord = {
         id,
         blob,
-        mimeType: blob.type || 'video/mp4',
+        mimeType: blob.type || (isVid ? 'video/mp4' : 'image/jpeg'),
         size: blob.size,
         updatedAt: Date.now()
       };
@@ -179,3 +181,122 @@ export function cleanupActiveBlobUrls(): void {
   activeBlobUrls.forEach((url) => URL.revokeObjectURL(url));
   activeBlobUrls.clear();
 }
+
+/**
+ * 将 base64 字符串转化为 IndexedDB 二进制大对象，释放 localStorage 物理存储空间
+ */
+export async function saveBase64ToIndexedDb(dataUrl: string): Promise<string> {
+  if (!dataUrl || typeof dataUrl !== 'string' || !dataUrl.startsWith('data:')) {
+    return dataUrl;
+  }
+  try {
+    const parts = dataUrl.split(',');
+    if (parts.length < 2) return dataUrl;
+    const mimeMatch = parts[0].match(/:(.*?);/);
+    const mime = mimeMatch ? mimeMatch[1] : 'image/jpeg';
+    const bstr = atob(parts[1]);
+    let n = bstr.length;
+    const u8arr = new Uint8Array(n);
+    while (n--) {
+      u8arr[n] = bstr.charCodeAt(n);
+    }
+    const blob = new Blob([u8arr], { type: mime });
+    return await saveMediaBlob(blob);
+  } catch (e) {
+    console.warn('Failed to convert base64 to IndexedDB blob:', e);
+    return dataUrl;
+  }
+}
+
+/**
+ * 递归扫描并转存数据对象中所有超大 Base64 媒体至 IndexedDB，确保 localStorage 零溢出
+ */
+export async function offloadBase64MediaToIndexedDb(appData: any): Promise<{ data: any; hasChanged: boolean }> {
+  if (!appData || typeof appData !== 'object') {
+    return { data: appData, hasChanged: false };
+  }
+
+  let hasChanged = false;
+  const clone = JSON.parse(JSON.stringify(appData));
+
+  // 1. Process Timeline
+  if (Array.isArray(clone.timeline)) {
+    for (const item of clone.timeline) {
+      if (item.image && typeof item.image === 'string' && item.image.startsWith('data:')) {
+        item.image = await saveBase64ToIndexedDb(item.image);
+        hasChanged = true;
+      }
+      if (item.videoPoster && typeof item.videoPoster === 'string' && item.videoPoster.startsWith('data:')) {
+        item.videoPoster = await saveBase64ToIndexedDb(item.videoPoster);
+        hasChanged = true;
+      }
+    }
+  }
+
+  // 2. Process People
+  if (Array.isArray(clone.people)) {
+    for (const person of clone.people) {
+      if (person.avatar && typeof person.avatar === 'string' && person.avatar.startsWith('data:')) {
+        person.avatar = await saveBase64ToIndexedDb(person.avatar);
+        hasChanged = true;
+      }
+      if (Array.isArray(person.photos)) {
+        for (let i = 0; i < person.photos.length; i++) {
+          if (typeof person.photos[i] === 'string' && person.photos[i].startsWith('data:')) {
+            person.photos[i] = await saveBase64ToIndexedDb(person.photos[i]);
+            hasChanged = true;
+          }
+        }
+      }
+    }
+  }
+
+  // 3. Process Artifacts
+  if (Array.isArray(clone.artifacts)) {
+    for (const item of clone.artifacts) {
+      if (item.image && typeof item.image === 'string' && item.image.startsWith('data:')) {
+        item.image = await saveBase64ToIndexedDb(item.image);
+        hasChanged = true;
+      }
+      if (Array.isArray(item.images)) {
+        for (let i = 0; i < item.images.length; i++) {
+          if (typeof item.images[i] === 'string' && item.images[i].startsWith('data:')) {
+            item.images[i] = await saveBase64ToIndexedDb(item.images[i]);
+            hasChanged = true;
+          }
+        }
+      }
+      if (Array.isArray(item.videos)) {
+        for (const vid of item.videos) {
+          if (vid.poster && typeof vid.poster === 'string' && vid.poster.startsWith('data:')) {
+            vid.poster = await saveBase64ToIndexedDb(vid.poster);
+            hasChanged = true;
+          }
+        }
+      }
+    }
+  }
+
+  // 4. Process Stories
+  if (Array.isArray(clone.stories)) {
+    for (const story of clone.stories) {
+      if (story.coverImage && typeof story.coverImage === 'string' && story.coverImage.startsWith('data:')) {
+        story.coverImage = await saveBase64ToIndexedDb(story.coverImage);
+        hasChanged = true;
+      }
+    }
+  }
+
+  // 5. Process Letters
+  if (Array.isArray(clone.letters)) {
+    for (const letter of clone.letters) {
+      if (letter.mediaUrl && typeof letter.mediaUrl === 'string' && letter.mediaUrl.startsWith('data:')) {
+        letter.mediaUrl = await saveBase64ToIndexedDb(letter.mediaUrl);
+        hasChanged = true;
+      }
+    }
+  }
+
+  return { data: clone, hasChanged };
+}
+

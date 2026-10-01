@@ -1,5 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { Upload, Camera, X, Image as ImageIcon, Palette, Check, RefreshCw, Plus } from 'lucide-react';
+import { MediaImage } from './MediaImage';
 
 export interface LocalImageUploaderProps {
   value?: string;
@@ -128,7 +129,7 @@ export const LocalImageUploader: React.FC<LocalImageUploaderProps> = ({
         <div className="relative group cursor-pointer" onClick={() => fileInputRef.current?.click()}>
           <div className="w-20 h-20 sm:w-22 sm:h-22 rounded-3xl overflow-hidden border-2 border-[#E88765]/40 hover:border-[#E88765] dark:border-white/20 bg-white dark:bg-black/30 shadow-sm flex items-center justify-center transition-all group-hover:scale-105 active:scale-95">
             {value ? (
-              <img src={value} alt="Avatar" className="w-full h-full object-cover" />
+              <MediaImage src={value} alt="Avatar" className="w-full h-full object-cover" />
             ) : (
               <div className="flex flex-col items-center justify-center text-[#5B7B6D] dark:text-[#A7B4AD]">
                 <Camera className="w-7 h-7 stroke-[1.7] opacity-80 group-hover:opacity-100 transition-opacity" />
@@ -179,7 +180,7 @@ export const LocalImageUploader: React.FC<LocalImageUploaderProps> = ({
       {value ? (
         <div className="relative rounded-2xl overflow-hidden border border-[#5B7B6D]/20 bg-[#FAF8F5] group shadow-2xs">
           <div className={`${mode === 'banner' ? 'h-36' : 'h-44'} w-full relative`}>
-            <img src={value} alt="Preview" className="w-full h-full object-cover" />
+            <MediaImage src={value} alt="Preview" className="w-full h-full object-cover" />
             <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end justify-between p-3">
               <span className="text-[11px] text-white/90 font-medium">已载入本地相片</span>
               <div className="flex items-center gap-2">

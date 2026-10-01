@@ -5,10 +5,10 @@ import {
   Download,
   Ticket,
   Image as ImageIcon,
-  Palette,
-  Camera
+  Palette
 } from 'lucide-react';
 import { TimelineItem, Artifact, Story, Person } from '../types';
+import { isIndexedDbMedia, resolveMediaUrl } from '../services/indexedDbMedia';
 
 export type UniversalShareSource =
   | { type: 'timeline'; data: TimelineItem }
@@ -27,7 +27,7 @@ interface MemoirCardStudioModalProps {
 type CardStyle = 'polaroid' | 'ticket';
 type PaperTint = 'ivory' | 'sepia' | 'sage';
 
-// 生成离线雅致肖像印章，作为网络故障时的100%兜底
+// 生成离线雅致肖像印章，仅作为人物网络故障时的100%兜底
 function generateStylizedAvatarDataUrl(name: string, bg = '#5B7B6D', fg = '#FAF8F5'): string {
   const canvas = document.createElement('canvas');
   canvas.width = 300;
@@ -35,14 +35,12 @@ function generateStylizedAvatarDataUrl(name: string, bg = '#5B7B6D', fg = '#FAF8
   const ctx = canvas.getContext('2d');
   if (!ctx) return '';
 
-  // 柔和复古渐变底色
   const grad = ctx.createLinearGradient(0, 0, 300, 300);
   grad.addColorStop(0, '#4E6B5F');
   grad.addColorStop(1, '#2B3B34');
   ctx.fillStyle = grad;
   ctx.fillRect(0, 0, 300, 300);
 
-  // 双层同心圆古风纹饰
   ctx.strokeStyle = 'rgba(255, 255, 255, 0.25)';
   ctx.lineWidth = 4;
   ctx.beginPath();
@@ -55,7 +53,6 @@ function generateStylizedAvatarDataUrl(name: string, bg = '#5B7B6D', fg = '#FAF8
   ctx.arc(150, 150, 120, 0, Math.PI * 2);
   ctx.stroke();
 
-  // 单字雅致印迹
   const char = (name || '友').trim().slice(0, 1);
   ctx.fillStyle = fg;
   ctx.font = 'bold 120px "Songti SC", "SimSun", serif';
@@ -66,11 +63,20 @@ function generateStylizedAvatarDataUrl(name: string, bg = '#5B7B6D', fg = '#FAF8
   return canvas.toDataURL('image/png');
 }
 
-// 针对外链（特别是作者初始数据图片 URL）的多轨安全加载器
+// 针对外链、Base64 与 IndexedDB (idb://) 的多轨安全加载器
 async function loadCardImage(src: string, fallbackName = '友'): Promise<HTMLImageElement | null> {
   if (!src) return null;
-  const trimmed = src.trim();
+  let trimmed = src.trim();
   if (!trimmed) return null;
+
+  // 0. 解析 idb:// 本地二进制媒体
+  if (isIndexedDbMedia(trimmed)) {
+    try {
+      trimmed = await resolveMediaUrl(trimmed);
+    } catch (e) {
+      console.warn('Failed to resolve idb media for card:', e);
+    }
+  }
 
   // 1. Data URLs or blob URLs: load directly without CORS restrictions
   if (trimmed.startsWith('data:') || trimmed.startsWith('blob:')) {
@@ -147,18 +153,37 @@ async function loadCardImage(src: string, fallbackName = '友'): Promise<HTMLIma
     if (proxyImg) return proxyImg;
   } catch {}
 
-  // 5. 极端离线/跨域彻底阻断时的艺术化国风印记兜底
-  try {
-    const fallbackDataUrl = generateStylizedAvatarDataUrl(fallbackName);
-    return new Promise((resolve) => {
-      const img = new Image();
-      img.onload = () => resolve(img);
-      img.onerror = () => resolve(null);
-      img.src = fallbackDataUrl;
-    });
-  } catch {}
-
+  // 5. 无法解析或网络阻断时返回 null，绝不误造虚假头像或绿色底板
   return null;
+}
+
+// 统一绘制高质量无变形自适应 Bento 单格图片
+function drawCoverImage(
+  ctx: CanvasRenderingContext2D,
+  img: HTMLImageElement,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  radius = 12
+) {
+  ctx.save();
+  ctx.beginPath();
+  if (typeof (ctx as any).roundRect === 'function') {
+    (ctx as any).roundRect(x, y, w, h, radius);
+  } else {
+    ctx.rect(x, y, w, h);
+  }
+  ctx.clip();
+
+  const scale = Math.max(w / img.width, h / img.height);
+  const drawW = img.width * scale;
+  const drawH = img.height * scale;
+  const drawX = x + (w - drawW) / 2;
+  const drawY = y + (h - drawH) / 2;
+
+  ctx.drawImage(img, drawX, drawY, drawW, drawH);
+  ctx.restore();
 }
 
 export const MemoirCardStudioModal: React.FC<MemoirCardStudioModalProps> = ({
@@ -176,32 +201,54 @@ export const MemoirCardStudioModal: React.FC<MemoirCardStudioModalProps> = ({
 
   const activeSource = source || item;
 
-  // Normalize source data into uniform shape
+  // 规范化来源数据，全面聚合单图、多图、视频抽帧封面
   const itemData = React.useMemo(() => {
     if (!activeSource) return null;
     if ('type' in activeSource) {
       if (activeSource.type === 'timeline') {
         const d = activeSource.data;
+        const rawList: string[] = [];
+        if (d.image) rawList.push(d.image);
+        if (d.videoPoster) rawList.push(d.videoPoster);
+        const uniqueImages = Array.from(new Set(rawList.filter(Boolean)));
         return {
           id: d.id,
           title: d.title,
           subhead: d.date ? `${d.date} ${d.location ? `· ${d.location}` : ''}` : '岁月长廊',
           date: d.date,
           content: d.content,
-          image: d.image || '',
+          image: uniqueImages[0] || '',
+          images: uniqueImages,
           categoryBadge: d.tag || '岁华记忆',
           sourceType: '时光轴'
         };
       }
       if (activeSource.type === 'artifact') {
         const d = activeSource.data;
+        const rawList: string[] = [];
+        // 优先加入所有相册照片
+        if (Array.isArray(d.images) && d.images.length > 0) {
+          rawList.push(...d.images);
+        } else if (d.image) {
+          rawList.push(d.image);
+        }
+        // 加入视频抽帧封面作为排版元素
+        if (d.videoPoster) rawList.push(d.videoPoster);
+        if (Array.isArray(d.videos)) {
+          d.videos.forEach((v: any) => {
+            if (v?.poster) rawList.push(v.poster);
+          });
+        }
+        const uniqueImages = Array.from(new Set(rawList.filter(Boolean)));
+
         return {
           id: d.id,
           title: d.name,
           subhead: d.date ? `珍藏于 ${d.date}` : '信物馆藏',
           date: d.date,
           content: d.story,
-          image: d.image || '',
+          image: uniqueImages[0] || '',
+          images: uniqueImages,
           categoryBadge: '拾物藏宝',
           sourceType: '拾物阁'
         };
@@ -215,14 +262,25 @@ export const MemoirCardStudioModal: React.FC<MemoirCardStudioModalProps> = ({
           date: d.date,
           content: d.content,
           image: '',
+          images: [],
           categoryBadge: d.chapter || '时光长篇',
           sourceType: '诗意篇'
         };
       }
       if (activeSource.type === 'person') {
         const d = activeSource.data;
-        const isAvatarImage = d.avatar && (d.avatar.startsWith('http') || d.avatar.startsWith('data:') || d.avatar.startsWith('blob:'));
-        const resolvedImage = isAvatarImage ? d.avatar : ((d.photos && d.photos.length > 0) ? d.photos[0] : '');
+        const rawList: string[] = [];
+        const isAvatarImage = d.avatar && (
+          d.avatar.startsWith('http') ||
+          d.avatar.startsWith('data:') ||
+          d.avatar.startsWith('blob:') ||
+          d.avatar.startsWith('idb:')
+        );
+        if (isAvatarImage) rawList.push(d.avatar);
+        if (Array.isArray(d.photos) && d.photos.length > 0) {
+          rawList.push(...d.photos);
+        }
+        const uniqueImages = Array.from(new Set(rawList.filter(Boolean)));
         const charName = d.name ? d.name.slice(0, 1) : '友';
 
         return {
@@ -231,7 +289,8 @@ export const MemoirCardStudioModal: React.FC<MemoirCardStudioModalProps> = ({
           subhead: `${d.relationship || '故人'} · ${d.birthday ? `生辰 ${d.birthday}` : ''}`,
           date: d.knownDate || d.birthday || '岁华结缘',
           content: d.bio || (d.impressions && d.impressions.length > 0 ? d.impressions.map(i => i.text).join('\n') : '愿时光清浅，故人不散。'),
-          image: resolvedImage || '',
+          image: uniqueImages[0] || '',
+          images: uniqueImages,
           avatarSymbol: !isAvatarImage && d.avatar ? d.avatar : charName,
           categoryBadge: d.group || d.relationship || '岁月知己',
           sourceType: '拾人册'
@@ -241,19 +300,25 @@ export const MemoirCardStudioModal: React.FC<MemoirCardStudioModalProps> = ({
 
     // Direct TimelineItem fallback
     const t = activeSource as TimelineItem;
+    const rawList: string[] = [];
+    if (t.image) rawList.push(t.image);
+    if (t.videoPoster) rawList.push(t.videoPoster);
+    const uniqueImages = Array.from(new Set(rawList.filter(Boolean)));
+
     return {
       id: t.id,
       title: t.title,
       subhead: t.date ? `${t.date} ${t.location ? `· ${t.location}` : ''}` : '岁华纪事',
       date: t.date,
       content: t.content,
-      image: t.image || '',
+      image: uniqueImages[0] || '',
+      images: uniqueImages,
       categoryBadge: t.tag || '光影印记',
       sourceType: '时光轴'
     };
   }, [activeSource]);
 
-  // Helper to get tint colors
+  // 获取纸张色系配置
   const getTintColors = (t: PaperTint) => {
     switch (t) {
       case 'sepia':
@@ -287,7 +352,7 @@ export const MemoirCardStudioModal: React.FC<MemoirCardStudioModalProps> = ({
     }
   };
 
-  // Draw high-resolution canvas card
+  // 高保真绘制 Canvas 卡片画幅（苹果相册 Bento 自适应拼图）
   const drawCardToCanvas = useCallback(
     async (canvas: HTMLCanvasElement) => {
       if (!itemData) return;
@@ -295,7 +360,7 @@ export const MemoirCardStudioModal: React.FC<MemoirCardStudioModalProps> = ({
       const colors = getTintColors(tint);
       const isPolaroid = style === 'polaroid';
 
-      // Dimensions: 900x1200 mobile friendly ratio
+      // 900x1200 移动端黄金纵向画幅比例
       const width = 900;
       const height = 1200;
 
@@ -316,14 +381,17 @@ export const MemoirCardStudioModal: React.FC<MemoirCardStudioModalProps> = ({
       ctx.lineWidth = 2;
       ctx.strokeRect(16, 16, width - 32, height - 32);
 
-      // Load photo if available with server-side proxy fallback & offline fallback
-      let imgObj: HTMLImageElement | null = null;
-      if (itemData.image) {
+      // 加载并解析最多 4 张高保真图片或视频抽帧
+      const imagesToLoad = (itemData.images && itemData.images.length > 0)
+        ? itemData.images.slice(0, 4)
+        : (itemData.image ? [itemData.image] : []);
+
+      const loadedImages: HTMLImageElement[] = [];
+      for (const imgUrl of imagesToLoad) {
         try {
-          imgObj = await loadCardImage(itemData.image, itemData.title);
-        } catch {
-          imgObj = null;
-        }
+          const loaded = await loadCardImage(imgUrl, itemData.title);
+          if (loaded) loadedImages.push(loaded);
+        } catch {}
       }
 
       if (isPolaroid) {
@@ -350,33 +418,41 @@ export const MemoirCardStudioModal: React.FC<MemoirCardStudioModalProps> = ({
           ctx.strokeStyle = colors.border;
           ctx.lineWidth = 1.5;
           ctx.beginPath();
-          ctx.moveTo(marginX, topY + 90);
-          ctx.lineTo(width - marginX, topY + 90);
+          ctx.moveTo(marginX, topY + 95);
+          ctx.lineTo(width - marginX, topY + 95);
           ctx.stroke();
 
-          // 正文多段落长卷铺陈
+          // 正文多行排版
           ctx.fillStyle = colors.text;
           ctx.font = '24px "Songti SC", "SimSun", serif';
-          const paragraphs = (itemData.content || '').split('\n').filter(p => p.trim());
-          let textY = topY + 140;
+          const maxTextW = width - marginX * 2;
+          const storyLines = (itemData.content || '').split('\n');
 
-          for (const para of paragraphs) {
-            const indentPara = '  ' + para.trim();
-            let curLine = '';
-            for (let i = 0; i < indentPara.length; i++) {
-              const testLine = curLine + indentPara[i];
-              if (ctx.measureText(testLine).width > width - marginX * 2) {
+          let textY = topY + 145;
+          const lineHeight = 44;
+
+          for (const rawParagraph of storyLines) {
+            const paragraph = rawParagraph.trim();
+            if (!paragraph) {
+              textY += 20;
+              continue;
+            }
+
+            let curLine = '　　';
+            for (let i = 0; i < paragraph.length; i++) {
+              const char = paragraph[i];
+              if (ctx.measureText(curLine + char).width > maxTextW) {
                 ctx.fillText(curLine, marginX, textY);
-                curLine = indentPara[i];
-                textY += 40;
+                curLine = char;
+                textY += lineHeight;
                 if (textY > height - 160) break;
               } else {
-                curLine = testLine;
+                curLine += char;
               }
             }
-            if (curLine && textY <= height - 160) {
+            if (curLine.trim()) {
               ctx.fillText(curLine, marginX, textY);
-              textY += 42;
+              textY += lineHeight;
             }
             if (textY > height - 160) break;
           }
@@ -404,36 +480,49 @@ export const MemoirCardStudioModal: React.FC<MemoirCardStudioModalProps> = ({
           ctx.fillText(`SHINIAN · 篇章存墨于此 · ${itemData.date || ''}`, marginX, height - 70);
 
         } else {
-          // 标准带图/影像拍立得画幅
+          // 标准带图/多图 Bento 拍立得画幅
           const frameX = 56;
           const frameY = 56;
           const frameW = width - 112;
           const frameH = 700;
 
-          if (imgObj) {
-            ctx.save();
-            ctx.beginPath();
-            ctx.rect(frameX, frameY, frameW, frameH);
-            ctx.clip();
-
-            const scale = Math.max(frameW / imgObj.width, frameH / imgObj.height);
-            const drawW = imgObj.width * scale;
-            const drawH = imgObj.height * scale;
-            const drawX = frameX + (frameW - drawW) / 2;
-            const drawY = frameY + (frameH - drawH) / 2;
-
-            ctx.drawImage(imgObj, drawX, drawY, drawW, drawH);
-            ctx.restore();
+          if (loadedImages.length > 0) {
+            // --- 苹果相册 Bento 自适应拼贴画格算法 ---
+            const gap = 8;
+            if (loadedImages.length === 1) {
+              // 1 张图片：全幅大赏 (Hero Bleed)
+              drawCoverImage(ctx, loadedImages[0], frameX, frameY, frameW, frameH, 14);
+            } else if (loadedImages.length === 2) {
+              // 2 张图片：对称双栏 (50/50 Split)
+              const colW = (frameW - gap) / 2;
+              drawCoverImage(ctx, loadedImages[0], frameX, frameY, colW, frameH, 14);
+              drawCoverImage(ctx, loadedImages[1], frameX + colW + gap, frameY, colW, frameH, 14);
+            } else if (loadedImages.length === 3) {
+              // 3 张图片：左主图 60% + 右双叠 40% (Apple Hero Bento)
+              const leftW = Math.round(frameW * 0.6) - gap / 2;
+              const rightW = frameW - leftW - gap;
+              const rightH = (frameH - gap) / 2;
+              drawCoverImage(ctx, loadedImages[0], frameX, frameY, leftW, frameH, 14);
+              drawCoverImage(ctx, loadedImages[1], frameX + leftW + gap, frameY, rightW, rightH, 14);
+              drawCoverImage(ctx, loadedImages[2], frameX + leftW + gap, frameY + rightH + gap, rightW, rightH, 14);
+            } else {
+              // 4 张及以上图片：2x2 经典宫格 Bento
+              const cellW = (frameW - gap) / 2;
+              const cellH = (frameH - gap) / 2;
+              drawCoverImage(ctx, loadedImages[0], frameX, frameY, cellW, cellH, 14);
+              drawCoverImage(ctx, loadedImages[1], frameX + cellW + gap, frameY, cellW, cellH, 14);
+              drawCoverImage(ctx, loadedImages[2], frameX, frameY + cellH + gap, cellW, cellH, 14);
+              drawCoverImage(ctx, loadedImages[3], frameX + cellW + gap, frameY + cellH + gap, cellW, cellH, 14);
+            }
           } else {
+            // 无图时的雅致画幅
             ctx.fillStyle = colors.bg;
             ctx.fillRect(frameX, frameY, frameW, frameH);
 
             if (itemData.sourceType === '拾人册') {
-              // 专属人物册：以精美大头像勋章为中心视觉
               const avatarCenterY = frameY + frameH / 2 - 30;
               const avatarRadius = 100;
 
-              // 外层光晕与双重同心圆边框
               ctx.save();
               ctx.fillStyle = colors.cardBg;
               ctx.beginPath();
@@ -452,14 +541,12 @@ export const MemoirCardStudioModal: React.FC<MemoirCardStudioModalProps> = ({
               ctx.arc(width / 2, avatarCenterY, avatarRadius + 8, 0, Math.PI * 2);
               ctx.stroke();
 
-              // 头像 Emoji 或字标
               ctx.fillStyle = colors.text;
               ctx.font = '88px "Songti SC", "SimSun", "Segoe UI Emoji", serif';
               ctx.textAlign = 'center';
               ctx.textBaseline = 'middle';
               ctx.fillText(itemData.avatarSymbol || '友', width / 2, avatarCenterY + 4);
 
-              // 人物身份微章
               ctx.fillStyle = colors.accent;
               ctx.font = 'bold 26px "Cinzel", "Songti SC", serif';
               ctx.fillText(`知交肖像 · ${itemData.title}`, width / 2, avatarCenterY + avatarRadius + 60);
@@ -476,7 +563,7 @@ export const MemoirCardStudioModal: React.FC<MemoirCardStudioModalProps> = ({
 
               ctx.fillStyle = colors.subText;
               ctx.font = '22px "Songti SC", "SimSun", serif';
-              ctx.fillText('这一抹心事，无需胶片亦已永恒', width / 2, frameY + frameH / 2 + 25);
+              ctx.fillText('静默信物，无需胶片亦承载岁月', width / 2, frameY + frameH / 2 + 25);
             }
           }
 
@@ -518,262 +605,178 @@ export const MemoirCardStudioModal: React.FC<MemoirCardStudioModalProps> = ({
           const maxLineWidth = frameW - 200;
 
           for (let i = 0; i < cleanContent.length; i++) {
-            const testLine = curLine + cleanContent[i];
-            if (ctx.measureText(testLine).width > maxLineWidth) {
+            const char = cleanContent[i];
+            if (ctx.measureText(curLine + char).width > maxLineWidth) {
               ctx.fillText(curLine, frameX, lineY);
-              curLine = cleanContent[i];
-              lineY += 38;
-              if (lineY > height - 120) break;
+              curLine = char;
+              lineY += 40;
+              if (lineY > height - 100) break;
             } else {
-              curLine = testLine;
+              curLine += char;
             }
           }
-          if (curLine && lineY <= height - 120) {
+          if (curLine) {
             ctx.fillText(curLine, frameX, lineY);
           }
 
-          // Cinnabar Seal (底角红印)
-          const sealX = width - frameX - 110;
-          const sealY = height - 170;
+          // Bottom Seal
+          const sealX = width - 170;
+          const sealY = height - 165;
           ctx.save();
           ctx.strokeStyle = '#B3382C';
-          ctx.lineWidth = 2.5;
-          ctx.strokeRect(sealX, sealY, 80, 80);
+          ctx.lineWidth = 3;
+          ctx.strokeRect(sealX, sealY, 90, 90);
           ctx.fillStyle = 'rgba(179, 56, 44, 0.08)';
-          ctx.fillRect(sealX, sealY, 80, 80);
+          ctx.fillRect(sealX, sealY, 90, 90);
           ctx.fillStyle = '#B3382C';
-          ctx.font = 'bold 18px "Songti SC", "SimSun", serif';
+          ctx.font = 'bold 20px "Songti SC", "SimSun", serif';
           ctx.textAlign = 'center';
-          ctx.fillText('拾年', sealX + 40, sealY + 34);
-          ctx.fillText('藏珍', sealX + 40, sealY + 62);
+          ctx.fillText('拾光', sealX + 45, sealY + 38);
+          ctx.fillText('藏珍', sealX + 45, sealY + 70);
           ctx.restore();
 
-          // Bottom Watermark
+          // 底部极简品牌标签
           ctx.fillStyle = colors.subText;
-          ctx.font = '18px "Cinzel", serif';
+          ctx.font = '18px "Cinzel", "Songti SC", serif';
           ctx.textAlign = 'left';
-          ctx.fillText(`SHINIAN · ${itemData.date || '岁月长卷'}`, frameX, height - 60);
+          ctx.fillText(`拾年 · ${itemData.date || '岁月长河'}`, frameX, height - 70);
         }
 
       } else {
-        // ==================== 2. 复古电影票根样式 (TICKET) ====================
-        const stubHeight = 280;
-        const splitY = stubHeight;
+        // ==================== 2. 复古电影票根样式 (TICKET STUB) ====================
+        const pad = 50;
+        const stubW = 240;
+        const mainW = width - pad * 2 - stubW;
 
-        // Top Stub (存根区)
-        ctx.save();
-        ctx.fillStyle = colors.bg;
-        ctx.fillRect(20, 20, width - 40, stubHeight - 20);
-
-        // Perforated line with notch holes
+        // 齿孔撕裂线
+        const cutX = pad + stubW;
         ctx.strokeStyle = colors.border;
         ctx.lineWidth = 3;
         ctx.setLineDash([12, 10]);
         ctx.beginPath();
-        ctx.moveTo(30, splitY);
-        ctx.lineTo(width - 30, splitY);
+        ctx.moveTo(cutX, 20);
+        ctx.lineTo(cutX, height - 20);
         ctx.stroke();
         ctx.setLineDash([]);
 
-        // Left & Right circular tear notches
-        ctx.fillStyle = '#17201B';
+        // 上下半圆缺口
+        ctx.fillStyle = colors.bg;
         ctx.beginPath();
-        ctx.arc(0, splitY, 24, 0, Math.PI * 2);
+        ctx.arc(cutX, 16, 26, 0, Math.PI);
         ctx.fill();
         ctx.beginPath();
-        ctx.arc(width, splitY, 24, 0, Math.PI * 2);
+        ctx.arc(cutX, height - 16, 26, Math.PI, Math.PI * 2);
         ctx.fill();
 
-        // Stub Content
+        // 存根侧 (Stub Side)
+        ctx.save();
+        ctx.translate(pad + 120, height / 2);
+        ctx.rotate(-Math.PI / 2);
         ctx.fillStyle = colors.accent;
-        ctx.font = 'bold 22px "Cinzel", serif';
+        ctx.font = 'bold 36px "Cinzel", serif';
         ctx.textAlign = 'center';
-        ctx.fillText(`MEMOIR TICKET · ${itemData.sourceType.toUpperCase()}`, width / 2, 70);
-
-        ctx.fillStyle = colors.text;
-        ctx.font = 'bold 36px "Songti SC", "SimSun", serif';
-        ctx.fillText(`《${itemData.title}》`, width / 2, 125);
-
+        ctx.fillText('SHINIAN TICKET', 0, -40);
+        ctx.font = '22px "Songti SC", serif';
+        ctx.fillText(`岁月凭证 · ${itemData.categoryBadge}`, 0, 10);
         ctx.fillStyle = colors.subText;
-        ctx.font = '20px "Songti SC", "SimSun", serif';
-        
-        let stubSeat = '席位: 岁华长廊';
-        if (itemData.sourceType === '拾物阁') stubSeat = '库位: 拾物珍宝阁';
-        else if (itemData.sourceType === '诗意篇') stubSeat = '卷席: 文墨诗香台';
-        else if (itemData.sourceType === '拾人册') stubSeat = '展位: 知音肖像馆';
-        
-        ctx.fillText(`日期: ${itemData.date || '岁序未央'}   场次: NO.${itemData.date?.replace(/-/g, '') || '0101'}   ${stubSeat}`, width / 2, 180);
-
-        // Barcode
-        const barStartX = width / 2 - 140;
-        const barY = 210;
-        const barH = 40;
-        ctx.fillStyle = colors.text;
-        for (let bx = 0; bx < 280; bx += 6) {
-          const barW = (bx % 3 === 0) ? 3 : (bx % 2 === 0 ? 2 : 1);
-          ctx.fillRect(barStartX + bx, barY, barW, barH);
-        }
+        ctx.font = '20px "Cinzel", monospace';
+        ctx.fillText(`NO. ${itemData.id.slice(-8).toUpperCase()}`, 0, 50);
         ctx.restore();
 
-        // Bottom Main Ticket (主券放映区)
-        const mainY = splitY + 40;
-        const mainW = width - 120;
-        const mainX = 60;
+        // 主券侧 (Main Side)
+        const mainX = cutX + 50;
+        const mainY = 90;
+
+        ctx.fillStyle = colors.text;
+        ctx.font = 'bold 44px "Songti SC", "SimSun", serif';
+        ctx.textAlign = 'left';
+        ctx.fillText(`《${itemData.title}》`, mainX, mainY);
 
         ctx.fillStyle = colors.accent;
-        ctx.font = 'bold 22px "Cinzel", "Songti SC", serif';
-        ctx.textAlign = 'left';
-        
-        let admitHeader = 'ADMIT ONE · SHINIAN ARCHIVES · 时光放映厅';
-        if (itemData.sourceType === '拾物阁') admitHeader = 'HERITAGE ACCESS · SHINIAN CURATION · 拾物典藏展';
-        else if (itemData.sourceType === '诗意篇') admitHeader = 'POETIC ESSENCE · SHINIAN LITERATURE · 诗意篇章台';
-        else if (itemData.sourceType === '拾人册') admitHeader = 'MEMORIAL PORTRAIT · SHINIAN PORTRAITS · 知友肖像馆';
-        
-        ctx.fillText(admitHeader, mainX, mainY);
+        ctx.font = 'bold 20px "Cinzel", "Songti SC", serif';
+        ctx.fillText(`ADMIT ONE · ${itemData.sourceType.toUpperCase()} · 时光放映`, mainX, mainY + 45);
 
-        // Photo thumbnail if exists
-        const mediaY = mainY + 30;
-        if (imgObj) {
-          const photoH = 380;
-          ctx.save();
-          ctx.beginPath();
-          ctx.rect(mainX, mediaY, mainW, photoH);
-          ctx.clip();
-          const scale = Math.max(mainW / imgObj.width, photoH / imgObj.height);
-          const dw = imgObj.width * scale;
-          const dh = imgObj.height * scale;
-          ctx.drawImage(imgObj, mainX + (mainW - dw) / 2, mediaY + (photoH - dh) / 2, dw, dh);
-          ctx.restore();
+        // 照片画幅 Bento 拼贴
+        const mediaY = mainY + 80;
+        const photoH = 460;
+        const availableW = width - mainX - pad;
 
-          ctx.strokeStyle = colors.border;
-          ctx.lineWidth = 1;
-          ctx.strokeRect(mainX, mediaY, mainW, photoH);
-
-          // Details below photo
-          const descY = mediaY + photoH + 50;
-          ctx.fillStyle = colors.accent;
-          ctx.font = 'bold 24px "Songti SC", serif';
-          ctx.fillText(`纪实：${itemData.subhead}`, mainX, descY);
-
-          ctx.fillStyle = colors.subText;
-          ctx.font = '22px "Songti SC", "SimSun", serif';
-          const snippet = (itemData.content || '').slice(0, 160) + ((itemData.content?.length || 0) > 160 ? '...' : '');
-
-          let wrap = '';
-          let py = descY + 45;
-          for (const c of snippet) {
-            if (ctx.measureText(wrap + c).width > mainW) {
-              ctx.fillText(wrap, mainX, py);
-              wrap = c;
-              py += 36;
-              if (py > height - 120) break;
-            } else {
-              wrap += c;
-            }
+        if (loadedImages.length > 0) {
+          const gap = 6;
+          if (loadedImages.length === 1) {
+            drawCoverImage(ctx, loadedImages[0], mainX, mediaY, availableW, photoH, 12);
+          } else if (loadedImages.length === 2) {
+            const colW = (availableW - gap) / 2;
+            drawCoverImage(ctx, loadedImages[0], mainX, mediaY, colW, photoH, 12);
+            drawCoverImage(ctx, loadedImages[1], mainX + colW + gap, mediaY, colW, photoH, 12);
+          } else if (loadedImages.length === 3) {
+            const leftW = Math.round(availableW * 0.6) - gap / 2;
+            const rightW = availableW - leftW - gap;
+            const rightH = (photoH - gap) / 2;
+            drawCoverImage(ctx, loadedImages[0], mainX, mediaY, leftW, photoH, 12);
+            drawCoverImage(ctx, loadedImages[1], mainX + leftW + gap, mediaY, rightW, rightH, 12);
+            drawCoverImage(ctx, loadedImages[2], mainX + leftW + gap, mediaY + rightH + gap, rightW, rightH, 12);
+          } else {
+            // 4 张及以上图片：2x2 经典宫格 Bento
+            const cellW = (availableW - gap) / 2;
+            const cellH = (photoH - gap) / 2;
+            drawCoverImage(ctx, loadedImages[0], mainX, mediaY, cellW, cellH, 12);
+            drawCoverImage(ctx, loadedImages[1], mainX + cellW + gap, mediaY, cellW, cellH, 12);
+            drawCoverImage(ctx, loadedImages[2], mainX, mediaY + cellH + gap, cellW, cellH, 12);
+            drawCoverImage(ctx, loadedImages[3], mainX + cellW + gap, mediaY + cellH + gap, cellW, cellH, 12);
           }
-          if (wrap) ctx.fillText(wrap, mainX, py);
-
-        } else if (itemData.sourceType === '拾人册') {
-          // 拾人册票根：展示专属头像勋章与人物档案
-          const photoH = 260;
-          ctx.fillStyle = colors.bg;
-          ctx.fillRect(mainX, mediaY, mainW, photoH);
-          ctx.strokeStyle = colors.border;
-          ctx.lineWidth = 1;
-          ctx.strokeRect(mainX, mediaY, mainW, photoH);
-
-          const avCenterY = mediaY + photoH / 2 - 15;
-          ctx.save();
-          ctx.fillStyle = colors.cardBg;
-          ctx.beginPath();
-          ctx.arc(width / 2, avCenterY, 65, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.strokeStyle = colors.accent;
-          ctx.lineWidth = 2;
-          ctx.stroke();
-
-          ctx.fillStyle = colors.text;
-          ctx.font = '54px "Songti SC", "SimSun", "Segoe UI Emoji", serif';
-          ctx.textAlign = 'center';
-          ctx.textBaseline = 'middle';
-          ctx.fillText(itemData.avatarSymbol || '友', width / 2, avCenterY + 2);
-
-          ctx.fillStyle = colors.accent;
-          ctx.font = 'bold 22px "Songti SC", serif';
-          ctx.fillText(`知交：${itemData.title}`, width / 2, avCenterY + 65);
-          ctx.restore();
-
-          // Details below photo
-          const descY = mediaY + photoH + 45;
-          ctx.fillStyle = colors.accent;
-          ctx.font = 'bold 24px "Songti SC", serif';
-          ctx.fillText(`结缘：${itemData.subhead}`, mainX, descY);
-
-          ctx.fillStyle = colors.subText;
-          ctx.font = '22px "Songti SC", "SimSun", serif';
-          const snippet = (itemData.content || '').slice(0, 160) + ((itemData.content?.length || 0) > 160 ? '...' : '');
-
-          let wrap = '';
-          let py = descY + 42;
-          for (const c of snippet) {
-            if (ctx.measureText(wrap + c).width > mainW) {
-              ctx.fillText(wrap, mainX, py);
-              wrap = c;
-              py += 36;
-              if (py > height - 120) break;
-            } else {
-              wrap += c;
-            }
-          }
-          if (wrap) ctx.fillText(wrap, mainX, py);
-
         } else {
-          // Pure text layout for story / letters
-          const textY = mediaY + 40;
-          ctx.fillStyle = colors.text;
-          ctx.font = 'bold 44px "Songti SC", "SimSun", serif';
-          ctx.fillText(`「${itemData.title}」`, mainX, textY);
-
+          ctx.fillStyle = colors.bg;
+          ctx.fillRect(mainX, mediaY, availableW, photoH);
           ctx.fillStyle = colors.accent;
-          ctx.font = '24px "Songti SC", serif';
-          ctx.fillText(`岁序印迹：${itemData.subhead}`, mainX, textY + 50);
-
-          ctx.fillStyle = colors.subText;
-          ctx.font = '24px "Songti SC", "SimSun", serif';
-          const fullSnippet = itemData.content || '';
-          let wrap = '';
-          let py = textY + 110;
-          for (const c of fullSnippet) {
-            if (ctx.measureText(wrap + c).width > mainW) {
-              ctx.fillText(wrap, mainX, py);
-              wrap = c;
-              py += 40;
-              if (py > height - 160) break;
-            } else {
-              wrap += c;
-            }
-          }
-          if (wrap) ctx.fillText(wrap, mainX, py);
+          ctx.font = 'bold 26px "Cinzel", serif';
+          ctx.textAlign = 'center';
+          ctx.fillText(`SHINIAN · ${itemData.sourceType}`, mainX + availableW / 2, mediaY + photoH / 2);
+          ctx.textAlign = 'left';
         }
 
-        // Bottom Watermark
+        // 详细文字叙事
+        const descY = mediaY + photoH + 50;
         ctx.fillStyle = colors.accent;
-        ctx.font = 'bold 18px "Cinzel", serif';
-        ctx.textAlign = 'center';
-        ctx.fillText('SHINIAN · 拾 年 珍 藏 纪 事', width / 2, height - 50);
+        ctx.font = 'bold 24px "Songti SC", serif';
+        ctx.fillText(`纪实：${itemData.subhead}`, mainX, descY);
+
+        ctx.fillStyle = colors.subText;
+        ctx.font = '22px "Songti SC", "SimSun", serif';
+        const snippet = (itemData.content || '').slice(0, 160) + ((itemData.content?.length || 0) > 160 ? '...' : '');
+
+        let wrap = '';
+        let py = descY + 45;
+        for (const c of snippet) {
+          if (ctx.measureText(wrap + c).width > availableW) {
+            ctx.fillText(wrap, mainX, py);
+            wrap = c;
+            py += 36;
+            if (py > height - 120) break;
+          } else {
+            wrap += c;
+          }
+        }
+        if (wrap) {
+          ctx.fillText(wrap, mainX, py);
+        }
+
+        // 底部序列条码风格装饰
+        ctx.fillStyle = colors.subText;
+        ctx.font = '16px "Cinzel", monospace';
+        ctx.fillText(`DATE: ${itemData.date || '2026'} · SEAT: V-01 · SCREEN: MEMOIR`, mainX, height - 70);
       }
     },
-    [itemData, style, tint]
+    [itemData, tint, style]
   );
 
-  // Render preview on change
   useEffect(() => {
     if (isOpen && previewCanvasRef.current && itemData) {
       drawCardToCanvas(previewCanvasRef.current);
     }
   }, [isOpen, itemData, style, tint, drawCardToCanvas]);
 
-  // 一键直接存入手机相册与文件落盘（彻底消除二级弹窗）
+  // 一键直接存入手机相册与文件落盘（彻底消除二级弹窗，支持安卓原生 MediaStore 桥接）
   const handleDownload = async () => {
     if (!itemData) return;
     setIsGenerating(true);
@@ -801,7 +804,30 @@ export const MemoirCardStudioModal: React.FC<MemoirCardStudioModalProps> = ({
         const file = new File([blob], fileName, { type: 'image/png' });
         const isMobile = typeof navigator !== 'undefined' && /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 
-        // 移动端优先调用系统级相册管道（系统直接写入相册并唤醒 MediaScanner）
+        // 0. 安卓封装 APK 原生桥接优先通道（直接通过原生 MediaStore 写入手机图库）
+        const win = window as any;
+        const nativeBridge = win.AndroidBridge || win.Android || win.JSBridge;
+        if (nativeBridge && (typeof nativeBridge.saveImageToGallery === 'function' || typeof nativeBridge.saveImage === 'function')) {
+          try {
+            const reader = new FileReader();
+            reader.onloadend = () => {
+              const base64 = reader.result as string;
+              if (typeof nativeBridge.saveImageToGallery === 'function') {
+                nativeBridge.saveImageToGallery(base64, fileName);
+              } else if (typeof nativeBridge.saveImage === 'function') {
+                nativeBridge.saveImage(base64, fileName);
+              }
+              onShowToast?.('卡片已保存至手机系统相册');
+              setIsGenerating(false);
+            };
+            reader.readAsDataURL(blob);
+            return;
+          } catch (bridgeErr) {
+            console.warn('原生相册桥接异常，切换回 Web 通道', bridgeErr);
+          }
+        }
+
+        // 1. 移动端优先调用系统级相册管道（系统直接写入相册并唤醒 MediaScanner）
         if (isMobile && navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
           try {
             await navigator.share({
@@ -817,7 +843,7 @@ export const MemoirCardStudioModal: React.FC<MemoirCardStudioModalProps> = ({
           }
         }
 
-        // 默认落盘直接保存
+        // 2. 默认落盘直接保存
         const blobUrl = URL.createObjectURL(blob);
         const link = document.createElement('a');
         link.download = fileName;
@@ -845,45 +871,51 @@ export const MemoirCardStudioModal: React.FC<MemoirCardStudioModalProps> = ({
         initial={{ scale: 0.94, opacity: 0, y: 20 }}
         animate={{ scale: 1, opacity: 1, y: 0 }}
         exit={{ scale: 0.94, opacity: 0, y: 20 }}
-        transition={{ type: 'spring', stiffness: 300, damping: 28 }}
-        className="relative w-full max-w-2xl bg-[#FAF8F5] rounded-3xl border border-[#2B332E]/15 shadow-2xl overflow-hidden flex flex-col max-h-[94vh] z-10"
+        className="relative w-full max-w-xl max-h-[92vh] flex flex-col rounded-3xl overflow-hidden shadow-2xl bg-[#FAF8F5] border border-[#2B332E]/15 font-sans"
       >
-        {/* 顶部标题栏：东方极简留白与苹果人机工程 */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-[#2B332E]/10 bg-white/60 backdrop-blur-md">
+        {/* 顶部标题栏 */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-[#2B332E]/10 bg-white/70 backdrop-blur-sm">
           <div className="flex items-center gap-2">
-            <Camera className="w-4 h-4 text-[#5B7B6D]" />
-            <h3 className="font-serif font-bold text-base text-[#17201B]">
-              回忆卡片工坊
-            </h3>
+            <div className="w-8 h-8 rounded-full bg-[#5B7B6D]/15 flex items-center justify-center text-[#5B7B6D]">
+              <ImageIcon className="w-4 h-4" />
+            </div>
+            <div>
+              <h3 className="font-serif font-bold text-sm text-[#2B332E]">
+                回忆卡片工坊
+              </h3>
+              <p className="text-[10px] text-[#6E7C75] font-serif">
+                将《{itemData.title}》定制为复古东方文艺明信片
+              </p>
+            </div>
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 rounded-full hover:bg-black/5 text-[#6E7C75] transition-colors cursor-pointer"
+            className="p-1.5 rounded-full hover:bg-black/5 text-[#6E7C75] hover:text-[#2B332E] transition-colors cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        {/* 核心控制工具条 */}
-        <div className="flex flex-wrap items-center justify-between gap-3 px-6 py-3 bg-[#2B332E]/[0.03] border-b border-[#2B332E]/10 text-xs font-serif">
-          {/* 版式形态切换 */}
-          <div className="flex items-center gap-1.5 bg-white p-1 rounded-full border border-[#2B332E]/10 shadow-2xs">
+        {/* 控制区：样式切换与纸张色系 */}
+        <div className="px-6 py-3 bg-[#FAF8F5] border-b border-[#2B332E]/10 flex flex-wrap items-center justify-between gap-3 text-xs">
+          {/* 卡片版式 */}
+          <div className="flex items-center gap-1.5 bg-white p-1 rounded-xl border border-[#2B332E]/10">
             <button
               onClick={() => setStyle('polaroid')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full transition-all cursor-pointer ${
+              className={`flex items-center gap-1 px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
                 style === 'polaroid'
                   ? 'bg-[#5B7B6D] text-white font-bold shadow-xs'
-                  : 'text-[#6E7C75] hover:text-[#17201B]'
+                  : 'text-[#6E7C75] hover:text-[#2B332E]'
               }`}
             >
               <ImageIcon className="w-3.5 h-3.5" /> 经典拍立得
             </button>
             <button
               onClick={() => setStyle('ticket')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full transition-all cursor-pointer ${
+              className={`flex items-center gap-1 px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
                 style === 'ticket'
                   ? 'bg-[#5B7B6D] text-white font-bold shadow-xs'
-                  : 'text-[#6E7C75] hover:text-[#17201B]'
+                  : 'text-[#6E7C75] hover:text-[#2B332E]'
               }`}
             >
               <Ticket className="w-3.5 h-3.5" /> 复古电影票根
@@ -939,11 +971,8 @@ export const MemoirCardStudioModal: React.FC<MemoirCardStudioModalProps> = ({
           </div>
         </div>
 
-        {/* 底部操作行动栏：内嵌东方意境美学提示语与一键直存按键，彻底取消二级弹窗 */}
-        <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-6 py-4 border-t border-[#2B332E]/10 bg-white/80 backdrop-blur-md">
-          <p className="text-[11px] text-[#6E7C75] font-serif text-center sm:text-left tracking-wide">
-            长按画幅直接储存
-          </p>
+        {/* 底部操作行动栏：一键直存按键，彻底取消二级弹窗，无多余文字冗余 */}
+        <div className="flex items-center justify-end px-6 py-4 border-t border-[#2B332E]/10 bg-white/80 backdrop-blur-md">
           <button
             onClick={handleDownload}
             disabled={isGenerating}

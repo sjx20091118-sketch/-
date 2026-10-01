@@ -326,15 +326,12 @@ export const PersonAlbum: React.FC<PersonAlbumProps> = ({
             title="展开全量相册"
           >
             {photos[2] && (
-              isVideoMedia(photos[2]) ? (
-                <video src={photos[2]} playsInline muted className="absolute inset-0 w-full h-full object-cover blur-[2px] brightness-[0.7]" />
-              ) : (
-                <img
-                  src={photos[2]}
-                  alt="更多影像"
-                  className="absolute inset-0 w-full h-full object-cover blur-[2.5px] brightness-[0.82] scale-105 group-hover:scale-110 transition-transform duration-700"
-                />
-              )
+              <AlbumThumbnailMedia
+                src={photos[2]}
+                isVid={isVideoMedia(photos[2])}
+                alt="更多影像"
+                className="absolute inset-0 w-full h-full object-cover blur-[2.5px] brightness-[0.82] scale-105 group-hover:scale-110 transition-transform duration-700"
+              />
             )}
             <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/50 to-black/25 backdrop-blur-[2px] transition-all group-hover:backdrop-blur-[1px]" />
             
@@ -379,7 +376,7 @@ export const PersonAlbum: React.FC<PersonAlbumProps> = ({
                 transition={{ duration: 0.2, ease: 'easeOut' }}
                 className="relative w-full max-w-xl bg-[#FAF8F5] rounded-3xl border border-[#5B7B6D]/30 shadow-2xl overflow-hidden flex flex-col font-sans z-10 paper-texture max-h-[88dvh]"
               >
-                {/* 弹窗头部：专属相册 + 在关闭小叉号左边增设「多选删除」 */}
+                {/* 弹窗头部：专属相册 + 多选状态 */}
                 <div className="p-4 bg-white/95 border-b border-[#5B7B6D]/15 flex items-center justify-between shrink-0">
                   <div className="flex items-center gap-2">
                     <div className="w-8 h-8 rounded-xl bg-[#FAF8F5] border border-[#5B7B6D]/20 flex items-center justify-center text-[#5B7B6D]">
@@ -395,7 +392,7 @@ export const PersonAlbum: React.FC<PersonAlbumProps> = ({
                     </div>
                   </div>
 
-                  {/* 右侧：多选删除 + 关闭按钮 */}
+                  {/* 右侧：多选删除触发 / 多选计数标签 + 关闭 */}
                   <div className="flex items-center gap-2">
                     {!isMultiSelectMode ? (
                       <button
@@ -412,45 +409,10 @@ export const PersonAlbum: React.FC<PersonAlbumProps> = ({
                         <span>多选删除</span>
                       </button>
                     ) : (
-                      <div className="flex items-center gap-1.5 sm:gap-2">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            if (selectedIndices.size === photos.length) {
-                              setSelectedIndices(new Set());
-                            } else {
-                              setSelectedIndices(new Set(photos.map((_, i) => i)));
-                            }
-                          }}
-                          className="text-[11px] font-serif px-2 py-1 rounded-lg text-[#6E7C75] hover:text-[#2B332E] hover:bg-[#FAF8F5] transition-all cursor-pointer"
-                        >
-                          {selectedIndices.size === photos.length ? '取消全选' : '全选'}
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() => {
-                            if (selectedIndices.size > 0) {
-                              setIsBatchConfirmOpen(true);
-                            }
-                          }}
-                          disabled={selectedIndices.size === 0}
-                          className="px-2.5 py-1 text-xs font-serif bg-red-600 hover:bg-red-700 text-white rounded-xl shadow-xs transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-40 disabled:pointer-events-none active:scale-95"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                          <span>删除 ({selectedIndices.size})</span>
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setIsMultiSelectMode(false);
-                            setSelectedIndices(new Set());
-                          }}
-                          className="text-xs font-serif text-[#6E7C75] hover:text-[#2B332E] px-2 py-1 rounded-lg hover:bg-stone-100 transition-all cursor-pointer"
-                        >
-                          完成
-                        </button>
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-xs font-serif text-[#5B7B6D] bg-[#5B7B6D]/10 px-2.5 py-1 rounded-xl border border-[#5B7B6D]/20">
+                          已选择 {selectedIndices.size} 项
+                        </span>
                       </div>
                     )}
 
@@ -542,6 +504,62 @@ export const PersonAlbum: React.FC<PersonAlbumProps> = ({
                     )}
                   </div>
                 </div>
+
+                {/* 多选模式下：卡片下方弹出独立的三个操作按钮条 */}
+                <AnimatePresence>
+                  {isMultiSelectMode && (
+                    <motion.div
+                      initial={{ y: 24, opacity: 0 }}
+                      animate={{ y: 0, opacity: 1 }}
+                      exit={{ y: 24, opacity: 0 }}
+                      transition={{ duration: 0.22, ease: 'easeOut' }}
+                      className="p-3.5 sm:p-4 bg-white/95 border-t border-[#5B7B6D]/15 flex items-center justify-between gap-2.5 shrink-0 shadow-sm"
+                    >
+                      {/* 按钮 1: 全选 / 取消全选 */}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (selectedIndices.size === photos.length) {
+                            setSelectedIndices(new Set());
+                          } else {
+                            setSelectedIndices(new Set(photos.map((_, i) => i)));
+                          }
+                        }}
+                        className="flex-1 py-2.5 px-2.5 sm:px-3 rounded-2xl border border-[#5B7B6D]/20 bg-[#FAF8F5] hover:bg-stone-100 text-[#526058] hover:text-[#2B332E] font-medium text-xs font-serif flex items-center justify-center gap-1.5 shadow-2xs active:scale-95 transition-all cursor-pointer"
+                      >
+                        <CheckSquare className="w-3.5 h-3.5 text-[#5B7B6D]" />
+                        <span>{selectedIndices.size === photos.length ? '取消全选' : '全选照片'}</span>
+                      </button>
+
+                      {/* 按钮 2: 批量删除 */}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (selectedIndices.size > 0) {
+                            setIsBatchConfirmOpen(true);
+                          }
+                        }}
+                        disabled={selectedIndices.size === 0}
+                        className="flex-1 py-2.5 px-2.5 sm:px-3 rounded-2xl bg-red-600 hover:bg-red-700 text-white font-bold text-xs font-serif flex items-center justify-center gap-1.5 shadow-xs transition-all cursor-pointer disabled:opacity-40 disabled:pointer-events-none active:scale-95"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span>删除 ({selectedIndices.size})</span>
+                      </button>
+
+                      {/* 按钮 3: 完成退出 */}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsMultiSelectMode(false);
+                          setSelectedIndices(new Set());
+                        }}
+                        className="flex-1 py-2.5 px-2.5 sm:px-3 rounded-2xl border border-black/10 bg-white hover:bg-stone-50 text-[#2B332E] font-medium text-xs font-serif flex items-center justify-center gap-1.5 shadow-2xs active:scale-95 transition-all cursor-pointer"
+                      >
+                        <span>完成</span>
+                      </button>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
               </motion.div>
             </div>
           )}

@@ -3,6 +3,7 @@ import { ImagePlus, Trash2, Loader2, Play, RotateCw } from 'lucide-react';
 import { compressImageFile } from './LocalImageUploader';
 import { extractVideoPoster, isVideoMedia, formatVideoDuration } from '../utils/mediaStorage';
 import { saveMediaBlob, resolveMediaUrl, isIndexedDbMedia } from '../services/indexedDbMedia';
+import { WaterInkVideoScrubber } from './WaterInkVideoScrubber';
 
 interface LocalMediaUploaderProps {
   value?: string;                    // 当前媒体地址（idb://..., base64 或 url）
@@ -201,18 +202,22 @@ export const LocalMediaUploader: React.FC<LocalMediaUploaderProps> = ({
                 </div>
               )}
 
-              {/* 底部时光刻度与细致进度条 */}
-              <div className="absolute bottom-0 inset-x-0 z-20 bg-gradient-to-t from-black/80 via-black/40 to-transparent p-2.5 pt-4 transition-opacity">
-                <div className="w-full bg-white/20 h-1 rounded-full overflow-hidden mb-1.5 relative">
-                  <div
-                    className="h-full bg-white transition-all duration-100 rounded-full"
-                    style={{ width: `${progressPercent}%` }}
-                  />
-                </div>
-                <div className="flex items-center justify-between text-[10px] font-mono text-white/80 px-0.5">
-                  <span>{formatVideoDuration(currentTime)}</span>
-                  <span>{formatVideoDuration(duration)}</span>
-                </div>
+              {/* 底部时光刻度与水墨可拖拽进度条 */}
+              <div
+                className="absolute bottom-0 inset-x-0 z-20 bg-gradient-to-t from-black/90 via-black/40 to-transparent p-2.5 pt-5"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <WaterInkVideoScrubber
+                  currentTime={currentTime}
+                  duration={duration}
+                  onSeek={(time) => {
+                    if (videoRef.current) {
+                      videoRef.current.currentTime = time;
+                      setCurrentTime(time);
+                    }
+                  }}
+                  themeColor="#FFFFFF"
+                />
               </div>
             </div>
           ) : (
@@ -266,7 +271,7 @@ export const LocalMediaUploader: React.FC<LocalMediaUploaderProps> = ({
               )}
             </div>
             <div className="text-xs font-serif font-bold text-[#2B332E] dark:text-[#FAF8F5]">
-              {isProcessing ? '正在处理影像附件...' : '点击上传相片或录长视频'}
+              {isProcessing ? '正在处理影像附件...' : '点击上传相片或视频'}
             </div>
           </div>
         </div>

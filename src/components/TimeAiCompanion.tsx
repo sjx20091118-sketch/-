@@ -398,11 +398,17 @@ export const TimeAiCompanion: React.FC<TimeAiCompanionProps> = ({
             onKeyDown={handleKeyDown}
             disabled={isLoading}
             placeholder="向时光提问，或写下你想念的瞬间…"
-            className={`flex-1 min-w-0 bg-transparent text-xs focus:outline-none font-serif tracking-wide ${
+            className={`flex-1 min-w-0 bg-transparent text-xs focus:outline-none font-serif tracking-wide select-text ${
               isDarkMode
                 ? 'text-[#FAF8F5] placeholder-[#A0B0A7]/60'
                 : 'text-[#2B332E] placeholder-[#6E7C75]/70'
             }`}
+            style={{
+              WebkitUserSelect: 'text',
+              userSelect: 'text',
+              pointerEvents: 'auto',
+              touchAction: 'manipulation'
+            }}
           />
 
           <button
