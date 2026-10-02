@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { motion, useMotionValue, useTransform } from 'motion/react';
-import { Flame, Lock, MailOpen, ArrowRight, Check } from 'lucide-react';
+import { motion, useMotionValue, useTransform, animate } from 'motion/react';
+import { Flame, Lock, ArrowRight } from 'lucide-react';
 import { HealingTheme } from '../types';
 
 interface SlideToUnlockProps {
@@ -19,48 +19,58 @@ export const SlideToUnlock: React.FC<SlideToUnlockProps> = ({
   disabled = false
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
-  const [containerWidth, setContainerWidth] = useState<number>(0);
+  const [containerWidth, setContainerWidth] = useState<number>(320);
   const [isCompleted, setIsCompleted] = useState<boolean>(false);
   const x = useMotionValue(0);
 
-  // Measure container width dynamically
+  // ResizeObserver 精准且高频监听容器宽度变动，杜绝尺寸不匹配导致的滑动卡顿
   useEffect(() => {
-    const updateWidth = () => {
-      if (containerRef.current) {
-        setContainerWidth(containerRef.current.offsetWidth);
+    if (!containerRef.current) return;
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        if (entry.contentRect.width > 0) {
+          setContainerWidth(entry.contentRect.width);
+        }
       }
-    };
-    updateWidth();
-    window.addEventListener('resize', updateWidth);
-    return () => window.removeEventListener('resize', updateWidth);
+    });
+    observer.observe(containerRef.current);
+    return () => observer.disconnect();
   }, []);
 
   const handleSize = 48; // Size of the wax seal thumb
-  const maxDrag = Math.max(0, containerWidth - handleSize - 8);
+  const maxDrag = Math.max(100, containerWidth - handleSize - 8);
 
-  // Transforms for dynamic track glow & opacity
-  const progress = useTransform(x, [0, maxDrag || 1], [0, 1]);
-  const textOpacity = useTransform(x, [0, (maxDrag || 1) * 0.6], [1, 0]);
-  const backgroundFillWidth = useTransform(x, (val) => `${val + handleSize / 2}px`);
+  // 动态轨迹与淡出变换 (高帧率流体算力适配)
+  const textOpacity = useTransform(x, [0, maxDrag * 0.55], [1, 0]);
+  const backgroundFillWidth = useTransform(x, (val) => `${Math.max(0, val + handleSize / 2)}px`);
 
   const handleDragEnd = () => {
     if (disabled || isUnlocking || isCompleted) return;
     const currentX = x.get();
-    // If dragged past 75% of max distance, complete the unlock
-    if (currentX >= maxDrag * 0.75) {
-      x.set(maxDrag);
+    
+    // 拖拽超过 68% 触发顺滑弹簧吸附终点并完成解锁
+    if (currentX >= maxDrag * 0.68) {
+      animate(x, maxDrag, {
+        type: 'spring',
+        stiffness: 380,
+        damping: 26,
+        mass: 0.8
+      });
       setIsCompleted(true);
       if (navigator.vibrate) {
         try {
           navigator.vibrate([20, 30, 40]);
-        } catch {
-          // Ignore
-        }
+        } catch {}
       }
       onUnlock();
     } else {
-      // Spring back
-      x.set(0);
+      // 未达到门槛，平滑回弹零点
+      animate(x, 0, {
+        type: 'spring',
+        stiffness: 420,
+        damping: 28,
+        mass: 0.8
+      });
     }
   };
 
@@ -68,53 +78,53 @@ export const SlideToUnlock: React.FC<SlideToUnlockProps> = ({
     <div className="w-full max-w-sm mx-auto space-y-2 select-none">
       <div
         ref={containerRef}
-        className="relative h-14 rounded-full p-1 border flex items-center overflow-hidden transition-all shadow-inner"
+        className="relative h-14 rounded-full p-1 border flex items-center overflow-hidden transition-colors shadow-inner"
         style={{
-          backgroundColor: 'rgba(255, 255, 255, 0.75)',
-          backdropFilter: 'blur(12px)',
-          WebkitBackdropFilter: 'blur(12px)',
-          borderColor: `${theme.primary}30`,
+          backgroundColor: 'rgba(255, 255, 255, 0.82)',
+          backdropFilter: 'blur(16px)',
+          WebkitBackdropFilter: 'blur(16px)',
+          borderColor: `${theme.primary}35`,
           boxShadow: 'inset 0 2px 6px rgba(0,0,0,0.04), 0 4px 16px rgba(0,0,0,0.03)'
         }}
       >
-        {/* Progress Background Tint */}
+        {/* 滑动进度半透明填充背景 (GPU 加速) */}
         <motion.div
-          className="absolute left-0 top-0 bottom-0 rounded-full pointer-events-none opacity-25"
+          className="absolute left-0 top-0 bottom-0 rounded-full pointer-events-none opacity-30"
           style={{
             width: backgroundFillWidth,
-            background: `linear-gradient(90deg, ${theme.primary}, ${theme.accent})`
+            background: `linear-gradient(90deg, ${theme.primary}, ${theme.accent})`,
+            willChange: 'width'
           }}
         />
 
-        {/* Shimmering Instructional Text */}
+        {/* 提示文案淡出 */}
         <motion.div
           style={{ opacity: textOpacity }}
           className="absolute inset-0 flex items-center justify-center pointer-events-none pl-12 pr-4 text-center"
         >
-          <div className="flex items-center gap-1.5 font-serif text-xs font-medium tracking-wider text-[#526058]">
-            <span>滑动解开火漆信封</span>
-            <ArrowRight className="w-3.5 h-3.5 opacity-60 animate-pulse text-[#E88765]" />
+          <div className="flex items-center gap-1.5 font-serif text-xs font-medium tracking-wider text-[#404E47]">
+            <span>滑动解开火漆信封 · 进入长卷</span>
+            <ArrowRight className="w-3.5 h-3.5 opacity-70 animate-pulse text-[#E88765]" />
           </div>
         </motion.div>
 
-        {/* Draggable Wax Seal Handle */}
+        {/* 核心可拖拽火漆印章句柄 */}
         <motion.div
           drag={disabled || isUnlocking || isCompleted ? false : 'x'}
           dragConstraints={{ left: 0, right: maxDrag }}
-          dragElastic={0.08}
+          dragElastic={0.05}
           dragMomentum={false}
           onDragEnd={handleDragEnd}
-          style={{ x }}
-          className="relative z-10 w-12 h-12 rounded-full cursor-grab active:cursor-grabbing flex items-center justify-center shadow-md transition-shadow active:shadow-lg touch-manipulation select-none"
+          style={{ x, willChange: 'transform' }}
+          className="relative z-10 w-12 h-12 rounded-full cursor-grab active:cursor-grabbing flex items-center justify-center shadow-md touch-none select-none"
         >
           <div
-            className="w-full h-full rounded-full flex items-center justify-center border-2 border-white/90 shadow-md relative overflow-hidden"
+            className="w-full h-full rounded-full flex items-center justify-center border-2 border-white/95 shadow-md relative overflow-hidden transition-transform active:scale-105"
             style={{
               background: `linear-gradient(135deg, ${theme.accent}, ${theme.primaryDark})`
             }}
           >
-            {/* Wax Seal Rim Highlights */}
-            <div className="absolute inset-0 bg-gradient-to-t from-black/20 via-transparent to-white/30 pointer-events-none rounded-full" />
+            <div className="absolute inset-0 bg-gradient-to-t from-black/20 via-transparent to-white/35 pointer-events-none rounded-full" />
             
             {isUnlocking || isCompleted ? (
               <Flame className="w-5 h-5 text-white animate-bounce" />

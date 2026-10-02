@@ -116,11 +116,22 @@ form input, form textarea {
   user-select: text !important;
 }
 
-/* Dark Mode Input Overrides (Only when inside dark cards or with .dark-input) */
-.dark input.dark-input, .dark textarea.dark-input,
-.dark-zen-theme input.dark-input, .dark-zen-theme textarea.dark-input,
-.dark [class*="dark:bg-[#1"] input, .dark [class*="dark:bg-[#1"] textarea {
+/* Dark Mode Input Overrides */
+.dark input, .dark textarea, .dark select,
+.dark-zen-theme input, .dark-zen-theme textarea, .dark-zen-theme select {
   color: #FAF8F5 !important;
+}
+
+.dark input::placeholder, .dark textarea::placeholder {
+  color: #7D8E85 !important;
+  opacity: 0.85;
+}
+
+/* Specific light cards inside dark mode still retain dark ink */
+.dark .bg-white input, .dark .bg-white textarea,
+.dark [class*="bg-white/9"] input, .dark [class*="bg-white/9"] textarea,
+.dark [class*="bg-[#FAF8F5]"] input, .dark [class*="bg-[#FAF8F5]"] textarea {
+  color: #2B332E !important;
 }
 
 button {
@@ -128,13 +139,13 @@ button {
   font-family: inherit;
 }
 
-/* Golden Compact Clearance beneath Floating Island (16-20px optimal breathing room) */
+/* Golden Compact Clearance beneath Floating Island (Optimal breathing room) */
 .main-content-clearance {
-  padding-top: calc(max(var(--safe-area-top, 16px), env(safe-area-inset-top, 16px), 16px) + 54px) !important;
+  padding-top: calc(max(var(--safe-area-top, 16px), env(safe-area-inset-top, 16px), 16px) + 62px) !important;
 }
 @media (min-width: 640px) {
   .main-content-clearance {
-    padding-top: 70px !important;
+    padding-top: 78px !important;
   }
 }
 
@@ -437,6 +448,54 @@ button {
 .before\:bg-\[\#5B7B6D\]\/25::before {
   background-color: rgba(var(--primary-rgb), 0.25) !important;
 }
+
+/* ==================== Apple Liquid Glass Input & Button Precision Styling ==================== */
+.apple-glass-input {
+  background-color: rgba(0, 0, 0, 0.02) !important;
+  border: 1px solid rgba(0, 0, 0, 0.08) !important;
+  backdrop-filter: blur(20px) saturate(160%);
+  -webkit-backdrop-filter: blur(20px) saturate(160%);
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  color: #2B332E !important;
+}
+
+.dark .apple-glass-input,
+.dark-zen-theme .apple-glass-input {
+  background-color: rgba(255, 255, 255, 0.04) !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  color: #FAF8F5 !important;
+}
+
+.apple-glass-input:focus {
+  border-color: var(--theme-primary, #5B7B6D) !important;
+  box-shadow: 0 0 0 2px rgba(var(--primary-rgb), 0.16), 0 2px 8px -2px rgba(0, 0, 0, 0.06);
+  background-color: rgba(255, 255, 255, 0.06) !important;
+}
+
+.apple-glass-btn {
+  border: 1px solid rgba(0, 0, 0, 0.08) !important;
+  background-color: rgba(0, 0, 0, 0.025);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.dark .apple-glass-btn,
+.dark-zen-theme .apple-glass-btn {
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  background-color: rgba(255, 255, 255, 0.04);
+}
+
+.apple-glass-btn:hover {
+  border-color: var(--theme-primary, #5B7B6D) !important;
+  background-color: rgba(var(--primary-rgb), 0.08);
+  transform: translateY(-1px);
+}
+
+.apple-glass-btn:active {
+  transform: scale(0.98);
+}
+
 
 /* Today Featured Card Gradient */
 .from-\[\#E88765\] {

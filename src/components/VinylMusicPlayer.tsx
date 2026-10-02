@@ -744,35 +744,51 @@ export const VinylMusicPlayer: React.FC<VinylMusicPlayerProps> = ({ onShowToast 
 
                 {viewMode === 'search' && (
                   <div className="space-y-4">
-                    {/* 搜索框 */}
+                    {/* Apple Music 风格极简悬浮搜索栏 */}
                     <form
                       onSubmit={(e) => {
                         e.preventDefault();
                         handleSearch();
                       }}
-                      className="relative flex items-center"
+                      className="relative flex items-center group"
                     >
+                      <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#6E7C75] pointer-events-none">
+                        <Search className="w-4 h-4" />
+                      </div>
                       <input
                         type="text"
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
-                        placeholder="搜索歌曲、歌手（如：周杰伦、晴天、起风了）"
-                        className="w-full pl-9 pr-20 py-2 rounded-xl bg-white/80 border border-[#2B332E]/10 focus:border-[#5B7B6D] focus:ring-1 focus:ring-[#5B7B6D] text-xs font-serif text-[#17201B] placeholder:text-[#6E7C75]/60 outline-none transition-all"
+                        placeholder="搜索歌曲、艺术家、专辑（如：周杰伦、晴天、起风了）"
+                        className="w-full pl-10 pr-24 py-2.5 rounded-2xl bg-black/[0.04] dark:bg-white/[0.06] border border-black/10 dark:border-white/10 focus:border-[#5B7B6D] focus:bg-white dark:focus:bg-[#1A2420] text-xs font-serif text-[#17201B] dark:text-[#FAF8F5] placeholder:text-[#6E7C75]/60 outline-none transition-all shadow-inner"
                       />
-                      <Search className="absolute left-3 top-2.5 w-4 h-4 text-[#6E7C75]" />
+                      {searchQuery && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSearchQuery('');
+                            setSearchResults([]);
+                          }}
+                          className="absolute right-16 top-1/2 -translate-y-1/2 p-1 text-[#6E7C75] hover:text-[#17201B] dark:hover:text-white transition-colors cursor-pointer"
+                        >
+                          <span className="text-xs bg-black/10 dark:bg-white/10 w-4 h-4 rounded-full flex items-center justify-center font-bold">×</span>
+                        </button>
+                      )}
                       <button
                         type="submit"
                         disabled={isSearching}
-                        className="absolute right-1 top-1 bottom-1 px-3 bg-[#5B7B6D] hover:bg-[#3E564B] text-white text-xs rounded-lg font-serif transition-colors disabled:opacity-50 cursor-pointer"
+                        className="absolute right-1.5 top-1.5 bottom-1.5 px-3.5 bg-[#5B7B6D] hover:bg-[#4A675A] text-white text-xs font-serif font-bold rounded-xl shadow-xs transition-all active:scale-95 disabled:opacity-50 cursor-pointer flex items-center justify-center"
                       >
-                        {isSearching ? '搜索中...' : '搜索'}
+                        {isSearching ? '检索中' : '搜索'}
                       </button>
                     </form>
 
-                    {/* 热门搜索标签 */}
-                    <div className="space-y-1.5">
-                      <p className="text-[11px] text-[#6E7C75] font-serif">推荐热搜：</p>
-                      <div className="flex flex-wrap gap-1.5">
+                    {/* 热门搜索分类胶囊流 */}
+                    <div className="space-y-2">
+                      <span className="text-[11px] font-serif font-bold text-[#6E7C75] dark:text-[#A7B4AD] tracking-wider">
+                        热门推荐
+                      </span>
+                      <div className="flex items-center gap-1.5 overflow-x-auto custom-scrollbar pb-1 -mx-1 px-1">
                         {['三叶的主题曲', 'Sparkle', '晴天', '起风了', '七里香', '蒲公英的约定', '夏天的风', 'Lemon', 'Summer'].map((kw) => (
                           <button
                             key={kw}
@@ -781,7 +797,7 @@ export const VinylMusicPlayer: React.FC<VinylMusicPlayerProps> = ({ onShowToast 
                               setSearchQuery(kw);
                               handleSearch(kw);
                             }}
-                            className="text-[11px] font-serif px-2.5 py-1 rounded-full bg-white/60 hover:bg-white text-[#17201B] border border-[#2B332E]/10 hover:border-[#5B7B6D] transition-colors cursor-pointer"
+                            className="text-[11px] font-serif px-3 py-1 rounded-xl bg-black/[0.03] dark:bg-white/[0.05] hover:bg-white dark:hover:bg-white/15 text-[#2B332E] dark:text-[#E2EAE5] border border-black/5 dark:border-white/10 hover:border-[#5B7B6D]/40 transition-all cursor-pointer whitespace-nowrap shadow-2xs shrink-0"
                           >
                             {kw}
                           </button>
@@ -789,31 +805,34 @@ export const VinylMusicPlayer: React.FC<VinylMusicPlayerProps> = ({ onShowToast 
                       </div>
                     </div>
 
-                    {/* 扩展功能区：本地导入与网络直链 */}
-                    <div className="pt-2 border-t border-[#2B332E]/10 flex items-center justify-between text-xs">
+                    {/* 扩展功能区：本地导入与音频直链（双列栅格自适应排版，深度适配主色调） */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                       <button
                         type="button"
                         onClick={() => fileInputRef.current?.click()}
-                        className="flex items-center gap-1.5 text-[#5B7B6D] hover:text-[#3E564B] font-serif transition-colors cursor-pointer"
+                        className="flex items-center justify-center gap-2 px-3 py-2 rounded-2xl bg-black/[0.025] dark:bg-white/[0.04] border border-black/5 dark:border-white/8 hover:border-[#5B7B6D]/35 hover:bg-white dark:hover:bg-white/10 text-[#3D4C44] dark:text-[#D6E0DA] font-serif text-xs font-medium transition-all shadow-2xs cursor-pointer"
                       >
-                        <Upload className="w-3.5 h-3.5" /> 导入本地音轨 (MP3/FLAC)
+                        <Upload className="w-3.5 h-3.5 text-[#5B7B6D] dark:text-[#A7D1BF]" />
+                        <span>导入本地音轨 (MP3/FLAC)</span>
                       </button>
                       <button
                         type="button"
                         onClick={() => setShowCustomModal(true)}
-                        className="flex items-center gap-1.5 text-[#C5A059] hover:text-[#9A7D43] font-serif transition-colors cursor-pointer"
+                        className="flex items-center justify-center gap-2 px-3 py-2 rounded-2xl bg-black/[0.025] dark:bg-white/[0.04] border border-black/5 dark:border-white/8 hover:border-[#5B7B6D]/35 hover:bg-white dark:hover:bg-white/10 text-[#3D4C44] dark:text-[#D6E0DA] font-serif text-xs font-medium transition-all shadow-2xs cursor-pointer"
                       >
-                        <Link className="w-3.5 h-3.5" /> 粘贴网络音频直链
+                        <Link className="w-3.5 h-3.5 text-[#5B7B6D] dark:text-[#A7D1BF]" />
+                        <span>粘贴音频直链</span>
                       </button>
                     </div>
 
-                    {/* 搜索结果或精选推荐 */}
-                    <div className="space-y-2 mt-2">
+                    {/* 搜索结果或极简精选卡片流 */}
+                    <div className="space-y-3 mt-2">
                       {searchResults.length > 0 ? (
-                        <div className="space-y-2">
+                        <div className="space-y-2.5">
                           <div className="flex items-center justify-between">
-                            <span className="text-xs font-serif font-bold text-[#17201B]">
-                              搜索结果 ({searchResults.length})
+                            <span className="text-xs font-serif font-bold text-[#17201B] dark:text-[#FAF8F5] flex items-center gap-1.5">
+                              <Music className="w-3.5 h-3.5 text-[#5B7B6D]" />
+                              <span>全网检索结果 ({searchResults.length})</span>
                             </span>
                             <button
                               type="button"
@@ -821,62 +840,90 @@ export const VinylMusicPlayer: React.FC<VinylMusicPlayerProps> = ({ onShowToast 
                                 setSearchResults([]);
                                 setSearchQuery('');
                               }}
-                              className="text-[11px] text-[#5B7B6D] hover:underline font-serif cursor-pointer"
+                              className="text-[11px] text-[#5B7B6D] dark:text-[#A7D1BF] hover:underline font-serif cursor-pointer"
                             >
                               返回精选推荐
                             </button>
                           </div>
-                          <div className="space-y-1.5 max-h-[300px] overflow-y-auto pr-1">
+
+                          <div className="space-y-2 max-h-[360px] overflow-y-auto custom-scrollbar pr-1">
                             {searchResults.map((song) => {
                               const isCurrent = currentTrack?.id === song.id;
+                              const isFav = favorites.some((f) => f.id === song.id);
                               return (
                                 <div
                                   key={song.id}
                                   onClick={() => selectSearchResult(song)}
-                                  className={`flex items-center justify-between p-2 rounded-xl border transition-all cursor-pointer ${
-                                    isCurrent && isPlaying
-                                      ? 'bg-white border-[#5B7B6D] shadow-xs'
-                                      : 'bg-white/70 hover:bg-white border-[#2B332E]/5 hover:border-[#5B7B6D]/30'
+                                  className={`group relative flex items-center justify-between p-2.5 rounded-2xl border transition-all cursor-pointer ${
+                                    isCurrent
+                                      ? 'bg-white/95 dark:bg-[#1C2722] border-[#5B7B6D] shadow-md'
+                                      : 'bg-white/70 dark:bg-white/[0.04] hover:bg-white dark:hover:bg-white/[0.08] border-black/5 dark:border-white/8 hover:border-[#5B7B6D]/30'
                                   }`}
                                 >
-                                  <div className="flex items-center gap-2.5 min-w-0">
-                                    <div className="w-9 h-9 rounded-lg overflow-hidden bg-[#5B7B6D]/10 shrink-0">
+                                  <div className="flex items-center gap-3 min-w-0 flex-1">
+                                    {/* 圆角高清封面 + 动态播放指示器 */}
+                                    <div className="relative w-11 h-11 rounded-xl overflow-hidden bg-black/5 dark:bg-white/10 shrink-0 shadow-sm">
                                       <img
                                         src={song.cover || DEFAULT_FALLBACK_COVER}
                                         alt={song.title}
                                         onError={(e) => {
                                           (e.currentTarget as HTMLImageElement).src = DEFAULT_FALLBACK_COVER;
                                         }}
-                                        className="w-full h-full object-cover"
+                                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                                       />
+                                      {isCurrent && isPlaying && (
+                                        <div className="absolute inset-0 bg-black/45 backdrop-blur-[1px] flex items-center justify-center gap-0.5">
+                                          <span className="w-0.5 h-3 bg-white rounded-full animate-[pulse_0.6s_ease-in-out_infinite]" />
+                                          <span className="w-0.5 h-4 bg-white rounded-full animate-[pulse_0.4s_ease-in-out_infinite]" />
+                                          <span className="w-0.5 h-2.5 bg-white rounded-full animate-[pulse_0.7s_ease-in-out_infinite]" />
+                                        </div>
+                                      )}
                                     </div>
-                                    <div className="min-w-0">
-                                      <h4 className="text-xs font-serif font-bold text-[#17201B] truncate">
+
+                                    {/* 歌曲标题与歌手元数据 */}
+                                    <div className="min-w-0 flex-1">
+                                      <h4 className="text-xs font-serif font-bold text-[#17201B] dark:text-[#FAF8F5] truncate group-hover:text-[#5B7B6D] dark:group-hover:text-[#A7D1BF] transition-colors">
                                         {song.title}
                                       </h4>
-                                      <p className="text-[10px] text-[#6E7C75] font-serif truncate">
-                                        {song.artist} {song.album ? `· ${song.album}` : ''}
+                                      <p className="text-[11px] text-[#6E7C75] dark:text-[#A7B4AD] font-serif truncate mt-0.5">
+                                        <span>{song.artist}</span>
+                                        {song.album && <span className="opacity-70"> · {song.album}</span>}
                                       </p>
                                     </div>
                                   </div>
+
+                                  {/* 快捷操作栏 */}
                                   <div className="flex items-center gap-1 shrink-0 ml-2">
                                     <button
                                       type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        toggleFavorite(song);
+                                      }}
+                                      title={isFav ? '已收藏' : '收藏'}
+                                      className={`p-1.5 rounded-xl hover:bg-black/5 dark:hover:bg-white/10 transition-colors cursor-pointer ${
+                                        isFav ? 'text-rose-500' : 'text-[#6E7C75] hover:text-rose-500'
+                                      }`}
+                                    >
+                                      <Heart className={`w-3.5 h-3.5 ${isFav ? 'fill-rose-500' : ''}`} />
+                                    </button>
+                                    <button
+                                      type="button"
                                       onClick={(e) => handleAddToQueue(song, e)}
-                                      title="加入待奏列表"
-                                      className="p-1 rounded hover:bg-black/5 text-[#6E7C75] hover:text-[#17201B] transition-colors"
+                                      title="加入播放队列"
+                                      className="p-1.5 rounded-xl hover:bg-black/5 dark:hover:bg-white/10 text-[#6E7C75] hover:text-[#17201B] dark:hover:text-white transition-colors cursor-pointer"
                                     >
                                       <Plus className="w-3.5 h-3.5" />
                                     </button>
                                     <button
                                       type="button"
                                       onClick={() => selectSearchResult(song)}
-                                      className="p-1 rounded-full bg-[#5B7B6D] text-white hover:bg-[#3E564B] transition-colors"
+                                      className="p-2 rounded-xl bg-[#5B7B6D] text-white hover:bg-[#4A675A] transition-all shadow-xs cursor-pointer active:scale-95 ml-0.5"
                                     >
                                       {isCurrent && isPlaying ? (
-                                        <Pause className="w-3 h-3 fill-current" />
+                                        <Pause className="w-3.5 h-3.5 fill-current" />
                                       ) : (
-                                        <Play className="w-3 h-3 fill-current ml-0.5" />
+                                        <Play className="w-3.5 h-3.5 fill-current ml-0.5" />
                                       )}
                                     </button>
                                   </div>
@@ -886,53 +933,84 @@ export const VinylMusicPlayer: React.FC<VinylMusicPlayerProps> = ({ onShowToast 
                           </div>
                         </div>
                       ) : (
-                        /* 精选推荐歌曲列表 */
-                        <div className="space-y-1.5 pt-1">
-                          <p className="text-xs font-serif font-bold text-[#17201B]">精选时光曲目：</p>
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 max-h-[300px] overflow-y-auto pr-1">
+                        /* 极简精选时光推荐流 */
+                        <div className="space-y-3 pt-1">
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-serif font-bold text-[#17201B] dark:text-[#FAF8F5] flex items-center gap-1.5">
+                              <Music className="w-3.5 h-3.5 text-[#5B7B6D]" />
+                              <span>编辑精选 · 典藏时光曲目</span>
+                            </span>
+                            <span className="text-[10px] text-[#6E7C75] font-serif">即点即播</span>
+                          </div>
+
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-[360px] overflow-y-auto custom-scrollbar pr-1">
                             {CURATED_TIME_SONGS.map((song) => {
                               const isCurrent = currentTrack?.id === song.id;
+                              const isFav = favorites.some((f) => f.id === song.id);
                               return (
                                 <div
                                   key={song.id}
                                   onClick={() => selectSearchResult(song)}
-                                  className={`flex items-center justify-between p-2 rounded-xl border transition-all cursor-pointer ${
-                                    isCurrent && isPlaying
-                                      ? 'bg-white border-[#5B7B6D] shadow-xs'
-                                      : 'bg-white/70 hover:bg-white border-[#2B332E]/5 hover:border-[#5B7B6D]/30'
+                                  className={`group relative flex items-center justify-between p-2.5 rounded-2xl border transition-all cursor-pointer ${
+                                    isCurrent
+                                      ? 'bg-white/95 dark:bg-[#1C2722] border-[#5B7B6D] shadow-sm'
+                                      : 'bg-white/70 dark:bg-white/[0.04] hover:bg-white dark:hover:bg-white/[0.08] border-black/5 dark:border-white/8 hover:border-[#5B7B6D]/30'
                                   }`}
                                 >
-                                  <div className="flex items-center gap-2 min-w-0">
-                                    <div className="w-8 h-8 rounded-lg overflow-hidden bg-[#5B7B6D]/10 shrink-0">
+                                  <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                                    <div className="relative w-10 h-10 rounded-xl overflow-hidden bg-black/5 dark:bg-white/10 shrink-0 shadow-2xs">
                                       <img
                                         src={song.cover}
                                         alt={song.title}
                                         onError={(e) => {
                                           (e.currentTarget as HTMLImageElement).src = DEFAULT_FALLBACK_COVER;
                                         }}
-                                        className="w-full h-full object-cover"
+                                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                                       />
+                                      {isCurrent && isPlaying && (
+                                        <div className="absolute inset-0 bg-black/45 backdrop-blur-[1px] flex items-center justify-center gap-0.5">
+                                          <span className="w-0.5 h-2.5 bg-white rounded-full animate-[pulse_0.6s_ease-in-out_infinite]" />
+                                          <span className="w-0.5 h-3.5 bg-white rounded-full animate-[pulse_0.4s_ease-in-out_infinite]" />
+                                          <span className="w-0.5 h-2 bg-white rounded-full animate-[pulse_0.7s_ease-in-out_infinite]" />
+                                        </div>
+                                      )}
                                     </div>
-                                    <div className="min-w-0">
-                                      <h4 className="text-xs font-serif font-bold text-[#17201B] truncate">
+
+                                    <div className="min-w-0 flex-1">
+                                      <h4 className="text-xs font-serif font-bold text-[#17201B] dark:text-[#FAF8F5] truncate group-hover:text-[#5B7B6D] dark:group-hover:text-[#A7D1BF] transition-colors">
                                         {song.title}
                                       </h4>
-                                      <p className="text-[10px] text-[#6E7C75] truncate font-serif">
+                                      <p className="text-[10px] text-[#6E7C75] dark:text-[#A7B4AD] truncate font-serif mt-0.5">
                                         {song.artist}
                                       </p>
                                     </div>
                                   </div>
-                                  <button
-                                    type="button"
-                                    onClick={() => selectSearchResult(song)}
-                                    className="p-1 rounded-full bg-[#5B7B6D] text-white hover:bg-[#3E564B] transition-colors shrink-0 ml-1"
-                                  >
-                                    {isCurrent && isPlaying ? (
-                                      <Pause className="w-3 h-3 fill-current" />
-                                    ) : (
-                                      <Play className="w-3 h-3 fill-current ml-0.5" />
-                                    )}
-                                  </button>
+
+                                  <div className="flex items-center gap-1 shrink-0 ml-1.5">
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        toggleFavorite(song);
+                                      }}
+                                      className={`p-1 rounded-lg hover:bg-black/5 dark:hover:bg-white/10 transition-colors cursor-pointer ${
+                                        isFav ? 'text-rose-500' : 'text-[#6E7C75]/60 hover:text-rose-500'
+                                      }`}
+                                    >
+                                      <Heart className={`w-3 h-3 ${isFav ? 'fill-rose-500' : ''}`} />
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => selectSearchResult(song)}
+                                      className="p-1.5 rounded-xl bg-[#5B7B6D] text-white hover:bg-[#4A675A] transition-colors shrink-0 shadow-2xs"
+                                    >
+                                      {isCurrent && isPlaying ? (
+                                        <Pause className="w-3 h-3 fill-current" />
+                                      ) : (
+                                        <Play className="w-3 h-3 fill-current ml-0.5" />
+                                      )}
+                                    </button>
+                                  </div>
                                 </div>
                               );
                             })}

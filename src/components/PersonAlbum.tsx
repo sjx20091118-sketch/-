@@ -1,7 +1,7 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
-import { Plus, Trash2, X, ChevronLeft, ChevronRight, Image as ImageIcon, Check, CheckSquare, Film, Video } from 'lucide-react';
+import { Plus, Trash2, X, ChevronLeft, ChevronRight, Image as ImageIcon, Check, CheckSquare, Film, Video, Camera } from 'lucide-react';
 import { compressImageFile } from './LocalImageUploader';
 import { isVideoMedia } from '../utils/mediaStorage';
 import { VintageVideoPlayer } from './VintageVideoPlayer';
@@ -186,18 +186,18 @@ export const PersonAlbum: React.FC<PersonAlbumProps> = ({
   const count = photos.length;
 
   return (
-    <div className="bg-white p-4 sm:p-5 rounded-3xl border border-[#D9CFC1] shadow-2xs space-y-3 font-sans transition-all">
+    <div className="bg-white dark:bg-[#16211B] p-4 sm:p-5 rounded-3xl border border-[#D9CFC1] dark:border-[#5B7B6D]/30 shadow-2xs space-y-3 font-sans transition-all">
       {/* 头部标题区：图标与专属相册 */}
-      <div className="flex justify-between items-center pb-2 border-b border-[#5B7B6D]/10">
+      <div className="flex justify-between items-center pb-2 border-b border-[#5B7B6D]/10 dark:border-white/10">
         <div className="flex items-center gap-2">
-          <div className="w-7 h-7 rounded-xl bg-[#FAF8F5] border border-[#5B7B6D]/20 flex items-center justify-center text-[#5B7B6D]">
+          <div className="w-7 h-7 rounded-xl bg-[#FAF8F5] dark:bg-[#203026] border border-[#5B7B6D]/20 dark:border-white/10 flex items-center justify-center text-[#5B7B6D] dark:text-[#A7D1BF]">
             <ImageIcon className="w-3.5 h-3.5" />
           </div>
           <div>
-            <h3 className="font-bold text-[#2B332E] text-xs sm:text-sm font-serif flex items-center gap-1.5">
+            <h3 className="font-bold text-[#2B332E] dark:text-[#FAF8F5] text-xs sm:text-sm font-serif flex items-center gap-1.5">
               <span>专属相册</span>
               {count > 0 && (
-                <span className="text-[11px] font-sans font-normal text-[#6E7C75]">
+                <span className="text-[11px] font-sans font-normal text-[#6E7C75] dark:text-[#8E9F97]">
                   ({count})
                 </span>
               )}
@@ -209,7 +209,7 @@ export const PersonAlbum: React.FC<PersonAlbumProps> = ({
           type="button"
           onClick={() => fileInputRef.current?.click()}
           disabled={isUploading}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white border border-[#5B7B6D]/30 hover:border-[#5B7B6D] hover:bg-[#5B7B6D]/10 text-[#5B7B6D] transition-all text-xs font-serif font-medium shadow-2xs cursor-pointer active:scale-95 disabled:opacity-50"
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#FAF8F5] dark:bg-white/10 border border-[#5B7B6D]/30 hover:border-[#5B7B6D] hover:bg-[#5B7B6D]/10 text-[#5B7B6D] dark:text-[#A7B4AD] transition-all text-xs font-serif font-medium shadow-2xs cursor-pointer active:scale-95 disabled:opacity-50"
         >
           <Plus className="w-3.5 h-3.5" />
           <span>添加相片</span>
@@ -226,21 +226,17 @@ export const PersonAlbum: React.FC<PersonAlbumProps> = ({
       />
 
       {/* 3 槽位动态展示区 */}
-      {/* 情况 1: 0 张照片/视频 - 居中展示「+ 点击上传」入口 */}
+      {/* 情况 1: 0 张照片/视频 - 仿照食物阁/食忆篇连选的统一优雅留白风格 */}
       {count === 0 && (
-        <button
-          type="button"
+        <div
           onClick={() => fileInputRef.current?.click()}
-          disabled={isUploading}
-          className="w-full h-28 rounded-2xl border-2 border-dashed border-[#5B7B6D]/30 bg-[#FAF8F5] hover:bg-[#F2EFE9] transition-all flex flex-col items-center justify-center gap-2 text-[#5B7B6D] group active:scale-[0.99] cursor-pointer"
+          className="cursor-pointer border-2 border-dashed border-[#5B7B6D]/20 dark:border-[#5B7B6D]/30 hover:border-[#E88765]/40 dark:hover:border-[#E88765]/50 bg-[#FAF8F5] dark:bg-[#141C18] hover:bg-[#FAF6F0] dark:hover:bg-[#1A2620] rounded-2xl p-6 text-center transition-all group"
         >
-          <div className="w-9 h-9 rounded-2xl bg-white border border-[#5B7B6D]/20 flex items-center justify-center shadow-2xs group-hover:scale-105 group-hover:border-[#5B7B6D] transition-all">
-            <Plus className="w-4 h-4 stroke-[2.2]" />
-          </div>
-          <span className="text-xs font-bold text-[#2B332E]">
-            {isUploading ? '正在载入处理中...' : '点击添加第一张相片或旧日短视频'}
-          </span>
-        </button>
+          <Camera className="w-8 h-8 text-[#5B7B6D]/40 group-hover:text-[#E88765] dark:text-[#A7D1BF]/40 dark:group-hover:text-[#E88765] mx-auto mb-2 transition-colors" />
+          <p className="text-xs text-[#6E7C75] dark:text-[#A7B4AD] font-serif">
+            {isUploading ? '正在载入处理中...' : '暂无专属留影，轻触即可添加相片或短视频'}
+          </p>
+        </div>
       )}
 
       {/* 情况 2: 1~2 张 - 展示已有缩略图，单击直接放大；最后一个槽位保留「+ 上传」 */}
@@ -252,7 +248,7 @@ export const PersonAlbum: React.FC<PersonAlbumProps> = ({
               <div
                 key={idx}
                 onClick={() => setPreviewIndex(idx)}
-                className="relative aspect-square rounded-2xl overflow-hidden bg-black/90 border border-[#5B7B6D]/15 group cursor-pointer shadow-2xs hover:shadow-md transition-all active:scale-[0.98]"
+                className="relative aspect-square rounded-2xl overflow-hidden bg-black/90 border border-[#5B7B6D]/15 dark:border-white/10 group cursor-pointer shadow-2xs hover:shadow-md transition-all active:scale-[0.98]"
                 title={isVid ? '点击放映视频' : '点击放大查看'}
               >
                 <AlbumThumbnailMedia src={itemUrl} isVid={isVid} alt={`留影 ${idx + 1}`} />
@@ -271,11 +267,11 @@ export const PersonAlbum: React.FC<PersonAlbumProps> = ({
             type="button"
             onClick={() => fileInputRef.current?.click()}
             disabled={isUploading}
-            className="aspect-square rounded-2xl border-2 border-dashed border-[#5B7B6D]/30 bg-[#FAF8F5] hover:bg-[#F2EFE9] transition-all flex flex-col items-center justify-center gap-1 text-[#5B7B6D] group active:scale-95 cursor-pointer"
+            className="aspect-square rounded-2xl border-2 border-dashed border-[#5B7B6D]/20 dark:border-[#5B7B6D]/30 hover:border-[#E88765]/40 dark:hover:border-[#E88765]/50 bg-[#FAF8F5] dark:bg-[#141C18] hover:bg-[#FAF6F0] dark:hover:bg-[#1A2620] transition-all flex flex-col items-center justify-center gap-1 text-[#5B7B6D] dark:text-[#A7D1BF] group active:scale-95 cursor-pointer"
             title="添加照片或视频"
           >
-            <Plus className="w-5 h-5 stroke-[2] group-hover:scale-110 text-[#5B7B6D] transition-transform" />
-            <span className="text-[10px] text-[#6E7C75]">
+            <Plus className="w-5 h-5 stroke-[2] group-hover:scale-110 text-[#5B7B6D] dark:text-[#A7D1BF] transition-transform" />
+            <span className="text-[10px] text-[#6E7C75] dark:text-[#A7B4AD]">
               {isUploading ? '处理中' : '添加影像'}
             </span>
           </button>
@@ -366,7 +362,7 @@ export const PersonAlbum: React.FC<PersonAlbumProps> = ({
                   setIsMultiSelectMode(false);
                   setSelectedIndices(new Set());
                 }}
-                className="fixed inset-0 bg-[#2B332E]/80 backdrop-blur-sm"
+                className="fixed inset-0 bg-[#2B332E]/80 dark:bg-black/85 backdrop-blur-sm"
               />
 
               <motion.div
@@ -374,18 +370,18 @@ export const PersonAlbum: React.FC<PersonAlbumProps> = ({
                 animate={{ scale: 1, opacity: 1, y: 0 }}
                 exit={{ scale: 0.92, opacity: 0, y: 15 }}
                 transition={{ duration: 0.2, ease: 'easeOut' }}
-                className="relative w-full max-w-xl bg-[#FAF8F5] rounded-3xl border border-[#5B7B6D]/30 shadow-2xl overflow-hidden flex flex-col font-sans z-10 paper-texture max-h-[88dvh]"
+                className="relative w-full max-w-xl bg-[#FAF8F5] dark:bg-[#141E18] rounded-3xl border border-[#5B7B6D]/30 dark:border-white/15 shadow-2xl overflow-hidden flex flex-col font-sans z-10 paper-texture max-h-[88dvh]"
               >
                 {/* 弹窗头部：专属相册 + 多选状态 */}
-                <div className="p-4 bg-white/95 border-b border-[#5B7B6D]/15 flex items-center justify-between shrink-0">
+                <div className="p-4 bg-white/95 dark:bg-[#18251E] border-b border-[#5B7B6D]/15 dark:border-white/10 flex items-center justify-between shrink-0">
                   <div className="flex items-center gap-2">
-                    <div className="w-8 h-8 rounded-xl bg-[#FAF8F5] border border-[#5B7B6D]/20 flex items-center justify-center text-[#5B7B6D]">
+                    <div className="w-8 h-8 rounded-xl bg-[#FAF8F5] dark:bg-[#203026] border border-[#5B7B6D]/20 dark:border-white/10 flex items-center justify-center text-[#5B7B6D] dark:text-[#A7D1BF]">
                       <ImageIcon className="w-4 h-4" />
                     </div>
                     <div>
-                      <h3 className="font-bold text-[#2B332E] text-sm font-serif flex items-center gap-1.5">
+                      <h3 className="font-bold text-[#2B332E] dark:text-[#FAF8F5] text-sm font-serif flex items-center gap-1.5">
                         <span>专属相册</span>
-                        <span className="text-[11px] font-sans font-normal text-[#6E7C75]">
+                        <span className="text-[11px] font-sans font-normal text-[#6E7C75] dark:text-[#8E9F97]">
                           ({photos.length})
                         </span>
                       </h3>
@@ -402,15 +398,15 @@ export const PersonAlbum: React.FC<PersonAlbumProps> = ({
                           setSelectedIndices(new Set());
                         }}
                         disabled={photos.length === 0}
-                        className="px-2.5 py-1 text-xs font-serif text-[#6E7C75] hover:text-red-700 hover:bg-red-50/80 border border-[#5B7B6D]/20 hover:border-red-200 rounded-xl transition-all flex items-center gap-1.5 cursor-pointer active:scale-95 disabled:opacity-40 disabled:pointer-events-none shadow-2xs"
+                        className="px-2.5 py-1 text-xs font-serif text-[#6E7C75] dark:text-[#A7B4AD] hover:text-red-700 dark:hover:text-red-400 hover:bg-red-50/80 dark:hover:bg-red-950/40 border border-[#5B7B6D]/20 dark:border-white/15 hover:border-red-200 dark:hover:border-red-900/50 rounded-xl transition-all flex items-center gap-1.5 cursor-pointer active:scale-95 disabled:opacity-40 disabled:pointer-events-none shadow-2xs"
                         title="开启多选批量删除"
                       >
-                        <CheckSquare className="w-3.5 h-3.5 text-[#5B7B6D]" />
+                        <CheckSquare className="w-3.5 h-3.5 text-[#5B7B6D] dark:text-[#A7D1BF]" />
                         <span>多选删除</span>
                       </button>
                     ) : (
                       <div className="flex items-center gap-1.5">
-                        <span className="text-xs font-serif text-[#5B7B6D] bg-[#5B7B6D]/10 px-2.5 py-1 rounded-xl border border-[#5B7B6D]/20">
+                        <span className="text-xs font-serif text-[#5B7B6D] dark:text-[#A7D1BF] bg-[#5B7B6D]/10 dark:bg-[#5B7B6D]/20 px-2.5 py-1 rounded-xl border border-[#5B7B6D]/20 dark:border-[#5B7B6D]/40">
                           已选择 {selectedIndices.size} 项
                         </span>
                       </div>
@@ -423,7 +419,7 @@ export const PersonAlbum: React.FC<PersonAlbumProps> = ({
                         setIsMultiSelectMode(false);
                         setSelectedIndices(new Set());
                       }}
-                      className="p-1.5 text-[#6E7C75] hover:text-[#2B332E] hover:bg-stone-100 rounded-xl transition-all cursor-pointer"
+                      className="p-1.5 text-[#6E7C75] dark:text-[#A7B4AD] hover:text-[#2B332E] dark:hover:text-white hover:bg-stone-100 dark:hover:bg-white/10 rounded-xl transition-all cursor-pointer"
                       title="关闭弹窗"
                     >
                       <X className="w-4 h-4" />
@@ -491,13 +487,13 @@ export const PersonAlbum: React.FC<PersonAlbumProps> = ({
                         type="button"
                         onClick={() => fileInputRef.current?.click()}
                         disabled={isUploading}
-                        className="aspect-square rounded-2xl border-2 border-dashed border-[#5B7B6D]/30 hover:border-[#5B7B6D] bg-white/60 hover:bg-white transition-all flex flex-col items-center justify-center gap-1.5 text-[#5B7B6D] group active:scale-95 cursor-pointer shadow-2xs"
+                        className="aspect-square rounded-2xl border-2 border-dashed border-[#5B7B6D]/30 dark:border-white/20 hover:border-[#5B7B6D] bg-white/60 dark:bg-[#18231E]/60 hover:bg-white dark:hover:bg-[#18231E] transition-all flex flex-col items-center justify-center gap-1.5 text-[#5B7B6D] dark:text-[#A7D1BF] group active:scale-95 cursor-pointer shadow-2xs"
                         title="添加照片或视频"
                       >
-                        <div className="w-8 h-8 rounded-xl bg-[#FAF8F5] border border-[#5B7B6D]/20 flex items-center justify-center shadow-2xs group-hover:scale-105 group-hover:border-[#5B7B6D] transition-all">
-                          <Plus className="w-4 h-4 stroke-[2.2] text-[#5B7B6D]" />
+                        <div className="w-8 h-8 rounded-xl bg-[#FAF8F5] dark:bg-[#203026] border border-[#5B7B6D]/20 dark:border-white/10 flex items-center justify-center shadow-2xs group-hover:scale-105 group-hover:border-[#5B7B6D] transition-all">
+                          <Plus className="w-4 h-4 stroke-[2.2] text-[#5B7B6D] dark:text-[#A7D1BF]" />
                         </div>
-                        <span className="text-[11px] font-serif text-[#2B332E] font-medium">
+                        <span className="text-[11px] font-serif text-[#2B332E] dark:text-[#FAF8F5] font-medium">
                           {isUploading ? '处理中...' : '添加影像'}
                         </span>
                       </button>
@@ -513,7 +509,7 @@ export const PersonAlbum: React.FC<PersonAlbumProps> = ({
                       animate={{ y: 0, opacity: 1 }}
                       exit={{ y: 24, opacity: 0 }}
                       transition={{ duration: 0.22, ease: 'easeOut' }}
-                      className="p-3.5 sm:p-4 bg-white/95 border-t border-[#5B7B6D]/15 flex items-center justify-between gap-2.5 shrink-0 shadow-sm"
+                      className="p-3.5 sm:p-4 bg-white/95 dark:bg-[#18251E] border-t border-[#5B7B6D]/15 dark:border-white/10 flex items-center justify-between gap-2.5 shrink-0 shadow-sm"
                     >
                       {/* 按钮 1: 全选 / 取消全选 */}
                       <button
@@ -525,9 +521,9 @@ export const PersonAlbum: React.FC<PersonAlbumProps> = ({
                             setSelectedIndices(new Set(photos.map((_, i) => i)));
                           }
                         }}
-                        className="flex-1 py-2.5 px-2.5 sm:px-3 rounded-2xl border border-[#5B7B6D]/20 bg-[#FAF8F5] hover:bg-stone-100 text-[#526058] hover:text-[#2B332E] font-medium text-xs font-serif flex items-center justify-center gap-1.5 shadow-2xs active:scale-95 transition-all cursor-pointer"
+                        className="flex-1 py-2.5 px-2.5 sm:px-3 rounded-2xl border border-[#5B7B6D]/20 dark:border-white/15 bg-[#FAF8F5] dark:bg-[#141C18] hover:bg-stone-100 dark:hover:bg-[#1E2922] text-[#526058] dark:text-[#C2CDC7] hover:text-[#2B332E] dark:hover:text-white font-medium text-xs font-serif flex items-center justify-center gap-1.5 shadow-2xs active:scale-95 transition-all cursor-pointer"
                       >
-                        <CheckSquare className="w-3.5 h-3.5 text-[#5B7B6D]" />
+                        <CheckSquare className="w-3.5 h-3.5 text-[#5B7B6D] dark:text-[#A7D1BF]" />
                         <span>{selectedIndices.size === photos.length ? '取消全选' : '全选照片'}</span>
                       </button>
 
@@ -553,7 +549,7 @@ export const PersonAlbum: React.FC<PersonAlbumProps> = ({
                           setIsMultiSelectMode(false);
                           setSelectedIndices(new Set());
                         }}
-                        className="flex-1 py-2.5 px-2.5 sm:px-3 rounded-2xl border border-black/10 bg-white hover:bg-stone-50 text-[#2B332E] font-medium text-xs font-serif flex items-center justify-center gap-1.5 shadow-2xs active:scale-95 transition-all cursor-pointer"
+                        className="flex-1 py-2.5 px-2.5 sm:px-3 rounded-2xl border border-black/10 dark:border-white/15 bg-white dark:bg-[#141C18] hover:bg-stone-50 dark:hover:bg-[#1E2922] text-[#2B332E] dark:text-[#FAF8F5] font-medium text-xs font-serif flex items-center justify-center gap-1.5 shadow-2xs active:scale-95 transition-all cursor-pointer"
                       >
                         <span>完成</span>
                       </button>
@@ -577,7 +573,7 @@ export const PersonAlbum: React.FC<PersonAlbumProps> = ({
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
                 onClick={() => setPreviewIndex(null)}
-                className="fixed inset-0 bg-[#2B332E]/90 backdrop-blur-md"
+                className="fixed inset-0 bg-[#2B332E]/90 dark:bg-black/90 backdrop-blur-md"
               />
 
               <motion.div
@@ -585,18 +581,18 @@ export const PersonAlbum: React.FC<PersonAlbumProps> = ({
                 animate={{ scale: 1, opacity: 1, y: 0 }}
                 exit={{ scale: 0.92, opacity: 0, y: 15 }}
                 transition={{ duration: 0.2, ease: 'easeOut' }}
-                className="relative w-full max-w-xl bg-[#FAF8F5] rounded-3xl border border-[#5B7B6D]/30 shadow-2xl overflow-hidden flex flex-col font-sans z-10 paper-texture max-h-[92dvh]"
+                className="relative w-full max-w-xl bg-[#FAF8F5] dark:bg-[#141E18] rounded-3xl border border-[#5B7B6D]/30 dark:border-white/15 shadow-2xl overflow-hidden flex flex-col font-sans z-10 paper-texture max-h-[92dvh]"
               >
                 {/* 卡片顶端操作条 */}
-                <div className="p-3 sm:px-4 sm:py-3 bg-white/95 border-b border-[#5B7B6D]/15 flex items-center justify-between shrink-0">
+                <div className="p-3 sm:px-4 sm:py-3 bg-white/95 dark:bg-[#18251E] border-b border-[#5B7B6D]/15 dark:border-white/10 flex items-center justify-between shrink-0">
                   <div className="flex items-center gap-2">
-                    <span className="text-xs font-mono font-bold bg-[#FAF8F5] border border-[#5B7B6D]/20 text-[#5B7B6D] px-2.5 py-1 rounded-xl">
+                    <span className="text-xs font-mono font-bold bg-[#FAF8F5] dark:bg-[#203026] border border-[#5B7B6D]/20 dark:border-white/15 text-[#5B7B6D] dark:text-[#A7D1BF] px-2.5 py-1 rounded-xl">
                       {previewIndex + 1} / {photos.length}
                     </span>
-                    <span className="text-xs text-[#2B332E] font-serif font-bold truncate max-w-[180px] flex items-center gap-1.5">
+                    <span className="text-xs text-[#2B332E] dark:text-[#FAF8F5] font-serif font-bold truncate max-w-[180px] flex items-center gap-1.5">
                       {isVideoMedia(photos[previewIndex]) ? (
                         <>
-                          <Film className="w-3.5 h-3.5 text-[#5B7B6D]" />
+                          <Film className="w-3.5 h-3.5 text-[#5B7B6D] dark:text-[#A7D1BF]" />
                           <span>珍藏影像放映</span>
                         </>
                       ) : (
@@ -609,7 +605,7 @@ export const PersonAlbum: React.FC<PersonAlbumProps> = ({
                     <button
                       type="button"
                       onClick={() => setDeleteConfirmIndex(previewIndex)}
-                      className="p-1.5 text-[#6E7C75] hover:text-red-600 hover:bg-red-50 rounded-xl transition-all cursor-pointer"
+                      className="p-1.5 text-[#6E7C75] dark:text-[#A7B4AD] hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/40 rounded-xl transition-all cursor-pointer"
                       title="删除此项"
                     >
                       <Trash2 className="w-4 h-4" />
@@ -617,7 +613,7 @@ export const PersonAlbum: React.FC<PersonAlbumProps> = ({
                     <button
                       type="button"
                       onClick={() => setPreviewIndex(null)}
-                      className="p-1.5 text-[#6E7C75] hover:text-[#2B332E] hover:bg-stone-100 rounded-xl transition-all cursor-pointer"
+                      className="p-1.5 text-[#6E7C75] dark:text-[#A7B4AD] hover:text-[#2B332E] dark:hover:text-white hover:bg-stone-100 dark:hover:bg-white/10 rounded-xl transition-all cursor-pointer"
                       title="关闭预览"
                     >
                       <X className="w-4 h-4" />
@@ -674,21 +670,21 @@ export const PersonAlbum: React.FC<PersonAlbumProps> = ({
       {typeof document !== 'undefined' && createPortal(
         <AnimatePresence>
           {deleteConfirmIndex !== null && (
-            <div className="fixed inset-0 w-screen h-[100dvh] z-[10010] flex items-center justify-center p-4 bg-[#2B332E]/60 backdrop-blur-xs select-none">
+            <div className="fixed inset-0 w-screen h-[100dvh] z-[10010] flex items-center justify-center p-4 bg-[#2B332E]/60 dark:bg-black/80 backdrop-blur-xs select-none">
               <motion.div
                 initial={{ scale: 0.9, opacity: 0 }}
                 animate={{ scale: 1, opacity: 1 }}
                 exit={{ scale: 0.9, opacity: 0 }}
-                className="bg-[#FAF8F5] w-full max-w-xs p-5 rounded-3xl border border-[#5B7B6D]/20 shadow-2xl text-center space-y-4 paper-texture"
+                className="bg-[#FAF8F5] dark:bg-[#16211B] w-full max-w-xs p-5 rounded-3xl border border-[#5B7B6D]/20 dark:border-white/15 shadow-2xl text-center space-y-4 paper-texture"
               >
-                <div className="w-12 h-12 rounded-full bg-red-100 border border-red-200 text-red-600 flex items-center justify-center mx-auto shadow-2xs">
-                  <Trash2 className="w-5 h-5 text-red-600" />
+                <div className="w-12 h-12 rounded-full bg-red-100 dark:bg-red-950/40 border border-red-200 dark:border-red-900/50 text-red-600 dark:text-red-400 flex items-center justify-center mx-auto shadow-2xs">
+                  <Trash2 className="w-5 h-5 text-red-600 dark:text-red-400" />
                 </div>
                 <div className="space-y-1">
-                  <h3 className="font-bold text-[#2B332E] text-sm font-serif">
+                  <h3 className="font-bold text-[#2B332E] dark:text-[#FAF8F5] text-sm font-serif">
                     确认抹去此记录吗？
                   </h3>
-                  <p className="text-[11px] text-[#6E7C75] leading-relaxed">
+                  <p className="text-[11px] text-[#6E7C75] dark:text-[#8E9F97] leading-relaxed">
                     抹去后该照片/视频将从专属相册中移除
                   </p>
                 </div>
@@ -696,7 +692,7 @@ export const PersonAlbum: React.FC<PersonAlbumProps> = ({
                   <button
                     type="button"
                     onClick={() => setDeleteConfirmIndex(null)}
-                    className="flex-1 py-2.5 rounded-xl border border-[#5B7B6D]/25 bg-white text-[#6E7C75] text-xs font-semibold hover:bg-stone-50 transition-all active:scale-95 cursor-pointer"
+                    className="flex-1 py-2.5 rounded-xl border border-[#5B7B6D]/25 dark:border-white/15 bg-white dark:bg-[#1A2620] text-[#6E7C75] dark:text-[#A7B4AD] text-xs font-semibold hover:bg-stone-50 dark:hover:bg-[#23332B] transition-all active:scale-95 cursor-pointer"
                   >
                     取消
                   </button>
@@ -719,21 +715,21 @@ export const PersonAlbum: React.FC<PersonAlbumProps> = ({
       {typeof document !== 'undefined' && createPortal(
         <AnimatePresence>
           {isBatchConfirmOpen && (
-            <div className="fixed inset-0 w-screen h-[100dvh] z-[10020] flex items-center justify-center p-4 bg-[#2B332E]/60 backdrop-blur-xs select-none">
+            <div className="fixed inset-0 w-screen h-[100dvh] z-[10020] flex items-center justify-center p-4 bg-[#2B332E]/60 dark:bg-black/80 backdrop-blur-xs select-none">
               <motion.div
                 initial={{ scale: 0.9, opacity: 0 }}
                 animate={{ scale: 1, opacity: 1 }}
                 exit={{ scale: 0.9, opacity: 0 }}
-                className="bg-[#FAF8F5] w-full max-w-xs p-5 rounded-3xl border border-[#5B7B6D]/20 shadow-2xl text-center space-y-4 paper-texture"
+                className="bg-[#FAF8F5] dark:bg-[#16211B] w-full max-w-xs p-5 rounded-3xl border border-[#5B7B6D]/20 dark:border-white/15 shadow-2xl text-center space-y-4 paper-texture"
               >
-                <div className="w-12 h-12 rounded-full bg-red-100 border border-red-200 text-red-600 flex items-center justify-center mx-auto shadow-2xs">
-                  <Trash2 className="w-5 h-5 text-red-600" />
+                <div className="w-12 h-12 rounded-full bg-red-100 dark:bg-red-950/40 border border-red-200 dark:border-red-900/50 text-red-600 dark:text-red-400 flex items-center justify-center mx-auto shadow-2xs">
+                  <Trash2 className="w-5 h-5 text-red-600 dark:text-red-400" />
                 </div>
                 <div className="space-y-1">
-                  <h3 className="font-bold text-[#2B332E] text-sm font-serif">
+                  <h3 className="font-bold text-[#2B332E] dark:text-[#FAF8F5] text-sm font-serif">
                     确认批量抹去这 {selectedIndices.size} 项记录吗？
                   </h3>
-                  <p className="text-[11px] text-[#6E7C75] leading-relaxed">
+                  <p className="text-[11px] text-[#6E7C75] dark:text-[#8E9F97] leading-relaxed">
                     抹去后所选照片/视频将从专属相册中彻底清除
                   </p>
                 </div>
@@ -741,7 +737,7 @@ export const PersonAlbum: React.FC<PersonAlbumProps> = ({
                   <button
                     type="button"
                     onClick={() => setIsBatchConfirmOpen(false)}
-                    className="flex-1 py-2.5 rounded-xl border border-[#5B7B6D]/25 bg-white text-[#6E7C75] text-xs font-semibold hover:bg-stone-50 transition-all active:scale-95 cursor-pointer"
+                    className="flex-1 py-2.5 rounded-xl border border-[#5B7B6D]/25 dark:border-white/15 bg-white dark:bg-[#1A2620] text-[#6E7C75] dark:text-[#A7B4AD] text-xs font-semibold hover:bg-stone-50 dark:hover:bg-[#23332B] transition-all active:scale-95 cursor-pointer"
                   >
                     取消
                   </button>

@@ -865,47 +865,47 @@ export const MemoirCardStudioModal: React.FC<MemoirCardStudioModalProps> = ({
   if (!isOpen || !itemData) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-black/65 backdrop-blur-md">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-black/75 backdrop-blur-md">
       {/* 模态框本体 */}
       <motion.div
         initial={{ scale: 0.94, opacity: 0, y: 20 }}
         animate={{ scale: 1, opacity: 1, y: 0 }}
         exit={{ scale: 0.94, opacity: 0, y: 20 }}
-        className="relative w-full max-w-xl max-h-[92vh] flex flex-col rounded-3xl overflow-hidden shadow-2xl bg-[#FAF8F5] border border-[#2B332E]/15 font-sans"
+        className="relative w-full max-w-xl max-h-[92vh] flex flex-col rounded-3xl overflow-hidden shadow-2xl bg-[#FAF8F5] dark:bg-[#141E18] border border-[#2B332E]/15 dark:border-white/15 font-sans"
       >
         {/* 顶部标题栏 */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-[#2B332E]/10 bg-white/70 backdrop-blur-sm">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-[#2B332E]/10 dark:border-white/10 bg-white/70 dark:bg-[#18251E] backdrop-blur-sm">
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-full bg-[#5B7B6D]/15 flex items-center justify-center text-[#5B7B6D]">
+            <div className="w-8 h-8 rounded-full bg-[#5B7B6D]/15 dark:bg-[#203026] flex items-center justify-center text-[#5B7B6D] dark:text-[#A7D1BF]">
               <ImageIcon className="w-4 h-4" />
             </div>
             <div>
-              <h3 className="font-serif font-bold text-sm text-[#2B332E]">
+              <h3 className="font-serif font-bold text-sm text-[#2B332E] dark:text-[#FAF8F5]">
                 回忆卡片工坊
               </h3>
-              <p className="text-[10px] text-[#6E7C75] font-serif">
+              <p className="text-[10px] text-[#6E7C75] dark:text-[#8E9F97] font-serif">
                 将《{itemData.title}》定制为复古东方文艺明信片
               </p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 rounded-full hover:bg-black/5 text-[#6E7C75] hover:text-[#2B332E] transition-colors cursor-pointer"
+            className="p-1.5 rounded-full hover:bg-black/5 dark:hover:bg-white/10 text-[#6E7C75] dark:text-[#A7B4AD] hover:text-[#2B332E] dark:hover:text-white transition-colors cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* 控制区：样式切换与纸张色系 */}
-        <div className="px-6 py-3 bg-[#FAF8F5] border-b border-[#2B332E]/10 flex flex-wrap items-center justify-between gap-3 text-xs">
+        <div className="px-6 py-3 bg-[#FAF8F5] dark:bg-[#16221C] border-b border-[#2B332E]/10 dark:border-white/10 flex flex-wrap items-center justify-between gap-3 text-xs">
           {/* 卡片版式 */}
-          <div className="flex items-center gap-1.5 bg-white p-1 rounded-xl border border-[#2B332E]/10">
+          <div className="flex items-center gap-1.5 bg-white dark:bg-[#1C2A22] p-1 rounded-xl border border-[#2B332E]/10 dark:border-white/10">
             <button
               onClick={() => setStyle('polaroid')}
               className={`flex items-center gap-1 px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
                 style === 'polaroid'
                   ? 'bg-[#5B7B6D] text-white font-bold shadow-xs'
-                  : 'text-[#6E7C75] hover:text-[#2B332E]'
+                  : 'text-[#6E7C75] dark:text-[#A7B4AD] hover:text-[#2B332E] dark:hover:text-white'
               }`}
             >
               <ImageIcon className="w-3.5 h-3.5" /> 经典拍立得
@@ -915,7 +915,7 @@ export const MemoirCardStudioModal: React.FC<MemoirCardStudioModalProps> = ({
               className={`flex items-center gap-1 px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
                 style === 'ticket'
                   ? 'bg-[#5B7B6D] text-white font-bold shadow-xs'
-                  : 'text-[#6E7C75] hover:text-[#2B332E]'
+                  : 'text-[#6E7C75] dark:text-[#A7B4AD] hover:text-[#2B332E] dark:hover:text-white'
               }`}
             >
               <Ticket className="w-3.5 h-3.5" /> 复古电影票根
@@ -924,35 +924,35 @@ export const MemoirCardStudioModal: React.FC<MemoirCardStudioModalProps> = ({
 
           {/* 相纸色调 */}
           <div className="flex items-center gap-1.5">
-            <Palette className="w-3.5 h-3.5 text-[#6E7C75]" />
-            <span className="text-[#6E7C75]">纸张底色：</span>
+            <Palette className="w-3.5 h-3.5 text-[#6E7C75] dark:text-[#8E9F97]" />
+            <span className="text-[#6E7C75] dark:text-[#8E9F97]">纸张底色：</span>
             <div className="flex gap-1.5">
               <button
                 onClick={() => setTint('ivory')}
-                className={`px-2.5 py-1 rounded-lg border text-[11px] cursor-pointer ${
+                className={`px-2.5 py-1 rounded-lg border text-[11px] cursor-pointer transition-all ${
                   tint === 'ivory'
-                    ? 'border-[#5B7B6D] bg-[#5B7B6D]/10 text-[#5B7B6D] font-bold'
-                    : 'border-transparent bg-white text-[#6E7C75]'
+                    ? 'border-[#5B7B6D] bg-[#5B7B6D]/10 dark:bg-[#5B7B6D]/25 text-[#5B7B6D] dark:text-[#A7D1BF] font-bold'
+                    : 'border-transparent bg-white dark:bg-[#1C2A22] text-[#6E7C75] dark:text-[#A7B4AD]'
                 }`}
               >
                 象牙白
               </button>
               <button
                 onClick={() => setTint('sepia')}
-                className={`px-2.5 py-1 rounded-lg border text-[11px] cursor-pointer ${
+                className={`px-2.5 py-1 rounded-lg border text-[11px] cursor-pointer transition-all ${
                   tint === 'sepia'
-                    ? 'border-[#A06B4A] bg-[#A06B4A]/10 text-[#A06B4A] font-bold'
-                    : 'border-transparent bg-[#FAF5EE] text-[#7A6B60]'
+                    ? 'border-[#A06B4A] bg-[#A06B4A]/10 dark:bg-[#A06B4A]/25 text-[#A06B4A] dark:text-[#FFAF94] font-bold'
+                    : 'border-transparent bg-[#FAF5EE] dark:bg-[#2A231C] text-[#7A6B60] dark:text-[#C5B5A7]'
                 }`}
               >
                 复古暖褐
               </button>
               <button
                 onClick={() => setTint('sage')}
-                className={`px-2.5 py-1 rounded-lg border text-[11px] cursor-pointer ${
+                className={`px-2.5 py-1 rounded-lg border text-[11px] cursor-pointer transition-all ${
                   tint === 'sage'
-                    ? 'border-[#4C6E5F] bg-[#4C6E5F]/10 text-[#4C6E5F] font-bold'
-                    : 'border-transparent bg-[#F3F7F4] text-[#5A7569]'
+                    ? 'border-[#4C6E5F] bg-[#4C6E5F]/10 dark:bg-[#4C6E5F]/25 text-[#4C6E5F] dark:text-[#9ECBB8] font-bold'
+                    : 'border-transparent bg-[#F3F7F4] dark:bg-[#1A2820] text-[#5A7569] dark:text-[#9ECBB8]'
                 }`}
               >
                 松针微青
@@ -962,8 +962,8 @@ export const MemoirCardStudioModal: React.FC<MemoirCardStudioModalProps> = ({
         </div>
 
         {/* 视效预览区 (Live Canvas Card Preview) */}
-        <div className="flex-1 overflow-y-auto p-4 sm:p-6 flex items-center justify-center bg-[#E5DFD5]/40 min-h-[360px]">
-          <div className="relative shadow-2xl rounded-2xl overflow-hidden border border-black/10 max-w-full flex items-center justify-center">
+        <div className="flex-1 overflow-y-auto p-4 sm:p-6 flex items-center justify-center bg-[#E5DFD5]/40 dark:bg-black/40 min-h-[360px]">
+          <div className="relative shadow-2xl rounded-2xl overflow-hidden border border-black/10 dark:border-white/10 max-w-full flex items-center justify-center">
             <canvas
               ref={previewCanvasRef}
               className="max-h-[56vh] w-auto max-w-full object-contain rounded-xl"
@@ -972,7 +972,7 @@ export const MemoirCardStudioModal: React.FC<MemoirCardStudioModalProps> = ({
         </div>
 
         {/* 底部操作行动栏：一键直存按键，彻底取消二级弹窗，无多余文字冗余 */}
-        <div className="flex items-center justify-end px-6 py-4 border-t border-[#2B332E]/10 bg-white/80 backdrop-blur-md">
+        <div className="flex items-center justify-end px-6 py-4 border-t border-[#2B332E]/10 dark:border-white/10 bg-white/80 dark:bg-[#18251E] backdrop-blur-md">
           <button
             onClick={handleDownload}
             disabled={isGenerating}

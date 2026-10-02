@@ -5,6 +5,7 @@ import { Play, Pause, Volume2, VolumeX, Maximize2, X, RotateCcw, Film } from 'lu
 import { formatVideoDuration } from '../utils/mediaStorage';
 import { resolveMediaUrl, isIndexedDbMedia } from '../services/indexedDbMedia';
 import { WaterInkVideoScrubber } from './WaterInkVideoScrubber';
+import { sound } from '../utils/soundEngine';
 
 interface VintageVideoPlayerProps {
   src: string;
@@ -52,6 +53,9 @@ export const VintageVideoPlayer: React.FC<VintageVideoPlayerProps> = ({
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [isFullscreenModalOpen, setIsFullscreenModalOpen] = useState(false);
+  const [isExitingWave, setIsExitingWave] = useState(false);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const waveStartTimeRef = useRef<number>(0);
   const [playbackRate, setPlaybackRate] = useState<number>(1);
   const [generatedPoster, setGeneratedPoster] = useState<string>('');
   const [resolvedPoster, setResolvedPoster] = useState<string>(() => {
@@ -186,10 +190,17 @@ export const VintageVideoPlayer: React.FC<VintageVideoPlayerProps> = ({
     if (videoRef.current) {
       videoRef.current.pause();
     }
+    setIsExitingWave(false);
     setIsFullscreenModalOpen(true);
   };
 
   const closeFullscreen = () => {
+    if (isExitingWave) return;
+    setIsExitingWave(true);
+    waveStartTimeRef.current = Date.now();
+    sound.playSealStamp();
+    sound.playWaterDrop(920);
+
     // 关闭全屏时：暂停模态窗视频，同步播放进度
     if (modalVideoRef.current) {
       modalVideoRef.current.pause();
@@ -197,9 +208,80 @@ export const VintageVideoPlayer: React.FC<VintageVideoPlayerProps> = ({
         videoRef.current.currentTime = modalVideoRef.current.currentTime;
       }
     }
-    setIsPlaying(false);
-    setIsFullscreenModalOpen(false);
+
+    setTimeout(() => {
+      setIsPlaying(false);
+      setIsExitingWave(false);
+      setIsFullscreenModalOpen(false);
+    }, 720);
   };
+
+  // Canvas fluid wave exit background animation
+  useEffect(() => {
+    if (!isFullscreenModalOpen) return;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    let width = (canvas.width = window.innerWidth);
+    let height = (canvas.height = window.innerHeight);
+    let animationFrameId: number;
+
+    const render = () => {
+      ctx.clearRect(0, 0, width, height);
+
+      if (isExitingWave && waveStartTimeRef.current > 0) {
+        const elapsed = (Date.now() - waveStartTimeRef.current) / 720;
+        const progress = Math.min(1, Math.max(0, elapsed));
+        const maxDist = Math.hypot(width, height);
+        const currentWaveRadius = progress * maxDist * 1.25;
+        const waveAlpha = Math.max(0, (1 - progress) * 0.85);
+
+        // 东方水墨清波涟漪：透明消融，实时透出底层主界面
+        const waveGrad = ctx.createRadialGradient(
+          width / 2,
+          height / 2,
+          Math.max(0, currentWaveRadius - 140),
+          width / 2,
+          height / 2,
+          currentWaveRadius
+        );
+        waveGrad.addColorStop(0, 'rgba(91, 123, 109, 0)');
+        waveGrad.addColorStop(0.5, `rgba(91, 123, 109, ${waveAlpha * 0.5})`);
+        waveGrad.addColorStop(0.85, `rgba(255, 255, 255, ${waveAlpha * 0.85})`);
+        waveGrad.addColorStop(1, 'rgba(91, 123, 109, 0)');
+
+        ctx.fillStyle = waveGrad;
+        ctx.beginPath();
+        ctx.arc(width / 2, height / 2, currentWaveRadius, 0, Math.PI * 2);
+        ctx.fill();
+
+        // 细微水月清光外环
+        ctx.strokeStyle = `rgba(255, 255, 255, ${waveAlpha * 0.9})`;
+        ctx.lineWidth = 2.5 * (1 - progress);
+        ctx.beginPath();
+        ctx.arc(width / 2, height / 2, currentWaveRadius, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+
+      animationFrameId = requestAnimationFrame(render);
+    };
+
+    render();
+
+    const handleResize = () => {
+      if (!canvas) return;
+      width = canvas.width = window.innerWidth;
+      height = canvas.height = window.innerHeight;
+    };
+    window.addEventListener('resize', handleResize);
+
+    return () => {
+      cancelAnimationFrame(animationFrameId);
+      window.removeEventListener('resize', handleResize);
+    };
+  }, [isFullscreenModalOpen, isExitingWave]);
 
   // 全屏锁定背景滚动
   useEffect(() => {
@@ -249,18 +331,6 @@ export const VintageVideoPlayer: React.FC<VintageVideoPlayerProps> = ({
           }}
           className="w-full h-full object-cover max-h-[360px]"
         />
-
-        {/* 智能抽帧封面图层（未放映时 100% 呈现鲜活画面，杜绝移动端黑屏与闪烁，保持原真色彩） */}
-        {!isPlaying && effectivePoster && (
-          <img
-            src={effectivePoster}
-            alt=""
-            onError={(e) => {
-              e.currentTarget.style.display = 'none';
-            }}
-            className="absolute inset-0 w-full h-full object-cover pointer-events-none transition-opacity duration-300"
-          />
-        )}
 
         {/* 胶片放映标识（左上角微型标 - 苹果液态玻璃风格） */}
         <div className="absolute top-2.5 left-2.5 pointer-events-none z-10 flex items-center gap-1.5 px-3 py-1 rounded-full bg-black/45 backdrop-blur-md border border-white/20 text-white/90 text-[10px] font-mono shadow-xs">
@@ -327,13 +397,29 @@ export const VintageVideoPlayer: React.FC<VintageVideoPlayerProps> = ({
       {typeof document !== 'undefined' && createPortal(
         <AnimatePresence>
           {isFullscreenModalOpen && (
-            <div className="fixed inset-0 w-screen h-[100dvh] z-[10050] flex items-center justify-center p-2 sm:p-6 bg-black/95 backdrop-blur-xl select-none">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: isExitingWave ? 0 : 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.65, ease: [0.16, 1, 0.3, 1] }}
+              className="fixed inset-0 w-screen h-[100dvh] z-[10050] flex items-center justify-center p-2 sm:p-6 bg-black/85 backdrop-blur-xl select-none overflow-hidden"
+            >
+              {/* 背景 Canvas：用于支持令用户惊艳的流体水墨海浪消融退出动画 */}
+              <canvas
+                ref={canvasRef}
+                className="absolute inset-0 w-full h-full pointer-events-none z-0"
+              />
+
               <motion.div
                 initial={{ opacity: 0, scale: 0.95, y: 10 }}
-                animate={{ opacity: 1, scale: 1, y: 0 }}
-                exit={{ opacity: 0, scale: 0.95, y: 10 }}
-                transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
-                className="relative w-full max-w-3xl max-h-[94dvh] bg-[#121614] rounded-3xl border border-white/15 shadow-2xl flex flex-col overflow-hidden font-sans"
+                animate={
+                  isExitingWave
+                    ? { opacity: 0, scale: 0.94, y: -10, filter: 'blur(8px)' }
+                    : { opacity: 1, scale: 1, y: 0, filter: 'blur(0px)' }
+                }
+                exit={{ opacity: 0, scale: 0.94, y: -10, filter: 'blur(8px)' }}
+                transition={{ duration: 0.65, ease: [0.16, 1, 0.3, 1] }}
+                className="relative z-10 w-full max-w-3xl max-h-[94dvh] bg-[#121614] rounded-3xl border border-white/15 shadow-2xl flex flex-col overflow-hidden font-sans"
               >
                 {/* 顶栏控制（苹果极简磨砂液态玻璃） */}
                 <div className="p-3 sm:px-5 sm:py-3.5 bg-black/50 backdrop-blur-md border-b border-white/10 flex items-center justify-between shrink-0">
@@ -454,7 +540,7 @@ export const VintageVideoPlayer: React.FC<VintageVideoPlayerProps> = ({
                   </div>
                 </div>
               </motion.div>
-            </div>
+            </motion.div>
           )}
         </AnimatePresence>,
         document.body

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Lock, Unlock, Delete, KeyRound, ShieldCheck, X, Sparkles, Check } from 'lucide-react';
+import { Lock, Unlock, Delete, KeyRound, ShieldCheck, X, Check } from 'lucide-react';
 import { sound } from '../utils/soundEngine';
 import { HealingTheme } from '../App';
 

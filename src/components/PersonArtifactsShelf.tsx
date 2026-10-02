@@ -105,10 +105,10 @@ export const PersonArtifactsShelf: React.FC<PersonArtifactsShelfProps> = ({
       {boundArtifacts.length === 0 ? (
         <div
           onClick={handleOpenPicker}
-          className="cursor-pointer border-2 border-dashed border-[#5B7B6D]/20 hover:border-[#E88765]/40 bg-[#FAF8F5] hover:bg-[#FAF6F0] rounded-2xl p-6 text-center transition-all group"
+          className="cursor-pointer border-2 border-dashed border-[#5B7B6D]/20 hover:border-[#E88765]/40 bg-[#FAF8F5] dark:bg-[#141C18] hover:bg-[#FAF6F0] dark:hover:bg-[#1A2620] rounded-2xl p-6 text-center transition-all group"
         >
           <Package className="w-8 h-8 text-[#5B7B6D]/40 group-hover:text-[#E88765] mx-auto mb-2 transition-colors" />
-          <p className="text-xs text-[#6E7C75] font-serif">信物柜尚且空置，点击从「拾物阁」选取属于你们的信物</p>
+          <p className="text-xs text-[#6E7C75] dark:text-[#A7B4AD] font-serif">信物柜尚且空置，点击从「拾物阁」选取属于你们的信物</p>
         </div>
       ) : (
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
@@ -125,9 +125,9 @@ export const PersonArtifactsShelf: React.FC<PersonArtifactsShelfProps> = ({
               <TiltCard
                 maxTilt={4}
                 glareOpacity={0.15}
-                className="rounded-2xl border border-[#5B7B6D]/15 dark:border-white/10 bg-white dark:bg-[#141C18] p-2.5 space-y-2 group shadow-2xs hover:shadow-sm hover:border-[#5B7B6D]/40 transition-all"
+                className="rounded-2xl border border-[#5B7B6D]/15 dark:border-white/10 bg-white dark:bg-[#141C18] p-2.5 space-y-2 group shadow-2xs hover:shadow-sm hover:border-[#5B7B6D]/40 dark:hover:border-[#5B7B6D]/60 transition-all"
               >
-                <div className="relative aspect-square rounded-xl overflow-hidden bg-[#FAF8F5] dark:bg-black/30 border border-[#5B7B6D]/10">
+                <div className="relative aspect-square rounded-xl overflow-hidden bg-[#FAF8F5] dark:bg-black/30 border border-[#5B7B6D]/10 dark:border-white/10">
                   <MediaImage
                     src={art.image}
                     alt={art.name}
@@ -140,7 +140,7 @@ export const PersonArtifactsShelf: React.FC<PersonArtifactsShelfProps> = ({
                   )}
                 </div>
                 <div className="px-0.5">
-                  <h4 className="font-serif font-bold text-xs text-[#2B332E] dark:text-[#FAF8F5] truncate group-hover:text-[#5B7B6D] transition-colors">{art.name}</h4>
+                  <h4 className="font-serif font-bold text-xs text-[#2B332E] dark:text-[#FAF8F5] truncate group-hover:text-[#5B7B6D] dark:group-hover:text-[#A7D1BF] transition-colors">{art.name}</h4>
                   <p className="text-[10px] text-[#6E7C75] dark:text-[#A7B4AD] font-mono mt-0.5">{art.date || '岁月信物'}</p>
                 </div>
               </TiltCard>
@@ -159,7 +159,7 @@ export const PersonArtifactsShelf: React.FC<PersonArtifactsShelfProps> = ({
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
                 onClick={() => setIsPickerOpen(false)}
-                className="fixed inset-0 bg-[#2B332E]/80 backdrop-blur-sm"
+                className="fixed inset-0 bg-[#2B332E]/80 dark:bg-black/85 backdrop-blur-sm"
               />
 
               <motion.div
@@ -167,22 +167,22 @@ export const PersonArtifactsShelf: React.FC<PersonArtifactsShelfProps> = ({
                 animate={{ scale: 1, opacity: 1, y: 0 }}
                 exit={{ scale: 0.92, opacity: 0, y: 15 }}
                 transition={{ duration: 0.2, ease: 'easeOut' }}
-                className="relative w-full max-w-xl bg-[#FAF8F5] rounded-3xl border border-[#5B7B6D]/30 shadow-2xl overflow-hidden flex flex-col font-sans z-10 paper-texture max-h-[88dvh]"
+                className="relative w-full max-w-xl bg-[#FAF8F5] dark:bg-[#141E18] rounded-3xl border border-[#5B7B6D]/30 dark:border-white/15 shadow-2xl overflow-hidden flex flex-col font-sans z-10 paper-texture max-h-[88dvh]"
               >
                 {/* 弹窗头部 */}
-                <div className="p-4 bg-white/95 border-b border-[#5B7B6D]/15 flex items-center justify-between shrink-0">
+                <div className="p-4 bg-white/95 dark:bg-[#18251E] border-b border-[#5B7B6D]/15 dark:border-white/10 flex items-center justify-between shrink-0">
                   <div className="flex items-center gap-2">
-                    <div className="w-8 h-8 rounded-xl bg-[#FAF8F5] border border-[#5B7B6D]/20 flex items-center justify-center text-[#5B7B6D]">
+                    <div className="w-8 h-8 rounded-xl bg-[#FAF8F5] dark:bg-[#203026] border border-[#5B7B6D]/20 dark:border-white/10 flex items-center justify-center text-[#5B7B6D] dark:text-[#A7D1BF]">
                       <Package className="w-4 h-4" />
                     </div>
                     <div>
-                      <h3 className="font-bold text-[#2B332E] text-sm font-serif flex items-center gap-1.5">
+                      <h3 className="font-bold text-[#2B332E] dark:text-[#FAF8F5] text-sm font-serif flex items-center gap-1.5">
                         <span>从拾物阁拣选信物</span>
-                        <span className="text-[11px] font-sans font-normal text-[#6E7C75]">
+                        <span className="text-[11px] font-sans font-normal text-[#6E7C75] dark:text-[#8E9F97]">
                           (已选 {validSelectedCount}/{allArtifacts.length})
                         </span>
                       </h3>
-                      <p className="text-[10px] text-[#6E7C75] font-serif mt-0.5">
+                      <p className="text-[10px] text-[#6E7C75] dark:text-[#8E9F97] font-serif mt-0.5">
                         勾选与【{personName}】相关的旧物陈列在专属格中
                       </p>
                     </div>
@@ -191,14 +191,14 @@ export const PersonArtifactsShelf: React.FC<PersonArtifactsShelfProps> = ({
                   <button
                     type="button"
                     onClick={() => setIsPickerOpen(false)}
-                    className="p-1.5 rounded-full hover:bg-stone-100 text-[#6E7C75] transition-colors cursor-pointer"
+                    className="p-1.5 rounded-full hover:bg-stone-100 dark:hover:bg-white/10 text-[#6E7C75] dark:text-[#A7B4AD] transition-colors cursor-pointer"
                   >
                     <X className="w-4 h-4" />
                   </button>
                 </div>
 
                 {allArtifacts.length === 0 ? (
-                  <div className="py-16 text-center text-[#6E7C75] text-xs font-serif">
+                  <div className="py-16 text-center text-[#6E7C75] dark:text-[#8E9F97] text-xs font-serif">
                     拾物阁中暂未珍藏旧物，请先前往「拾物阁」添加旧物信笺
                   </div>
                 ) : (
@@ -211,11 +211,11 @@ export const PersonArtifactsShelf: React.FC<PersonArtifactsShelfProps> = ({
                           onClick={() => handleToggleArtifact(artifact.id)}
                           className={`cursor-pointer relative rounded-2xl p-2.5 border transition-all select-none ${
                             isChecked
-                              ? 'bg-white border-[#5B7B6D] shadow-sm ring-1 ring-[#5B7B6D]/30'
-                              : 'bg-white/70 border-[#5B7B6D]/15 hover:border-[#5B7B6D]/35 hover:bg-white'
+                              ? 'bg-white dark:bg-[#1B2921] border-[#5B7B6D] dark:border-[#5B7B6D] shadow-sm ring-1 ring-[#5B7B6D]/30'
+                              : 'bg-white/70 dark:bg-[#18231E]/60 border-[#5B7B6D]/15 dark:border-white/10 hover:border-[#5B7B6D]/35 dark:hover:border-[#5B7B6D]/50 hover:bg-white dark:hover:bg-[#18231E]'
                           }`}
                         >
-                          <div className="relative aspect-square rounded-xl overflow-hidden bg-stone-100 mb-2">
+                          <div className="relative aspect-square rounded-xl overflow-hidden bg-stone-100 dark:bg-black/30 mb-2 border border-[#5B7B6D]/10 dark:border-white/10">
                             <MediaImage
                               src={artifact.image}
                               alt={artifact.name}
@@ -223,14 +223,14 @@ export const PersonArtifactsShelf: React.FC<PersonArtifactsShelfProps> = ({
                             />
                             <div
                               className={`absolute top-1.5 right-1.5 w-5 h-5 rounded-full flex items-center justify-center transition-all ${
-                                isChecked ? 'bg-[#5B7B6D] text-white shadow-xs' : 'bg-white/80 border border-[#5B7B6D]/30 text-transparent'
+                                isChecked ? 'bg-[#5B7B6D] text-white shadow-xs' : 'bg-white/80 dark:bg-black/60 border border-[#5B7B6D]/30 dark:border-white/20 text-transparent'
                               }`}
                             >
                               <Check className="w-3 h-3" />
                             </div>
                           </div>
-                          <h5 className="font-serif font-bold text-xs text-[#2B332E] truncate">{artifact.name}</h5>
-                          <p className="text-[10px] text-[#6E7C75] font-mono mt-0.5 truncate">{artifact.date}</p>
+                          <h5 className="font-serif font-bold text-xs text-[#2B332E] dark:text-[#FAF8F5] truncate">{artifact.name}</h5>
+                          <p className="text-[10px] text-[#6E7C75] dark:text-[#8E9F97] font-mono mt-0.5 truncate">{artifact.date}</p>
                         </div>
                       );
                     })}
@@ -238,13 +238,13 @@ export const PersonArtifactsShelf: React.FC<PersonArtifactsShelfProps> = ({
                 )}
 
                 {/* 弹窗底部操作 */}
-                <div className="p-3.5 bg-white/95 border-t border-[#5B7B6D]/15 flex justify-between items-center shrink-0">
-                  <span className="text-xs text-[#6E7C75] font-mono">已选中 {validSelectedCount} 件信物</span>
+                <div className="p-3.5 bg-white/95 dark:bg-[#18251E] border-t border-[#5B7B6D]/15 dark:border-white/10 flex justify-between items-center shrink-0">
+                  <span className="text-xs text-[#6E7C75] dark:text-[#8E9F97] font-mono">已选中 {validSelectedCount} 件信物</span>
                   <div className="flex gap-2">
                     <button
                       type="button"
                       onClick={() => setIsPickerOpen(false)}
-                      className="px-4 py-2 rounded-xl text-xs font-serif text-[#6E7C75] hover:bg-stone-100 transition-colors cursor-pointer"
+                      className="px-4 py-2 rounded-xl text-xs font-serif text-[#6E7C75] dark:text-[#A7B4AD] hover:bg-stone-100 dark:hover:bg-white/10 transition-colors cursor-pointer"
                     >
                       取消
                     </button>

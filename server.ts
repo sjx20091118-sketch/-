@@ -4,6 +4,9 @@ import { fileURLToPath } from 'url';
 import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI } from '@google/genai';
 import { MsEdgeTTS, OUTPUT_FORMAT } from 'msedge-tts';
+import nodemailer from 'nodemailer';
+import fs from 'fs';
+import crypto from 'crypto';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -920,6 +923,1015 @@ app.get('/api/image/proxy', async (req, res) => {
   } catch (err: any) {
     console.warn('Image proxy error:', err?.message || err);
     return res.status(502).send('Error proxying image');
+  }
+});
+
+// ==================== Email Verification & SMTP Gateway ====================
+
+interface VerificationRecord {
+  code: string;
+  expireAt: number;
+  lastSentAt: number;
+  purpose: string;
+}
+
+const verificationCodes = new Map<string, VerificationRecord>();
+
+// 数据持久化目录
+const DATA_DIR = path.join(process.cwd(), 'data');
+if (!fs.existsSync(DATA_DIR)) {
+  try {
+    fs.mkdirSync(DATA_DIR, { recursive: true });
+  } catch (e) {
+    console.warn('Failed to create data dir:', e);
+  }
+}
+
+// SMTP 配置文件持久化
+const SMTP_CONFIG_FILE = path.join(DATA_DIR, 'smtp_config.json');
+let activeSmtpConfig: any = null;
+
+function loadServerSmtpConfig() {
+  try {
+    if (fs.existsSync(SMTP_CONFIG_FILE)) {
+      const raw = fs.readFileSync(SMTP_CONFIG_FILE, 'utf-8');
+      activeSmtpConfig = JSON.parse(raw);
+    }
+  } catch (e) {
+    console.warn('Load server smtp config error:', e);
+  }
+}
+
+function saveServerSmtpConfig(cfg: any) {
+  try {
+    activeSmtpConfig = cfg;
+    fs.writeFileSync(SMTP_CONFIG_FILE, JSON.stringify(cfg, null, 2), 'utf-8');
+  } catch (e) {
+    console.warn('Save server smtp config error:', e);
+  }
+}
+
+loadServerSmtpConfig();
+
+// SMTP 智能诊断建议生成器
+function getSmtpDiagnosticSuggestion(err: any): string {
+  const msg = (err?.message || '').toLowerCase();
+  const code = (err?.code || '').toUpperCase();
+  const response = (err?.response || '').toLowerCase();
+
+  if (code === 'EAUTH' || msg.includes('535') || response.includes('535') || msg.includes('authentication') || msg.includes('bad credentials')) {
+    return '【身份认证失败 535】排查指南：\n1. 严禁使用 QQ 登录密码！必须使用 QQ 邮箱网页端生成的「16 位专属授权码」；\n2. 前往 QQ 邮箱网页端 (mail.qq.com) ->【设置】->【账户】-> 开启【POP3/IMAP/SMTP 服务】并点击【生成授权码】；\n3. 系统已自动为您过滤授权码中的空格，请核对授权码是否被重新生成或已失效。';
+  }
+  if (msg.includes('553') || response.includes('553') || msg.includes('501') || msg.includes('mail from must equal authorized user') || msg.includes('address must be same')) {
+    return '【发件人地址不一致 553/501】排查指南：发信邮箱账号 (User) 必须与认证账号完全一致 (如 xxx@qq.com)，不可填写不属于此授权码的别名。';
+  }
+  if (code === 'ETIMEDOUT' || code === 'ECONNREFUSED' || code === 'ENOTFOUND' || msg.includes('timeout') || msg.includes('connect')) {
+    return '【网络连接超时/拒绝】排查指南：① 系统已自动为您联调 465 (SSL) 与 587 (STARTTLS) 端口；② 确认服务器地址为 smtp.qq.com；③ 检查网络出站端口或防火墙状态。';
+  }
+  if (msg.includes('greeting') || msg.includes('handshake') || msg.includes('tlsv1')) {
+    return '【SSL/TLS 握手异常】排查指南：465 端口请开启 SSL 直连，587 端口请使用 STARTTLS。';
+  }
+  return `【SMTP 发信异常】详细原因：${err?.message || '未知错误'}。建议核对 Host、Port、发件账号与授权码。`;
+}
+
+// 创建并智能自适应验证 SMTP 发信通道 (自动去除授权码空格 + 自动双端口 465/587 重试 + QQ邮箱专属 service 模式)
+async function createAndVerifyMailTransporter(host?: string, port?: number, user?: string, pass?: string) {
+  if (!host || !user || !pass) {
+    throw new Error('SMTP 发信参数不完整');
+  }
+
+  const cleanPass = pass.replace(/\s+/g, '');
+  let cleanUser = user.trim();
+  if (/^\d+$/.test(cleanUser)) {
+    cleanUser = `${cleanUser}@qq.com`;
+  }
+  let cleanHost = host.trim();
+  if (!cleanHost && cleanUser.endsWith('@qq.com')) {
+    cleanHost = 'smtp.qq.com';
+  }
+
+  const isQq = cleanHost.includes('qq.com') || cleanUser.endsWith('@qq.com') || cleanUser.endsWith('@foxmail.com');
+  const numPort = parseInt(port as any, 10) || (isQq ? 465 : 587);
+
+  // 如果是 QQ 邮箱，尝试多种连接策略
+  if (isQq) {
+    // 策略 1: 使用 465 端口 SSL 直连
+    try {
+      const transporter = nodemailer.createTransport({
+        host: 'smtp.qq.com',
+        port: 465,
+        secure: true,
+        auth: { user: cleanUser, pass: cleanPass },
+        tls: { rejectUnauthorized: false },
+        connectionTimeout: 12000,
+        greetingTimeout: 10000
+      });
+      await transporter.verify();
+      return { transporter, cleanUser, cleanHost: 'smtp.qq.com', port: 465 };
+    } catch (err465: any) {
+      console.warn('[SMTP] QQ 465 端口直连重试:', err465?.message);
+
+      // 如果是明确的认证错误 (535/EAUTH)，直接抛出指导用户排查授权码
+      const msg = (err465?.message || '').toLowerCase();
+      if (err465?.code === 'EAUTH' || msg.includes('535') || msg.includes('authentication')) {
+        throw err465;
+      }
+
+      // 策略 2: 尝试 nodemailer 内置 service: 'qq'
+      try {
+        const serviceTransporter = nodemailer.createTransport({
+          service: 'qq',
+          auth: { user: cleanUser, pass: cleanPass },
+          tls: { rejectUnauthorized: false },
+          connectionTimeout: 12000,
+          greetingTimeout: 10000
+        });
+        await serviceTransporter.verify();
+        return { transporter: serviceTransporter, cleanUser, cleanHost: 'smtp.qq.com', port: 465 };
+      } catch (errService: any) {
+        console.warn('[SMTP] QQ service 模式重试:', errService?.message);
+
+        // 策略 3: 尝试 587 STARTTLS 端口
+        try {
+          const fallbackTransporter = nodemailer.createTransport({
+            host: 'smtp.qq.com',
+            port: 587,
+            secure: false,
+            requireTLS: true,
+            auth: { user: cleanUser, pass: cleanPass },
+            tls: { rejectUnauthorized: false },
+            connectionTimeout: 12000,
+            greetingTimeout: 10000
+          });
+          await fallbackTransporter.verify();
+          return { transporter: fallbackTransporter, cleanUser, cleanHost: 'smtp.qq.com', port: 587 };
+        } catch (fallbackErr) {
+          throw err465;
+        }
+      }
+    }
+  }
+
+  // 非 QQ 邮箱的通用发信逻辑
+  try {
+    const transporter = nodemailer.createTransport({
+      host: cleanHost,
+      port: numPort,
+      secure: numPort === 465,
+      auth: { user: cleanUser, pass: cleanPass },
+      tls: { rejectUnauthorized: false },
+      connectionTimeout: 12000,
+      greetingTimeout: 10000
+    });
+    await transporter.verify();
+    return { transporter, cleanUser, cleanHost, port: numPort };
+  } catch (err: any) {
+    if (numPort === 465) {
+      try {
+        console.log('[SMTP] 通用 465 端口重试，切换至 587 STARTTLS...');
+        const fallbackTransporter = nodemailer.createTransport({
+          host: cleanHost,
+          port: 587,
+          secure: false,
+          requireTLS: true,
+          auth: { user: cleanUser, pass: cleanPass },
+          tls: { rejectUnauthorized: false },
+          connectionTimeout: 12000,
+          greetingTimeout: 10000
+        });
+        await fallbackTransporter.verify();
+        return { transporter: fallbackTransporter, cleanUser, cleanHost, port: 587 };
+      } catch (fallbackErr) {
+        throw err;
+      }
+    }
+    throw err;
+  }
+}
+
+// 管理员：获取服务器持久化的 SMTP 配置
+app.get('/api/admin/smtp-config', (req, res) => {
+  return res.json({
+    success: true,
+    config: activeSmtpConfig || {
+      host: process.env.SMTP_HOST || 'smtp.qq.com',
+      port: process.env.SMTP_PORT ? parseInt(process.env.SMTP_PORT, 10) : 465,
+      user: process.env.SMTP_USER || '',
+      pass: process.env.SMTP_PASS || '',
+      isConfigured: !!(process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS)
+    }
+  });
+});
+
+// 管理员：保存服务器持久化 SMTP 配置
+app.post('/api/admin/save-smtp', (req, res) => {
+  try {
+    const { host, port, user, pass, isConfigured } = req.body;
+    const cleanConfig = {
+      host: (host || '').trim(),
+      port: parseInt(port, 10) || 465,
+      user: (user || '').trim(),
+      pass: (pass || '').replace(/\s+/g, ''),
+      isConfigured: Boolean(isConfigured && host && user && pass)
+    };
+    saveServerSmtpConfig(cleanConfig);
+    return res.json({ success: true, message: 'SMTP 配置已持久化保存至服务端' });
+  } catch (err: any) {
+    return res.status(500).json({ error: '保存 SMTP 配置失败' });
+  }
+});
+
+// 管理员专用：真实 SMTP 网关网络联调与发信测试
+app.post('/api/admin/test-smtp', async (req, res) => {
+  try {
+    const { host, port = 465, user, pass, toEmail } = req.body;
+    if (!host || !user || !pass) {
+      return res.status(400).json({
+        success: false,
+        error: 'SMTP 服务器地址 (Host)、发信账号 (User) 和授权码 (Pass) 均为必填项'
+      });
+    }
+
+    const { transporter, cleanUser, cleanHost, port: actualPort } = await createAndVerifyMailTransporter(
+      host,
+      port,
+      user,
+      pass
+    );
+
+    const targetEmail = (toEmail && typeof toEmail === 'string' && toEmail.trim())
+      ? toEmail.trim().toLowerCase()
+      : cleanUser;
+
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(targetEmail)) {
+      return res.status(400).json({
+        success: false,
+        error: '请输入有效的测试接收邮箱地址'
+      });
+    }
+
+    console.log(`[SMTP 测试发信] 正在发送测试邮件至 ${targetEmail} (发信人: ${cleanUser}, 通道: ${cleanHost}:${actualPort})...`);
+
+    // 发送真实测试邮件
+    const testCode = Math.floor(100000 + Math.random() * 900000).toString();
+    const startTime = Date.now();
+    const info = await transporter.sendMail({
+      from: `"拾年测试网关" <${cleanUser}>`,
+      to: targetEmail,
+      subject: `【拾年】SMTP 发信网关联调测试成功 (${testCode})`,
+      html: `
+        <div style="background-color: #FAF8F5; padding: 36px 20px; font-family: 'Noto Serif SC', serif; color: #2B332E; max-width: 520px; margin: 0 auto; border-radius: 20px; border: 1px solid #E8E2D8; box-shadow: 0 4px 20px rgba(0,0,0,0.04);">
+          <div style="text-align: center; margin-bottom: 24px;">
+            <h2 style="color: #3E564B; margin: 0; font-size: 24px; letter-spacing: 3px; font-weight: bold;">拾 年</h2>
+            <p style="color: #6E7C75; font-size: 12px; margin-top: 6px; letter-spacing: 1px;">岁华清照 · SMTP 发信网关联调测试</p>
+          </div>
+          <div style="background: #FFFFFF; padding: 28px 24px; border-radius: 16px; border: 1px solid #EBE6DC; text-align: center;">
+            <div style="color: #10B981; font-size: 16px; font-weight: bold; margin-bottom: 12px;">
+              ✓ SMTP 邮件服务配置成功，发信通路畅通
+            </div>
+            <p style="font-size: 13px; color: #4A564F; margin: 0 0 16px 0; line-height: 1.6;">
+              测试验证码：<span style="font-size: 22px; font-weight: bold; color: #3E564B; font-family: monospace;">${testCode}</span>
+            </p>
+            <p style="font-size: 12px; color: #8A9890; margin: 16px 0 0 0; line-height: 1.6;">
+              发信主机: <strong>${cleanHost}</strong> · 端口: <strong>${actualPort}</strong> · 发信人: <strong>${cleanUser}</strong>
+            </p>
+          </div>
+          <div style="text-align: center; margin-top: 20px; font-size: 11px; color: #9DA8A1;">
+            拾年系统管理控制台 · 联调报告
+          </div>
+        </div>
+      `
+    });
+
+    const elapsed = Date.now() - startTime;
+    console.log(`[SMTP 测试发信] 发送成功! MessageID: ${info.messageId}, 耗时: ${elapsed}ms`);
+
+    // 顺带持久化保存此成功验证的配置
+    saveServerSmtpConfig({
+      host: cleanHost,
+      port: actualPort,
+      user: cleanUser,
+      pass: pass.replace(/\s+/g, ''),
+      isConfigured: true
+    });
+
+    return res.json({
+      success: true,
+      message: `测试发信成功！已向「${targetEmail}」送达测试邮件 (耗时 ${elapsed}ms)`,
+      messageId: info.messageId,
+      previewCode: testCode,
+      elapsed
+    });
+  } catch (err: any) {
+    console.error('[SMTP 测试发信失败]:', err);
+    const suggestion = getSmtpDiagnosticSuggestion(err);
+    return res.status(400).json({
+      success: false,
+      error: err.message || 'SMTP 发信失败',
+      code: err.code || 'SMTP_ERROR',
+      diagnostic: suggestion
+    });
+  }
+});
+
+// 发送验证码（支持真实 SMTP 发信，若未配置或异常时提供安全降级）
+app.post('/api/auth/send-code', async (req, res) => {
+  try {
+    const { email, purpose = 'login', smtpConfig } = req.body;
+    if (!email || typeof email !== 'string' || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+      return res.status(400).json({ error: '请输入有效的电子邮箱地址' });
+    }
+
+    const cleanEmail = email.trim().toLowerCase();
+    const now = Date.now();
+    const existing = verificationCodes.get(cleanEmail);
+
+    // 60秒防刷重发频控
+    if (existing && now - existing.lastSentAt < 60000) {
+      const waitSeconds = Math.ceil((60000 - (now - existing.lastSentAt)) / 1000);
+      return res.status(429).json({ error: `发送过于频繁，请等待 ${waitSeconds} 秒后再试` });
+    }
+
+    // 生成 6 位随机数字验证码
+    const code = Math.floor(100000 + Math.random() * 900000).toString();
+    const expireAt = now + 10 * 60 * 1000; // 10 分钟有效
+
+    verificationCodes.set(cleanEmail, {
+      code,
+      expireAt,
+      lastSentAt: now,
+      purpose
+    });
+
+    const purposeTitle = purpose === 'unbind' ? '解绑电子邮箱' : purpose === 'bind' ? '绑定或换绑电子邮箱' : purpose === 'register' ? '账号注册' : '登录验证';
+
+    let mailSentReal = false;
+    let smtpErrorDetail: string | null = null;
+    let smtpDiagnostic: string | null = null;
+
+    // 优先采用前端传递的配置，其次采用服务端持久化存储的配置，最后采用环境变量
+    const host = smtpConfig?.host || activeSmtpConfig?.host || process.env.SMTP_HOST;
+    const port = smtpConfig?.port || activeSmtpConfig?.port || (process.env.SMTP_PORT ? parseInt(process.env.SMTP_PORT, 10) : 465);
+    const user = smtpConfig?.user || activeSmtpConfig?.user || process.env.SMTP_USER;
+    const pass = smtpConfig?.pass || activeSmtpConfig?.pass || process.env.SMTP_PASS;
+
+    if (host && user && pass) {
+      try {
+        const { transporter, cleanUser } = await createAndVerifyMailTransporter(host, port, user, pass);
+
+        const htmlContent = `
+          <div style="background-color: #FAF8F5; padding: 36px 20px; font-family: 'Noto Serif SC', serif; color: #2B332E; max-width: 520px; margin: 0 auto; border-radius: 20px; border: 1px solid #E8E2D8; box-shadow: 0 4px 20px rgba(0,0,0,0.04);">
+            <div style="text-align: center; margin-bottom: 24px;">
+              <h2 style="color: #3E564B; margin: 0; font-size: 24px; letter-spacing: 3px; font-weight: bold;">拾 年</h2>
+              <p style="color: #6E7C75; font-size: 12px; margin-top: 6px; letter-spacing: 1px;">岁华清照 · 东方生命画卷</p>
+            </div>
+            <div style="background: #FFFFFF; padding: 28px 24px; border-radius: 16px; border: 1px solid #EBE6DC; text-align: center;">
+              <p style="font-size: 14px; color: #4A564F; margin: 0 0 16px 0; line-height: 1.6;">
+                您正在进行 <strong style="color: #2B332E;">${purposeTitle}</strong> 操作，您的动态安全验证码为：
+              </p>
+              <div style="font-size: 34px; font-weight: bold; letter-spacing: 10px; color: #3E564B; padding: 14px 20px; background: #F3EFE9; border-radius: 12px; display: inline-block; font-family: monospace;">
+                ${code}
+              </div>
+              <p style="font-size: 12px; color: #8A9890; margin: 20px 0 0 0; line-height: 1.6;">
+                此验证码在 10 分钟内有效。如非本人操作，请忽略此邮件。
+              </p>
+            </div>
+            <div style="text-align: center; margin-top: 20px; font-size: 11px; color: #9DA8A1;">
+              拾年团队 · 敬上
+            </div>
+          </div>
+        `;
+
+        await transporter.sendMail({
+          from: `"拾年" <${cleanUser}>`,
+          to: cleanEmail,
+          subject: `【拾年】您的验证码是 ${code} (${purposeTitle})`,
+          html: htmlContent
+        });
+        mailSentReal = true;
+      } catch (smtpErr: any) {
+        console.warn('Real SMTP send failed:', smtpErr?.message);
+        smtpErrorDetail = smtpErr?.message || 'SMTP 异常';
+        smtpDiagnostic = getSmtpDiagnosticSuggestion(smtpErr);
+      }
+    }
+
+    console.log(`[拾年 验证码派发] ${cleanEmail} -> ${code} (用途: ${purposeTitle}, 真实发送: ${mailSentReal})`);
+
+    return res.json({
+      success: true,
+      message: mailSentReal
+        ? '验证码已发送至您的邮箱，请查收'
+        : host && user && pass
+        ? 'SMTP发信异常，已降级派发（请在后台诊断 SMTP 授权码或查看垃圾箱）'
+        : '验证码已派发，如未配置 SMTP 可在本地控制台查看',
+      previewCode: code, // 为保障在开发/无外网发信时的体验，提供安全预览
+      sentReal: mailSentReal,
+      smtpErrorDetail,
+      smtpDiagnostic
+    });
+  } catch (err: any) {
+    console.error('Send verification code error:', err);
+    return res.status(500).json({ error: '验证码发送失败，请稍后重试' });
+  }
+});
+
+// 校验验证码
+app.post('/api/auth/verify-code', (req, res) => {
+  try {
+    const { email, code, purpose } = req.body;
+    if (!email || !code) {
+      return res.status(400).json({ error: '邮箱与验证码不能为空' });
+    }
+
+    const cleanEmail = email.trim().toLowerCase();
+    const cleanCode = code.trim();
+    const record = verificationCodes.get(cleanEmail);
+
+    if (!record) {
+      return res.status(400).json({ error: '未找到验证码记录，请重新发送' });
+    }
+
+    if (Date.now() > record.expireAt) {
+      verificationCodes.delete(cleanEmail);
+      return res.status(400).json({ error: '验证码已过期，请重新获取' });
+    }
+
+    if (record.code !== cleanCode) {
+      return res.status(400).json({ error: '验证码不正确，请重新输入' });
+    }
+
+    if (purpose && record.purpose && record.purpose !== purpose) {
+      return res.status(400).json({ error: '验证码用途不匹配，请重新获取' });
+    }
+
+    // 校验成功后一次性消耗
+    verificationCodes.delete(cleanEmail);
+    return res.json({ success: true, message: '验证通过' });
+  } catch (err: any) {
+    return res.status(500).json({ error: '验证失败' });
+  }
+});
+
+// ==================== 商业全功能买断授权与支付系统 ====================
+
+interface PaymentOrder {
+  orderId: string;
+  uid: string;
+  account: string;
+  amount: number;
+  payType: 'alipay' | 'wechat';
+  status: 'pending' | 'paid' | 'expired';
+  createdAt: number;
+  paidAt?: number;
+}
+
+const CODES_FILE = path.join(DATA_DIR, 'activation_codes.json');
+const ORDERS_FILE = path.join(DATA_DIR, 'payment_orders.json');
+
+const paymentOrders = new Map<string, PaymentOrder>();
+
+interface ActivationCodeRecord {
+  code: string;
+  createdAt: number;
+  redeemedBy?: string;
+  redeemedAt?: number;
+  note?: string;
+}
+
+const activationCodes = new Map<string, ActivationCodeRecord>();
+
+// 从持久化文件读取订单
+function loadPaymentOrders() {
+  try {
+    if (fs.existsSync(ORDERS_FILE)) {
+      const raw = fs.readFileSync(ORDERS_FILE, 'utf-8');
+      const list: PaymentOrder[] = JSON.parse(raw);
+      list.forEach(ord => paymentOrders.set(ord.orderId, ord));
+    }
+  } catch (e) {
+    console.warn('Load payment orders error:', e);
+  }
+}
+
+function savePaymentOrders() {
+  try {
+    const list = Array.from(paymentOrders.values());
+    fs.writeFileSync(ORDERS_FILE, JSON.stringify(list, null, 2), 'utf-8');
+  } catch (e) {
+    console.warn('Save payment orders error:', e);
+  }
+}
+
+// 从持久化文件读取激活码（避免刷新预览或服务热重载时丢失新生成的卡密）
+function loadActivationCodes() {
+  try {
+    if (fs.existsSync(CODES_FILE)) {
+      const raw = fs.readFileSync(CODES_FILE, 'utf-8');
+      const list: ActivationCodeRecord[] = JSON.parse(raw);
+      list.forEach(c => activationCodes.set(c.code, c));
+    }
+  } catch (e) {
+    console.warn('Load activation codes error:', e);
+  }
+
+  // 确保初始预置卡密存在
+  const defaultCodes = [
+    { code: 'SHINIAN-8888-A3F1-9C2D', createdAt: 1711900000000, note: '系统预置买断卡密' },
+    { code: 'SHINIAN-9999-E5B7-1A4C', createdAt: 1711900000000, note: '系统预置买断卡密' },
+    { code: 'SHINIAN-YEAR-2026-ZEN1', createdAt: 1711900000000, note: '系统预置买断卡密' }
+  ];
+
+  let modified = false;
+  defaultCodes.forEach(def => {
+    if (!activationCodes.has(def.code)) {
+      activationCodes.set(def.code, def);
+      modified = true;
+    }
+  });
+
+  if (modified || !fs.existsSync(CODES_FILE)) {
+    saveActivationCodes();
+  }
+}
+
+function saveActivationCodes() {
+  try {
+    const list = Array.from(activationCodes.values());
+    fs.writeFileSync(CODES_FILE, JSON.stringify(list, null, 2), 'utf-8');
+  } catch (e) {
+    console.warn('Save activation codes error:', e);
+  }
+}
+
+// 初始化加载持久化数据
+loadActivationCodes();
+loadPaymentOrders();
+
+// ==================== 全站系统配置持久化 (体验天数、买断价格与聚合易支付) ====================
+const SETTINGS_FILE = path.join(DATA_DIR, 'app_settings.json');
+interface SystemSettingsConfig {
+  trialDays: number;
+  buyoutPrice: number;
+  easypayUrl?: string;
+  easypayPid?: string;
+  easypayKey?: string;
+}
+
+let activeSystemSettings: SystemSettingsConfig = {
+  trialDays: 7,
+  buyoutPrice: 19.9,
+  easypayUrl: '',
+  easypayPid: '',
+  easypayKey: ''
+};
+
+function loadSystemSettings() {
+  try {
+    if (fs.existsSync(SETTINGS_FILE)) {
+      const raw = fs.readFileSync(SETTINGS_FILE, 'utf-8');
+      activeSystemSettings = { ...activeSystemSettings, ...JSON.parse(raw) };
+    }
+  } catch (e) {
+    console.warn('Load system settings error:', e);
+  }
+}
+
+function saveSystemSettings() {
+  try {
+    fs.writeFileSync(SETTINGS_FILE, JSON.stringify(activeSystemSettings, null, 2), 'utf-8');
+  } catch (e) {
+    console.warn('Save system settings error:', e);
+  }
+}
+
+loadSystemSettings();
+
+// 聚合易支付 MD5 签名生成算法
+function buildEasyPaySign(params: Record<string, any>, key: string): string {
+  const keys = Object.keys(params)
+    .filter(k => k !== 'sign' && k !== 'sign_type' && params[k] !== '' && params[k] !== undefined && params[k] !== null)
+    .sort();
+  const queryStr = keys.map(k => `${k}=${params[k]}`).join('&');
+  return crypto.createHash('md5').update(queryStr + key, 'utf8').digest('hex');
+}
+
+// 获取系统配置 (试用天数、买断价格与易支付参数)
+app.get('/api/admin/system-settings', (req, res) => {
+  return res.json({
+    success: true,
+    settings: activeSystemSettings
+  });
+});
+
+// 保存系统配置
+app.post('/api/admin/system-settings', (req, res) => {
+  try {
+    const { trialDays, buyoutPrice, easypayUrl, easypayPid, easypayKey } = req.body;
+    if (trialDays !== undefined) {
+      activeSystemSettings.trialDays = Math.max(0, parseInt(trialDays, 10) || 0);
+    }
+    if (buyoutPrice !== undefined) {
+      activeSystemSettings.buyoutPrice = Math.max(0, parseFloat(buyoutPrice) || 0);
+    }
+    if (easypayUrl !== undefined) {
+      activeSystemSettings.easypayUrl = String(easypayUrl).trim();
+    }
+    if (easypayPid !== undefined) {
+      activeSystemSettings.easypayPid = String(easypayPid).trim();
+    }
+    if (easypayKey !== undefined) {
+      activeSystemSettings.easypayKey = String(easypayKey).trim();
+    }
+    saveSystemSettings();
+    return res.json({
+      success: true,
+      settings: activeSystemSettings
+    });
+  } catch (err: any) {
+    return res.status(500).json({ error: '保存系统配置失败' });
+  }
+});
+
+// 创建支付订单 (个人免签聚合易支付通道)
+app.post('/api/pay/create-order', async (req, res) => {
+  try {
+    const { uid, account, payType = 'alipay', amount = 19.9 } = req.body;
+    if (!uid || !account) {
+      return res.status(400).json({ error: '用户信息不完整' });
+    }
+
+    const orderId = `SN_${Date.now()}_${Math.floor(1000 + Math.random() * 9000)}`;
+    const newOrder: PaymentOrder = {
+      orderId,
+      uid,
+      account,
+      amount: Number(amount) || activeSystemSettings.buyoutPrice || 19.9,
+      payType: payType === 'wechat' ? 'wechat' : 'alipay',
+      status: 'pending',
+      createdAt: Date.now()
+    };
+
+    paymentOrders.set(orderId, newOrder);
+    savePaymentOrders();
+
+    const epUrl = (activeSystemSettings.easypayUrl || '').trim().replace(/\/+$/, '');
+    const epPid = (activeSystemSettings.easypayPid || '').trim();
+    const epKey = (activeSystemSettings.easypayKey || '').trim();
+    const epType = payType === 'wechat' ? 'wxpay' : 'alipay';
+
+    let realQrData = '';
+    let payUrl = '';
+
+    // 如果配置了个人免签易支付，则自动请求易支付网关
+    if (epUrl && epPid && epKey) {
+      try {
+        const postData: any = {
+          pid: epPid,
+          type: epType,
+          out_trade_no: orderId,
+          notify_url: `${req.protocol}://${req.get('host')}/api/pay/easypay-notify`,
+          return_url: `${req.protocol}://${req.get('host')}/`,
+          name: '拾年 · 岁华令终身买断',
+          money: newOrder.amount.toFixed(2),
+          clientip: (req.headers['x-forwarded-for'] as string || req.socket.remoteAddress || '127.0.0.1').split(',')[0].trim()
+        };
+        postData.sign = buildEasyPaySign(postData, epKey);
+        postData.sign_type = 'MD5';
+
+        const queryParams = new URLSearchParams(postData).toString();
+        payUrl = `${epUrl}/submit.php?${queryParams}`;
+
+        // 尝试调用易支付 mapi 接口获取直接扫码用的 qrcode 链接
+        try {
+          const apiRes = await fetch(`${epUrl}/mapi.php?${queryParams}`, {
+            method: 'GET',
+            headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' }
+          });
+          if (apiRes.ok) {
+            const resJson = await apiRes.json();
+            if (resJson && (resJson.code === 1 || resJson.status === 1)) {
+              realQrData = resJson.qrcode || resJson.code_url || resJson.payurl || '';
+            }
+          }
+        } catch (e) {
+          console.warn('EasyPay mapi query error, will fallback to submit url:', e);
+        }
+      } catch (err) {
+        console.warn('EasyPay integration error:', err);
+      }
+    }
+
+    const qrData = realQrData || payUrl || (payType === 'wechat'
+      ? `weixin://wxpay/bizpayurl?pr=shinian_${orderId}`
+      : `https://qr.alipay.com/bax${orderId.toLowerCase()}`);
+
+    return res.json({
+      success: true,
+      order: newOrder,
+      qrData,
+      payUrl: payUrl || qrData,
+      isEasyPayConfigured: !!(epUrl && epPid && epKey),
+      expireSeconds: 600
+    });
+  } catch (err: any) {
+    return res.status(500).json({ error: '创建订单失败' });
+  }
+});
+
+// 检查订单支付状态 (支持自动轮询易支付服务端接口)
+app.get('/api/pay/check-order/:orderId', async (req, res) => {
+  const { orderId } = req.params;
+  const order = paymentOrders.get(orderId);
+  if (!order) {
+    return res.status(404).json({ error: '订单不存在' });
+  }
+
+  // 若尚未标记支付，且配置了易支付，主动穿透向易支付网关查询
+  if (order.status === 'pending') {
+    const epUrl = (activeSystemSettings.easypayUrl || '').trim().replace(/\/+$/, '');
+    const epPid = (activeSystemSettings.easypayPid || '').trim();
+    const epKey = (activeSystemSettings.easypayKey || '').trim();
+
+    if (epUrl && epPid && epKey) {
+      try {
+        const queryUrl = `${epUrl}/api.php?act=order&pid=${epPid}&key=${epKey}&out_trade_no=${orderId}`;
+        const checkRes = await fetch(queryUrl, {
+          headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' }
+        });
+        if (checkRes.ok) {
+          const checkData = await checkRes.json();
+          if (checkData && (checkData.status === 1 || checkData.code === 1 || (checkData.data && checkData.data.status === 1))) {
+            order.status = 'paid';
+            order.paidAt = Date.now();
+            paymentOrders.set(orderId, order);
+            savePaymentOrders();
+          }
+        }
+      } catch (e) {
+        console.warn('Check EasyPay order online error:', e);
+      }
+    }
+  }
+
+  return res.json({
+    success: true,
+    status: order.status,
+    paidAt: order.paidAt
+  });
+});
+
+// 易支付异步回调 Webhook
+app.all('/api/pay/easypay-notify', (req, res) => {
+  try {
+    const params = { ...(req.query || {}), ...(req.body || {}) };
+    const { out_trade_no, trade_status, type } = params;
+    const epKey = (activeSystemSettings.easypayKey || '').trim();
+
+    if (!epKey) {
+      return res.status(400).send('fail');
+    }
+
+    const calculatedSign = buildEasyPaySign(params, epKey);
+    if (calculatedSign !== params.sign) {
+      console.warn('EasyPay signature mismatch in notify');
+      return res.status(400).send('fail');
+    }
+
+    if (trade_status === 'TRADE_SUCCESS' && out_trade_no) {
+      const order = paymentOrders.get(out_trade_no);
+      if (order) {
+        order.status = 'paid';
+        order.paidAt = Date.now();
+        paymentOrders.set(out_trade_no, order);
+        savePaymentOrders();
+      }
+    }
+
+    return res.send('success');
+  } catch (err: any) {
+    return res.status(500).send('fail');
+  }
+});
+
+// 模拟完成支付（或第三方异步通知 Webhook）
+app.post('/api/pay/simulate-success/:orderId', (req, res) => {
+  const { orderId } = req.params;
+  const order = paymentOrders.get(orderId);
+  if (!order) {
+    return res.status(404).json({ error: '订单不存在' });
+  }
+  order.status = 'paid';
+  order.paidAt = Date.now();
+  paymentOrders.set(orderId, order);
+  savePaymentOrders();
+  return res.json({
+    success: true,
+    order
+  });
+});
+
+// 兑换买断激活卡密
+app.post('/api/license/activate-code', (req, res) => {
+  try {
+    const { code, uid, account } = req.body;
+    if (!code || typeof code !== 'string') {
+      return res.status(400).json({ error: '请输入有效的激活码' });
+    }
+
+    const cleanCode = code.trim().toUpperCase();
+    const record = activationCodes.get(cleanCode);
+
+    if (!record) {
+      return res.status(400).json({ error: '无效的激活码，请核对后重试' });
+    }
+
+    if (record.redeemedBy) {
+      return res.status(400).json({ error: '该激活码已被使用' });
+    }
+
+    // 核销激活码并持久化
+    record.redeemedBy = account || uid;
+    record.redeemedAt = Date.now();
+    activationCodes.set(cleanCode, record);
+    saveActivationCodes();
+
+    // 同时同步更新持久化用户列表中该用户的买断授权状态，彻底解决后台依然显示体验用户的 Bug
+    if (uid || account) {
+      let matchedUser: any = null;
+      if (uid && persistentUsers.has(uid)) {
+        matchedUser = persistentUsers.get(uid);
+      } else if (account) {
+        matchedUser = Array.from(persistentUsers.values()).find(
+          u => u.account && u.account.toLowerCase() === account.toLowerCase()
+        );
+      }
+      if (matchedUser) {
+        matchedUser.licenseStatus = 'active';
+        matchedUser.licensedAt = new Date().toISOString();
+        matchedUser.licenseKey = cleanCode;
+        persistentUsers.set(matchedUser.uid, matchedUser);
+        savePersistentUsers();
+      }
+    }
+
+    return res.json({
+      success: true,
+      message: '恭喜！拾年 · 岁华令终身买断已成功激活',
+      code: cleanCode
+    });
+  } catch (err: any) {
+    return res.status(500).json({ error: '激活失败' });
+  }
+});
+
+// 管理员：列出所有激活码
+app.get('/api/license/codes', (req, res) => {
+  const list = Array.from(activationCodes.values()).sort((a, b) => b.createdAt - a.createdAt);
+  return res.json({
+    success: true,
+    codes: list
+  });
+});
+
+// 管理员：批量生成激活码
+app.post('/api/license/generate-codes', (req, res) => {
+  try {
+    const { count = 5, note = '后台批量生成' } = req.body;
+    const num = Math.min(100, Math.max(1, parseInt(count, 10) || 5));
+    const generated: string[] = [];
+
+    for (let i = 0; i < num; i++) {
+      const part1 = Math.random().toString(36).substring(2, 6).toUpperCase();
+      const part2 = Math.random().toString(36).substring(2, 6).toUpperCase();
+      const part3 = Math.random().toString(36).substring(2, 6).toUpperCase();
+      const code = `SHINIAN-${part1}-${part2}-${part3}`;
+      activationCodes.set(code, {
+        code,
+        createdAt: Date.now() + i,
+        note
+      });
+      generated.push(code);
+    }
+
+    saveActivationCodes();
+
+    return res.json({
+      success: true,
+      message: `已成功生成 ${generated.length} 个激活码`,
+      codes: generated
+    });
+  } catch (err: any) {
+    return res.status(500).json({ error: '生成激活码失败' });
+  }
+});
+
+// 管理员：删除激活码
+app.post('/api/license/delete-code', (req, res) => {
+  try {
+    const { code } = req.body;
+    if (!code) {
+      return res.status(400).json({ error: '参数错误' });
+    }
+    const cleanCode = code.trim().toUpperCase();
+    activationCodes.delete(cleanCode);
+    saveActivationCodes();
+    return res.json({ success: true, message: '激活码已删除' });
+  } catch (err: any) {
+    return res.status(500).json({ error: '删除激活码失败' });
+  }
+});
+
+// ==================== 用户数据持久化存储与管理 API ====================
+
+const USERS_FILE = path.join(DATA_DIR, 'users.json');
+const persistentUsers = new Map<string, any>();
+
+function loadPersistentUsers() {
+  try {
+    if (fs.existsSync(USERS_FILE)) {
+      const raw = fs.readFileSync(USERS_FILE, 'utf-8');
+      const list: any[] = JSON.parse(raw);
+      list.forEach(u => {
+        if (u.uid) persistentUsers.set(u.uid, u);
+      });
+    }
+  } catch (e) {
+    console.warn('Load persistent users error:', e);
+  }
+
+  // 预置默认管理员/作者账号
+  const defaultAuthor = {
+    uid: 'u_author_00001',
+    account: 'author',
+    displayName: '拾年 · 作者',
+    userNumber: '00001',
+    role: 'admin',
+    licenseStatus: 'active',
+    licensedAt: '2026-01-01T00:00:00.000Z',
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: new Date().toISOString()
+  };
+  if (!persistentUsers.has(defaultAuthor.uid)) {
+    persistentUsers.set(defaultAuthor.uid, defaultAuthor);
+  }
+}
+
+function savePersistentUsers() {
+  try {
+    const list = Array.from(persistentUsers.values());
+    fs.writeFileSync(USERS_FILE, JSON.stringify(list, null, 2), 'utf-8');
+  } catch (e) {
+    console.warn('Save persistent users error:', e);
+  }
+}
+
+loadPersistentUsers();
+
+// 获取全站持久化用户列表
+app.get('/api/admin/users', (req, res) => {
+  const list = Array.from(persistentUsers.values()).sort((a, b) => {
+    return new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime();
+  });
+  return res.json({
+    success: true,
+    users: list
+  });
+});
+
+// 保存/新增/更新持久化用户
+app.post('/api/admin/users/save', (req, res) => {
+  try {
+    const user = req.body;
+    if (!user || !user.uid) {
+      return res.status(400).json({ error: '用户数据缺失 uid' });
+    }
+    const existing = persistentUsers.get(user.uid) || {};
+    const merged = {
+      ...existing,
+      ...user,
+      updatedAt: new Date().toISOString()
+    };
+    persistentUsers.set(user.uid, merged);
+    savePersistentUsers();
+    return res.json({ success: true, user: merged });
+  } catch (e: any) {
+    return res.status(500).json({ error: '持久化保存用户失败' });
+  }
+});
+
+// 删除持久化用户
+app.post('/api/admin/users/delete', (req, res) => {
+  try {
+    const { uid } = req.body;
+    if (!uid) {
+      return res.status(400).json({ error: '参数缺失 uid' });
+    }
+    persistentUsers.delete(uid);
+    savePersistentUsers();
+    return res.json({ success: true, message: '用户已从持久化存储删除' });
+  } catch (e: any) {
+    return res.status(500).json({ error: '删除持久化用户失败' });
   }
 });
 

@@ -29,15 +29,16 @@ service cloud.firestore {
 
     function isValidUserProfile(data) {
       return data.keys().hasAll(['uid', 'account', 'userNumber', 'createdAt']) &&
-             data.keys().hasOnly(['uid', 'account', 'email', 'displayName', 'userNumber', 'passwordHash', 'photoURL', 'createdAt', 'updatedAt', 'lastSyncAt', 'role']) &&
+             data.keys().hasOnly(['uid', 'account', 'email', 'phone', 'displayName', 'userNumber', 'passwordHash', 'photoURL', 'createdAt', 'updatedAt', 'lastSyncAt', 'role']) &&
              data.uid is string && data.uid.size() <= 128 &&
              data.account is string && data.account.size() <= 128 &&
              data.userNumber is string && data.userNumber.size() <= 32 &&
              data.createdAt is string && data.createdAt.size() <= 64 &&
              (!('email' in data) || (data.email is string && data.email.size() <= 256)) &&
+             (!('phone' in data) || (data.phone is string && data.phone.size() <= 32)) &&
              (!('displayName' in data) || (data.displayName is string && data.displayName.size() <= 128)) &&
              (!('passwordHash' in data) || (data.passwordHash is string && data.passwordHash.size() <= 256)) &&
-             (!('photoURL' in data) || (data.photoURL is string && data.photoURL.size() <= 1024)) &&
+             (!('photoURL' in data) || (data.photoURL is string && data.photoURL.size() <= 524288)) &&
              (!('updatedAt' in data) || (data.updatedAt is string && data.updatedAt.size() <= 64)) &&
              (!('lastSyncAt' in data) || (data.lastSyncAt is string && data.lastSyncAt.size() <= 64)) &&
              (!('role' in data) || (data.role in ['user', 'admin']));
@@ -128,6 +129,13 @@ service cloud.firestore {
     match /admins/{adminUid} {
       allow read: if true;
       allow write: if true;
+    }
+
+    // Cloud Person Avatars
+    match /cloud_avatars/{avatarId} {
+      allow read: if true;
+      allow create, update: if true;
+      allow delete: if isAdmin();
     }
   }
 }

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { ChevronRight } from 'lucide-react';
+import { ChevronRight, X } from 'lucide-react';
 import { sound } from '../utils/soundEngine';
 import { HealingTheme } from '../App';
 
@@ -8,6 +8,7 @@ interface PoeticPrologueModalProps {
   isOpen: boolean;
   onClose: () => void;
   isReplay?: boolean;
+  isFirstLogin?: boolean;
   currentTheme?: HealingTheme;
   isDarkMode?: boolean;
 }
@@ -143,6 +144,7 @@ export const PoeticPrologueModal: React.FC<PoeticPrologueModalProps> = ({
   isOpen,
   onClose,
   isReplay = false,
+  isFirstLogin = false,
   currentTheme,
   isDarkMode = false
 }) => {
@@ -575,20 +577,22 @@ export const PoeticPrologueModal: React.FC<PoeticPrologueModalProps> = ({
     const delta = clientX - dragStartXRef.current;
     const maxDist = getMaxDragDistance();
     const newX = Math.max(0, Math.min(maxDist, initialDragXRef.current + delta));
-    setDragX(newX);
 
-    if (newX >= maxDist * 0.88) {
-      setDragX(maxDist);
-      setIsDragging(false);
-      triggerWaveExit();
-    }
+    requestAnimationFrame(() => {
+      setDragX(newX);
+      if (newX >= maxDist * 0.78) {
+        setDragX(maxDist);
+        setIsDragging(false);
+        triggerWaveExit();
+      }
+    });
   }, [isDragging, isUnlocked, isExitingWave, getMaxDragDistance, triggerWaveExit]);
 
   const handleDragEnd = useCallback(() => {
     if (!isDragging || isUnlocked || isExitingWave) return;
     setIsDragging(false);
     const maxDist = getMaxDragDistance();
-    if (dragX < maxDist * 0.88) {
+    if (dragX < maxDist * 0.78) {
       setDragX(0);
     }
   }, [isDragging, isUnlocked, isExitingWave, dragX, getMaxDragDistance]);
@@ -642,8 +646,27 @@ export const PoeticPrologueModal: React.FC<PoeticPrologueModalProps> = ({
           className="absolute inset-0 w-full h-full pointer-events-none z-0"
         />
 
-        {/* ================= 1. 顶部纯粹留白 (上部向上扩充一段距离，更加美观) ================= */}
-        <div className="relative z-10 w-full h-1 sm:h-2 pointer-events-none shrink-0" />
+        {/* ================= 1. 顶部微光控制栏（纯粹极简，仅在非首次登录时保留右上方返回按键） ================= */}
+        <div className="relative z-30 w-full max-w-2xl sm:max-w-3xl md:max-w-4xl mx-auto flex items-center justify-end px-2 shrink-0 h-10">
+          {!isFirstLogin && (
+            <button
+              onClick={() => {
+                sound.playWaterDrop(840);
+                triggerWaveExit();
+              }}
+              className="px-3.5 py-1.5 rounded-full text-xs font-serif flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer backdrop-blur-xl border border-white/30 dark:border-white/15 hover:bg-white/40 dark:hover:bg-white/15"
+              style={{
+                backgroundColor: isDarkMode ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.7)',
+                color: isDarkMode ? '#FAF8F5' : '#223028',
+                boxShadow: '0 2px 10px rgba(0,0,0,0.05)'
+              }}
+              title="关闭长卷返回"
+            >
+              <span className="text-[11px] tracking-wider">返回空间</span>
+              <X className="w-3.5 h-3.5 opacity-60 hover:opacity-100" />
+            </button>
+          )}
+        </div>
 
         {/* ================= 2. 中央核心：宏大悬浮毛玻璃大舱 (严格锁定固定高度，永不跳动) ================= */}
         <div
@@ -820,10 +843,11 @@ export const PoeticPrologueModal: React.FC<PoeticPrologueModalProps> = ({
                     }}
                   />
 
-                  {/* 居中流光扫字 (Slide to Unlock Shimmer) */}
+                  {/* 居中流光扫字 (Slide to Unlock Shimmer - 点击或滑动均可直接开篇) */}
                   <div
-                    className="absolute inset-0 flex items-center justify-center pointer-events-none transition-opacity duration-150 pl-6 sm:pl-8"
+                    className="absolute inset-0 flex items-center justify-center cursor-pointer transition-opacity duration-150 pl-6 sm:pl-8 z-0"
                     style={{ opacity: Math.max(0, 1 - dragProgress * 1.5) }}
+                    onClick={() => triggerWaveExit()}
                   >
                     <span
                       className="text-xs sm:text-[13px] font-serif tracking-[0.3em] select-none text-transparent bg-clip-text animate-pulse"

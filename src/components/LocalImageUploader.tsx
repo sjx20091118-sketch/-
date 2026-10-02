@@ -21,17 +21,33 @@ export interface LocalImageUploaderProps {
 // Client-side HTML5 Canvas based image compressor to ensure fast offline storage within localStorage quotas
 export function compressImageFile(
   file: File,
-  maxWidth = 1000,
-  maxHeight = 1000,
-  quality = 0.82
+  maxWidthOrDim = 1000,
+  maxHeightOrQuality = 1000,
+  qualityOpt = 0.82
 ): Promise<string> {
   return new Promise((resolve, reject) => {
+    let maxWidth = maxWidthOrDim;
+    let maxHeight = maxHeightOrQuality;
+    let quality = qualityOpt;
+
+    // Handle call signature: compressImageFile(file, maxDimension, quality)
+    if (maxHeightOrQuality > 0 && maxHeightOrQuality <= 1) {
+      quality = maxHeightOrQuality;
+      maxHeight = maxWidthOrDim;
+    }
+
     const reader = new FileReader();
     reader.onload = (readerEvent) => {
+      const originalResult = readerEvent.target?.result as string;
+      if (!originalResult) {
+        reject(new Error('无法读取文件内容'));
+        return;
+      }
+
       const img = new Image();
       img.onload = () => {
-        let width = img.width;
-        let height = img.height;
+        let width = img.width || 1;
+        let height = img.height || 1;
 
         if (width > maxWidth || height > maxHeight) {
           if (width / height > maxWidth / maxHeight) {
@@ -43,24 +59,38 @@ export function compressImageFile(
           }
         }
 
+        width = Math.max(1, Math.round(width));
+        height = Math.max(1, Math.round(height));
+
         const canvas = document.createElement('canvas');
         canvas.width = width;
         canvas.height = height;
         const ctx = canvas.getContext('2d');
         if (!ctx) {
-          resolve(readerEvent.target?.result as string);
+          resolve(originalResult);
           return;
         }
 
+        // 柔和白底填充，防止透明通道在 JPEG 下变黑
+        ctx.fillStyle = '#FFFFFF';
+        ctx.fillRect(0, 0, width, height);
         ctx.drawImage(img, 0, 0, width, height);
-        const mimeType = file.type === 'image/png' ? 'image/png' : 'image/jpeg';
-        const dataUrl = canvas.toDataURL(mimeType, quality);
-        resolve(dataUrl);
+
+        try {
+          const dataUrl = canvas.toDataURL('image/jpeg', quality);
+          if (!dataUrl || dataUrl === 'data:,' || dataUrl.length < 50) {
+            resolve(originalResult);
+          } else {
+            resolve(dataUrl);
+          }
+        } catch {
+          resolve(originalResult);
+        }
       };
       img.onerror = () => {
-        resolve(readerEvent.target?.result as string);
+        resolve(originalResult);
       };
-      img.src = readerEvent.target?.result as string;
+      img.src = originalResult;
     };
     reader.onerror = reject;
     reader.readAsDataURL(file);

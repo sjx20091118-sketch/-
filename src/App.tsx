@@ -64,14 +64,29 @@ import {
   Moon,
   Cloud,
   Server,
-  Info
+  Info,
+  User
 } from 'lucide-react';
 import { onAuthStateChanged } from 'firebase/auth';
 import { auth, testConnection } from './firebase';
-import { getLatestAppVersion, checkIsAdmin, CloudAppVersion, DomesticUser, getLocalDomesticUser } from './services/cloudSyncService';
+import {
+  getLatestAppVersion,
+  getPublishedNotices,
+  uploadPersonAvatarToCloud,
+  checkIsAdmin,
+  CloudAppVersion,
+  CloudSystemNotice,
+  DomesticUser,
+  getLocalDomesticUser,
+  isAuthorUser,
+  checkUserLicenseStatus,
+  fetchServerSystemSettings
+} from './services/cloudSyncService';
 import { AuthPortalModal } from './components/AuthPortalModal';
 import { MyProfileModal } from './components/MyProfileModal';
 import { UpdateNoticeModal } from './components/UpdateNoticeModal';
+import { CheckoutLicenseModal } from './components/CheckoutLicenseModal';
+import { OrientalScrollNoticeModal } from './components/OrientalScrollNoticeModal';
 import { AdminPortal } from './components/AdminPortal';
 import { AppData, Person, Story, Artifact, ArtifactVideoItem, Letter, ChatMessage, TimelineItem } from './types';
 import { INITIAL_SEED } from './data/initialData';
@@ -426,6 +441,12 @@ export default function App() {
   });
 
   const [activeTab, setActiveTab] = useState<TabType>('home');
+  const previousTabRef = useRef<TabType>('home');
+  const wasFromHome = previousTabRef.current === 'home' && activeTab !== 'home';
+
+  useEffect(() => {
+    previousTabRef.current = activeTab;
+  }, [activeTab]);
   const [selectedYear, setSelectedYear] = useState<string>('all');
   const [isYearPickerOpen, setIsYearPickerOpen] = useState<boolean>(false);
   const [isTopNavMenuOpen, setIsTopNavMenuOpen] = useState<boolean>(false);
@@ -453,33 +474,113 @@ export default function App() {
   const [isAuthPortalOpen, setIsAuthPortalOpen] = useState<boolean>(false);
   const [isMyProfileModalOpen, setIsMyProfileModalOpen] = useState<boolean>(false);
   const [isPrologueOpen, setIsPrologueOpen] = useState<boolean>(false);
+  const [isFirstLoginPrologue, setIsFirstLoginPrologue] = useState<boolean>(false);
   const [isAdminPortalOpen, setIsAdminPortalOpen] = useState<boolean>(false);
   const [isUpdateModalOpen, setIsUpdateModalOpen] = useState<boolean>(false);
   const [newAppVersion, setNewAppVersion] = useState<CloudAppVersion | null>(null);
+
+  // 东方微印水滴平抛长卷公告通知状态
+  const [activeScrollNotice, setActiveScrollNotice] = useState<CloudSystemNotice | null>(null);
+  const [activeScrollVersion, setActiveScrollVersion] = useState<CloudAppVersion | null>(null);
+  const [isScrollNoticeOpen, setIsScrollNoticeOpen] = useState<boolean>(false);
+  const [hasUnreadNotice, setHasUnreadNotice] = useState<boolean>(false);
+
   const [isAdminUser, setIsAdminUser] = useState<boolean>(() => {
     const u = getLocalDomesticUser();
-    return u?.role === 'admin' || u?.account === 'admin' || u?.account === 'sjx20091118';
+    return isAuthorUser(u);
   });
   const [shareMemoirItem, setShareMemoirItem] = useState<UniversalShareSource | TimelineItem | null>(null);
   const [isShareModalOpen, setIsShareModalOpen] = useState<boolean>(false);
 
-  // Initialize Firebase connection and check for cloud updates & admin role
+  // 商业全功能买断授权与收银台状态
+  const [isCheckoutModalOpen, setIsCheckoutModalOpen] = useState<boolean>(false);
+  const [checkoutTriggerReason, setCheckoutTriggerReason] = useState<string>('');
+  const [licenseRefreshKey, setLicenseRefreshKey] = useState<number>(0);
+
+  useEffect(() => {
+    fetchServerSystemSettings().then(() => {
+      setLicenseRefreshKey(k => k + 1);
+    });
+    const handleStorageChange = () => {
+      setLicenseRefreshKey(k => k + 1);
+    };
+    window.addEventListener('storage', handleStorageChange);
+    return () => window.removeEventListener('storage', handleStorageChange);
+  }, []);
+
+  const licenseInfo = useMemo(() => {
+    return checkUserLicenseStatus(currentDomesticUser);
+  }, [currentDomesticUser, licenseRefreshKey]);
+
+  const requireActiveLicense = useCallback((actionDescription: string): boolean => {
+    const currentLicense = checkUserLicenseStatus(currentDomesticUser);
+    if (currentLicense.status === 'active' || currentLicense.isAuthorOrAdmin) {
+      return true;
+    }
+    if (currentLicense.status === 'trial') {
+      return true;
+    }
+    sound.playHapticClick(600);
+    const trialPrefix = currentLicense.trialDaysConfigured === 0
+      ? '当前系统未开启免费试用体验，解锁《拾年》终身买断即可'
+      : `您当前的 ${currentLicense.trialDaysConfigured} 天试用体验已满期，解锁《拾年》终身买断即可`;
+    setCheckoutTriggerReason(`${trialPrefix}${actionDescription}`);
+    setIsCheckoutModalOpen(true);
+    return false;
+  }, [currentDomesticUser, licenseRefreshKey]);
+
+  const checkForNoticesAndUpdates = useCallback(async () => {
+    try {
+      const [notices, latestVer] = await Promise.all([
+        getPublishedNotices().catch(() => []),
+        getLatestAppVersion().catch(() => null)
+      ]);
+
+      const lastSeenVer = localStorage.getItem('shinian_last_seen_version_id');
+      const hasUnseenVersion = latestVer && latestVer.versionId !== lastSeenVer;
+
+      const lastSeenNoticeId = localStorage.getItem('shinian_last_seen_notice_id');
+      const unreadNotice = notices && notices.length > 0 ? notices.find(n => n.noticeId !== lastSeenNoticeId) : null;
+
+      if (hasUnseenVersion) {
+        // 优先级 1: 优先弹出新版本更新
+        setActiveScrollVersion(latestVer);
+        setActiveScrollNotice(null);
+        setHasUnreadNotice(true);
+        setIsScrollNoticeOpen(true);
+        return;
+      }
+
+      if (unreadNotice) {
+        // 优先级 2: 弹出未读系统广播
+        setActiveScrollNotice(unreadNotice);
+        setActiveScrollVersion(null);
+        setHasUnreadNotice(true);
+        setIsScrollNoticeOpen(true);
+        return;
+      }
+    } catch (err) {
+      console.warn('Check notice failed:', err);
+    }
+  }, []);
+
+  // Initialize Firebase connection and check for cloud updates & notices after startup animation (1.2s)
   useEffect(() => {
     testConnection().catch(() => {});
-    getLatestAppVersion().then((latestVer) => {
-      if (latestVer && latestVer.versionNumber !== 'v1.2.0') {
-        setNewAppVersion(latestVer);
-      }
-    }).catch(() => {});
-  }, []);
+    const timer = setTimeout(() => {
+      checkForNoticesAndUpdates();
+    }, 1200);
+    return () => clearTimeout(timer);
+  }, [checkForNoticesAndUpdates]);
 
   // Sync admin status when domestic user changes
   useEffect(() => {
     if (currentDomesticUser) {
       setIsAdminUser(
+        isAuthorUser(currentDomesticUser) ||
         currentDomesticUser.role === 'admin' ||
-        currentDomesticUser.account === 'admin' ||
-        currentDomesticUser.account === 'sjx20091118'
+        currentDomesticUser.userNumber === '00001' ||
+        currentDomesticUser.userNumber === '0001'
       );
     } else {
       setIsAdminUser(false);
@@ -502,23 +603,18 @@ export default function App() {
       setShowSplash(false);
       const user = getLocalDomesticUser();
       if (!user) {
-        // Enforce registration/login gate on first startup
         setIsAuthPortalOpen(true);
-      } else {
-        try {
-          const hasSeenPrologue = localStorage.getItem('shinian_prologue_v1_seen');
-          if (hasSeenPrologue !== 'true') {
-            setIsPrologueOpen(true);
-          }
-        } catch {}
       }
     }, 1800);
     return () => clearTimeout(timer);
   }, [showSplash]);
 
-  // Sync dark class on documentElement for Tailwind dark: variants and global styling
+  // Sync dark class on documentElement and body for Tailwind dark: variants and global styling
   useEffect(() => {
     document.documentElement.classList.toggle('dark', isDarkMode);
+    document.documentElement.classList.toggle('dark-zen-theme', isDarkMode);
+    document.body.classList.toggle('dark', isDarkMode);
+    document.body.classList.toggle('dark-zen-theme', isDarkMode);
   }, [isDarkMode]);
 
   // Custom UI Notifications & Dialogs
@@ -560,34 +656,64 @@ export default function App() {
       };
     }
     if (activeTab === 'timeline') {
-      return { label: '定格瞬间', onClick: () => setActiveModal('addTimeline') };
+      return {
+        label: '定格瞬间',
+        onClick: () => {
+          if (!requireActiveLicense('定格新的时光瞬间')) return;
+          setActiveModal('addTimeline');
+        }
+      };
     }
     if (activeTab === 'people') {
       if (!selectedPerson) {
-        return { label: '添加人物', onClick: () => setActiveModal('addPerson') };
+        return {
+          label: '添加人物',
+          onClick: () => {
+            if (!requireActiveLicense('记录新的同行人物')) return;
+            setActiveModal('addPerson');
+          }
+        };
       }
       return null;
     }
     if (activeTab === 'stories') {
       if (!readerStory) {
-        return { label: '新增章节', onClick: () => setActiveModal('addStory') };
+        return {
+          label: '新增章节',
+          onClick: () => {
+            if (!requireActiveLicense('书写新的长篇随笔')) return;
+            setActiveModal('addStory');
+          }
+        };
       }
       return null;
     }
     if (activeTab === 'artifacts') {
       if (!selectedArtifact) {
-        return { label: '收藏旧物', onClick: () => setActiveModal('addArtifact') };
+        return {
+          label: '收藏旧物',
+          onClick: () => {
+            if (!requireActiveLicense('珍藏新的时光信物')) return;
+            setActiveModal('addArtifact');
+          }
+        };
       }
       return null;
     }
     if (activeTab === 'letters') {
       if (!selectedLetter) {
-        return { label: '封存信件', onClick: () => setActiveModal('addLetter') };
+        return {
+          label: '封存信件',
+          onClick: () => {
+            if (!requireActiveLicense('封存新的时光信笺')) return;
+            setActiveModal('addLetter');
+          }
+        };
       }
       return null;
     }
     return null;
-  }, [activeTab, selectedPerson, readerStory, selectedArtifact, selectedLetter, isDarkMode, showToast]);
+  }, [activeTab, selectedPerson, readerStory, selectedArtifact, selectedLetter, isDarkMode, showToast, requireActiveLicense]);
 
   // Sync current theme CSS variables globally across the document and all UI
   useEffect(() => {
@@ -1280,6 +1406,7 @@ export default function App() {
   };
 
   const handleExport = async () => {
+    if (!requireActiveLicense('导出全量记忆档案备份')) return;
     handleDownloadBackup();
   };
 
@@ -1324,6 +1451,7 @@ export default function App() {
   };
 
   const handleImport = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!requireActiveLicense('导入恢复时光记忆档案')) return;
     const file = e.target.files?.[0];
     if (!file) return;
     processBackupFile(file);
@@ -1331,6 +1459,7 @@ export default function App() {
   };
 
   const handleConfirmImport = () => {
+    if (!requireActiveLicense('导入恢复时光记忆档案')) return;
     if (!importPreview) return;
     if (importMode === 'overwrite') {
       setData(importPreview.data);
@@ -1745,10 +1874,23 @@ export default function App() {
           >
             {/* Left Brand Area */}
             <div className="flex items-center gap-2 min-w-0">
-              <div
-                className="w-2 h-2 rounded-full shrink-0 animate-pulse transition-colors duration-500 shadow-xs"
-                style={{ backgroundColor: currentTheme.primary }}
-              />
+              <button
+                type="button"
+                onClick={() => {
+                  if (activeScrollNotice || activeScrollVersion) {
+                    setIsScrollNoticeOpen(true);
+                  } else {
+                    checkForNoticesAndUpdates();
+                  }
+                }}
+                className="relative flex items-center justify-center p-0.5 rounded-full cursor-pointer group transition-transform active:scale-90"
+                title={hasUnreadNotice ? '查看系统公文长卷' : '拾年'}
+              >
+                <div
+                  className="w-2 h-2 rounded-full shrink-0 transition-colors duration-500 shadow-xs animate-pulse"
+                  style={{ backgroundColor: currentTheme.primary }}
+                />
+              </button>
               <span
                 className="text-base font-bold tracking-widest font-serif leading-none select-none shrink-0 drop-shadow-2xs"
                 style={{
@@ -1770,60 +1912,97 @@ export default function App() {
               </span>
             </div>
 
-            {/* Right Seamless Embedded Actions & Nav Trigger */}
+            {/* Right Seamless Embedded Actions: 首页显示暗色/明亮切换；进入其他模块时由快捷动作按键直接替换 */}
             <div className="flex items-center gap-1.5 shrink-0">
-              {contextualAction && (
-                <motion.button
-                  whileHover={{ scale: 1.05 }}
-                  whileTap={{ scale: 0.92 }}
-                  transition={{ type: 'spring', stiffness: 420, damping: 24 }}
-                  onClick={() => {
-                    sound.playHapticClick(contextualAction.isDayNight ? 1000 : 1200);
-                    contextualAction.onClick();
-                  }}
-                  title={contextualAction.isDayNight ? (isDarkMode ? '切换至晨曦明亮模式' : '切换至暗夜冥想模式') : undefined}
-                  className={`flex items-center justify-center transition-all cursor-pointer rounded-full border border-black/5 dark:border-white/10 ${
-                    contextualAction.isDayNight
-                      ? 'w-8 h-8 bg-black/[0.03] dark:bg-white/[0.08] hover:bg-black/[0.06] dark:hover:bg-white/[0.14]'
-                      : 'px-2.5 py-1 text-xs font-serif font-semibold gap-1 bg-black/[0.03] dark:bg-white/[0.08] hover:bg-black/[0.06] dark:hover:bg-white/[0.14]'
-                  }`}
-                  style={{ color: isDarkMode ? currentTheme.primary : currentTheme.primaryDark }}
-                >
-                  {contextualAction.isDayNight ? (
-                    isDarkMode ? (
+              <AnimatePresence mode="wait">
+                {activeTab === 'home' ? (
+                  <motion.button
+                    key="top-day-night-toggle"
+                    initial={{ opacity: 0, scale: 0.92 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={{ opacity: 0, scale: 0.92 }}
+                    transition={{ duration: 0.2 }}
+                    whileHover={{ scale: 1.05 }}
+                    whileTap={{ scale: 0.92 }}
+                    onClick={() => {
+                      const next = !isDarkMode;
+                      setIsDarkMode(next);
+                      localStorage.setItem('shinian_dark_mode', String(next));
+                      sound.playWaterDrop(next ? 640 : 880);
+                      showToast(next ? '已开启暗夜冥想模式' : '已开启晨曦明亮模式');
+                    }}
+                    title={isDarkMode ? '切换至晨曦明亮模式' : '切换至暗夜冥想模式'}
+                    className="w-8 h-8 rounded-full flex items-center justify-center transition-all cursor-pointer border border-black/5 dark:border-white/10 bg-black/[0.03] dark:bg-white/[0.08] hover:bg-black/[0.06] dark:hover:bg-white/[0.14] active:scale-95 shadow-2xs"
+                    style={{ color: isDarkMode ? currentTheme.primary : currentTheme.primaryDark }}
+                  >
+                    {isDarkMode ? (
                       <Moon
                         className="w-4 h-4 drop-shadow-xs transition-colors"
                         style={{ color: currentTheme.dark?.accent || currentTheme.accent || currentTheme.primary }}
                       />
                     ) : (
                       <Sun className="w-4 h-4 text-amber-500 animate-spin-slow drop-shadow-xs" />
-                    )
-                  ) : (
-                    <>
-                      <Plus className="w-3.5 h-3.5" style={{ color: currentTheme.primary }} />
-                      <span className="tracking-wide">{contextualAction.label}</span>
-                    </>
-                  )}
-                </motion.button>
-              )}
-
-              {/* Cloud Sync Quick Pill */}
-              <motion.button
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.92 }}
-                transition={{ type: 'spring', stiffness: 420, damping: 24 }}
-                onClick={() => {
-                  sound.playHapticClick(1050);
-                  setIsCloudSyncModalOpen(true);
-                }}
-                className="w-8 h-8 rounded-full flex items-center justify-center transition-all border border-black/5 dark:border-white/10 bg-black/[0.03] dark:bg-white/[0.08] hover:bg-black/[0.06] dark:hover:bg-white/[0.14] active:scale-95 cursor-pointer shadow-2xs"
-                title="云境 · 跨端漫游与云端归档"
-              >
-                <Cloud
-                  className="w-4 h-4 transition-colors"
-                  style={{ color: currentTheme.accent || currentTheme.primary }}
-                />
-              </motion.button>
+                    )}
+                  </motion.button>
+                ) : (
+                  contextualAction && (
+                    <motion.button
+                      key="top-contextual-action-capsule"
+                      initial={wasFromHome ? { opacity: 0, scale: 0.88 } : false}
+                      animate={{ opacity: 1, scale: 1 }}
+                      exit={{ opacity: 0, scale: 0.88 }}
+                      transition={{ duration: 0.28, ease: [0.16, 1, 0.3, 1] }}
+                      whileHover={{ scale: 1.05 }}
+                      whileTap={{ scale: 0.92 }}
+                      onClick={() => {
+                        sound.playWaterDrop(880);
+                        contextualAction.onClick();
+                      }}
+                      className="h-8 px-3 rounded-full flex items-center justify-center gap-1 transition-all cursor-pointer border border-black/5 dark:border-white/10 bg-black/[0.03] dark:bg-white/[0.08] hover:bg-black/[0.06] dark:hover:bg-white/[0.14] active:scale-95 shadow-2xs shrink-0 select-none"
+                      style={{
+                        color: isDarkMode ? currentTheme.primary : currentTheme.primaryDark
+                      }}
+                    >
+                      {/* 加号与文字共同融入动效：从首页切入时整体「由大及小」视觉冲击聚拢；模块间切换静止无动画 */}
+                      {wasFromHome ? (
+                        <motion.div
+                          key={`inner-content-${contextualAction.label}`}
+                          initial={{ opacity: 0, scale: 1.45 }}
+                          animate={{ opacity: 1, scale: 1 }}
+                          transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
+                          className="flex items-center gap-1 origin-center"
+                        >
+                          <Plus
+                            size={11.5}
+                            strokeWidth={2.4}
+                            style={{ color: isDarkMode ? currentTheme.primary : currentTheme.primaryDark }}
+                          />
+                          <span
+                            className="text-[11px] font-serif font-bold tracking-wider whitespace-nowrap"
+                            style={{ color: isDarkMode ? currentTheme.primary : currentTheme.primaryDark }}
+                          >
+                            {contextualAction.label}
+                          </span>
+                        </motion.div>
+                      ) : (
+                        <div className="flex items-center gap-1">
+                          <Plus
+                            size={11.5}
+                            strokeWidth={2.4}
+                            style={{ color: isDarkMode ? currentTheme.primary : currentTheme.primaryDark }}
+                          />
+                          <span
+                            className="text-[11px] font-serif font-bold tracking-wider whitespace-nowrap"
+                            style={{ color: isDarkMode ? currentTheme.primary : currentTheme.primaryDark }}
+                          >
+                            {contextualAction.label}
+                          </span>
+                        </div>
+                      )}
+                    </motion.button>
+                  )
+                )}
+              </AnimatePresence>
 
               {/* Menu Trigger Capsule */}
               <div className="relative">
@@ -2007,83 +2186,7 @@ export default function App() {
                           <ChevronRight className="w-3 h-3 opacity-60 group-hover:opacity-100 transition-colors" />
                         </button>
 
-                        {/* Item 4: 我的 · 独立一级主入口 (置于设置正下方，深度适配主题调色板) */}
-                        <button
-                          onClick={() => {
-                            sound.playWaterDrop(880);
-                            setIsTopNavMenuOpen(false);
-                            if (currentDomesticUser) {
-                              setIsMyProfileModalOpen(true);
-                            } else {
-                              setIsAuthPortalOpen(true);
-                            }
-                          }}
-                          className={`w-full p-2.5 rounded-2xl flex items-center justify-between transition-all text-left text-xs group cursor-pointer border shadow-2xs ${
-                            isDarkMode
-                              ? 'hover:bg-white/10 active:bg-white/20 text-[#FAF8F5] border-white/15'
-                              : 'hover:bg-white/90 active:bg-white text-[#2B332E] border-black/5'
-                          }`}
-                          style={{
-                            background: isDarkMode
-                              ? `linear-gradient(135deg, ${currentTheme.primary}20 0%, ${currentTheme.primary}08 100%)`
-                              : `linear-gradient(135deg, ${currentTheme.primary}15 0%, ${currentTheme.primary}05 100%)`
-                          }}
-                        >
-                          <div className="flex items-center gap-2.5 min-w-0">
-                            <div
-                              className="w-7 h-7 rounded-xl overflow-hidden flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform border border-amber-400/50 shadow-xs"
-                              style={{
-                                backgroundColor: currentTheme.primary,
-                                color: '#FFF'
-                              }}
-                            >
-                              {currentDomesticUser?.photoURL ? (
-                                <MediaImage src={currentDomesticUser.photoURL} alt="Avatar" className="w-full h-full object-cover" />
-                              ) : (
-                                <User className="w-4 h-4" />
-                              )}
-                            </div>
-                            <div className="min-w-0">
-                              <div className="font-serif font-bold text-xs truncate">
-                                {currentDomesticUser ? currentDomesticUser.displayName : '我的 · 拾年归客'}
-                              </div>
-                              <div className="text-[10px] font-mono truncate text-amber-600 dark:text-amber-400 font-medium">
-                                {currentDomesticUser ? `NO. ${currentDomesticUser.userNumber} 号` : '未登录 · 点击入卷'}
-                              </div>
-                            </div>
-                          </div>
-                          <ChevronRight className="w-3.5 h-3.5 opacity-60 group-hover:opacity-100 transition-colors shrink-0 ml-1" />
-                        </button>
-
-                        {/* Item 5: 关于软件 (点击直接展开诗意打字画卷演播) */}
-                        <button
-                          onClick={() => {
-                            sound.playWaterDrop(880);
-                            setIsTopNavMenuOpen(false);
-                            setIsPrologueOpen(true);
-                          }}
-                          className={`w-full px-3 py-2 rounded-2xl flex items-center justify-between transition-all text-left text-xs group cursor-pointer ${
-                            isDarkMode
-                              ? 'hover:bg-white/10 active:bg-white/20 text-[#FAF8F5]'
-                              : 'hover:bg-white/80 active:bg-white text-[#2B332E]'
-                          }`}
-                        >
-                          <div className="flex items-center gap-2.5">
-                            <div
-                              className="w-6 h-6 rounded-xl flex items-center justify-center group-hover:scale-105 transition-transform"
-                              style={{
-                                backgroundColor: isDarkMode ? `${currentTheme.primary}25` : `${currentTheme.primary}18`,
-                                color: isDarkMode ? currentTheme.primary : currentTheme.primaryDark
-                              }}
-                            >
-                              <Info className="w-3.5 h-3.5" />
-                            </div>
-                            <span className="font-serif font-medium">关于软件</span>
-                          </div>
-                          <span className="text-[10px] opacity-50 font-serif">序章启卷</span>
-                        </button>
-
-                        {/* Item 6: 锁定空间 */}
+                        {/* Item 4: 锁定空间 (严格位于关于软件的正上方) */}
                         <button
                           onClick={() => {
                             sound.playWaterDrop(880);
@@ -2109,6 +2212,158 @@ export default function App() {
                               <Lock className="w-3.5 h-3.5" />
                             </div>
                             <span className="font-serif font-medium">锁定空间</span>
+                          </div>
+                        </button>
+
+                        {/* Item 5: 关于软件 (纯净无赘述，删去“岁华长卷”等后缀，直达诗意画卷) */}
+                        <button
+                          onClick={() => {
+                            sound.playWaterDrop(880);
+                            setIsTopNavMenuOpen(false);
+                            setIsFirstLoginPrologue(false);
+                            setIsPrologueOpen(true);
+                          }}
+                          className={`w-full px-3 py-2 rounded-2xl flex items-center justify-between transition-all text-left text-xs group cursor-pointer ${
+                            isDarkMode
+                              ? 'hover:bg-white/10 active:bg-white/20 text-[#FAF8F5]'
+                              : 'hover:bg-white/80 active:bg-white text-[#2B332E]'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2.5">
+                            <div
+                              className="w-6 h-6 rounded-xl flex items-center justify-center group-hover:scale-105 transition-transform"
+                              style={{
+                                backgroundColor: isDarkMode ? `${currentTheme.primary}25` : `${currentTheme.primary}18`,
+                                color: isDarkMode ? currentTheme.primary : currentTheme.primaryDark
+                              }}
+                            >
+                              <Info className="w-3.5 h-3.5" />
+                            </div>
+                            <span className="font-serif font-medium">关于软件</span>
+                          </div>
+                        </button>
+
+                        {/* Item 6: 管理后台 (仅当作者账号登录时在扩展栏显示，与设置/锁定图标风格完全统一) */}
+                        {(isAdminUser || currentDomesticUser?.userNumber === '00001' || currentDomesticUser?.userNumber === '0001' || currentDomesticUser?.role === 'admin') && (
+                          <button
+                            onClick={() => {
+                              sound.playWaterDrop(1000);
+                              setIsTopNavMenuOpen(false);
+                              setIsAdminPortalOpen(true);
+                            }}
+                            className={`w-full px-3 py-2 rounded-2xl flex items-center justify-between transition-all text-left text-xs group cursor-pointer ${
+                              isDarkMode
+                                ? 'hover:bg-white/10 active:bg-white/20 text-[#FAF8F5]'
+                                : 'hover:bg-white/80 active:bg-white text-[#2B332E]'
+                            }`}
+                          >
+                            <div className="flex items-center gap-2.5">
+                              <div
+                                className="w-6 h-6 rounded-xl flex items-center justify-center group-hover:scale-105 transition-transform"
+                                style={{
+                                  backgroundColor: isDarkMode ? `${currentTheme.primary}25` : `${currentTheme.primary}18`,
+                                  color: isDarkMode ? currentTheme.primary : currentTheme.primaryDark
+                                }}
+                              >
+                                <Server className="w-3.5 h-3.5" />
+                              </div>
+                              <span className="font-serif font-medium">管理后台</span>
+                            </div>
+                            <ChevronRight className="w-3 h-3 opacity-60 group-hover:opacity-100 transition-colors" />
+                          </button>
+                        )}
+
+                        {/* 分割线 */}
+                        <div className="h-px w-full my-1.5 bg-black/5 dark:bg-white/10" />
+
+                        {/* 扩展栏最底部: 极简个人管理卡片（透明液态玻璃，深度适配当前调色板 primaryColor，左侧圆角头像右侧账号编号） */}
+                        <button
+                          onClick={() => {
+                            sound.playWaterDrop(880);
+                            setIsTopNavMenuOpen(false);
+                            if (currentDomesticUser) {
+                              setIsMyProfileModalOpen(true);
+                            } else {
+                              setIsAuthPortalOpen(true);
+                            }
+                          }}
+                          className={`w-full p-2.5 rounded-2xl flex items-center justify-between transition-all text-left text-xs group cursor-pointer border relative overflow-hidden backdrop-blur-xl ${
+                            isDarkMode
+                              ? 'border-white/15 hover:border-white/30 text-[#FAF8F5]'
+                              : 'border-black/8 hover:border-black/15 text-[#223028]'
+                          }`}
+                          style={{
+                            background: isDarkMode
+                              ? `linear-gradient(135deg, ${currentTheme.primary}25 0%, ${currentTheme.primaryDark}10 100%)`
+                              : `linear-gradient(135deg, ${currentTheme.primary}15 0%, ${currentTheme.primaryDark}05 100%)`,
+                            boxShadow: isDarkMode
+                              ? '0 4px 20px -2px rgba(0,0,0,0.4), inset 0 1px 1px 0 rgba(255,255,255,0.15)'
+                              : '0 4px 16px -2px rgba(0,0,0,0.06), inset 0 1px 1px 0 rgba(255,255,255,0.85)'
+                          }}
+                        >
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            {/* 左侧圆角头像（严格互斥渲染，彻底根绝照片与文字底色重叠bug） */}
+                            <div
+                              className="w-8 h-8 rounded-full overflow-hidden flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform border shadow-xs relative"
+                              style={{
+                                borderColor: `${currentTheme.primary}60`,
+                                backgroundColor: isDarkMode ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)'
+                              }}
+                            >
+                              {currentDomesticUser?.photoURL ? (
+                                <img
+                                  key={currentDomesticUser.photoURL}
+                                  src={currentDomesticUser.photoURL}
+                                  alt="Avatar"
+                                  className="w-full h-full object-cover"
+                                  onError={(e) => {
+                                    (e.currentTarget as HTMLElement).style.display = 'none';
+                                  }}
+                                />
+                              ) : (
+                                <div
+                                  className="w-full h-full flex items-center justify-center text-white font-serif font-bold text-xs select-none"
+                                  style={{ backgroundColor: currentTheme.primary }}
+                                >
+                                  {currentDomesticUser ? (currentDomesticUser.displayName?.[0] || '拾') : '拾'}
+                                </div>
+                              )}
+                            </div>
+
+                            <div className="min-w-0 flex flex-col justify-center">
+                              <span className="font-serif font-bold text-xs truncate" style={{ color: isDarkMode ? '#FAF8F5' : '#223028' }}>
+                                {currentDomesticUser ? currentDomesticUser.displayName : '个人管理'}
+                              </span>
+                              <div className="text-[10px] font-mono opacity-75 flex items-center gap-1.5 truncate mt-0.5">
+                                <span>{currentDomesticUser ? currentDomesticUser.account : '点击登录'}</span>
+                                {currentDomesticUser && (
+                                  <>
+                                    {/* 如果是会员用户，则后面什么都不显示；如果为普通或者试用用户，则后面显示试用期还有多少多少天 */}
+                                    {licenseInfo.status !== 'active' && !licenseInfo.isAuthorOrAdmin && (
+                                      <>
+                                        <span>·</span>
+                                        <span
+                                          className="truncate font-serif text-[10px] font-medium"
+                                          style={{ color: isDarkMode ? '#F59E0B' : '#D97706' }}
+                                        >
+                                          {`试用期剩余 ${licenseInfo.remainingDays} 天`}
+                                        </span>
+                                      </>
+                                    )}
+                                  </>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* 右侧：简洁指示图标 */}
+                          <div className="flex items-center gap-1 shrink-0 ml-2">
+                            {!currentDomesticUser && (
+                              <span className="text-[10px] font-serif px-2 py-0.5 rounded-full bg-black/5 dark:bg-white/10 opacity-70">
+                                登录
+                              </span>
+                            )}
+                            <ChevronRight className="w-3.5 h-3.5 opacity-50 group-hover:opacity-100 transition-colors shrink-0" />
                           </div>
                         </button>
                       </motion.div>
@@ -3163,8 +3418,11 @@ export default function App() {
                     暂无拾光节点，点击下方「拾光轴」开启你的十年记录
                   </p>
                   <button
-                    onClick={() => setActiveModal('addTimeline')}
-                    className="text-xs px-3.5 py-1.5 bg-[#5B7B6D] text-white rounded-xl hover:bg-[#3E564B] font-medium shadow-2xs"
+                    onClick={() => {
+                      if (!requireActiveLicense('定格新的时光瞬间')) return;
+                      setActiveModal('addTimeline');
+                    }}
+                    className="text-xs px-3.5 py-1.5 bg-[#5B7B6D] text-white rounded-xl hover:bg-[#3E564B] font-medium shadow-2xs cursor-pointer"
                   >
                     新建第一条记忆
                   </button>
@@ -3310,7 +3568,10 @@ export default function App() {
                     showToast(`已定格至 ${yr} 年纪`);
                   }
                 }}
-                onOpenAdd={() => setActiveModal('addTimeline')}
+                onOpenAdd={() => {
+                  if (!requireActiveLicense('定格新的时光瞬间')) return;
+                  setActiveModal('addTimeline');
+                }}
                 onPlayTts={(text) => handlePlayTts(text)}
                 onDelete={(item) => requestDelete('timeline', item.id, item.title)}
                 onOpenYearPicker={() => setIsYearPickerOpen(true)}
@@ -3353,12 +3614,13 @@ export default function App() {
                     <button
                       type="button"
                       onClick={() => {
+                        if (!requireActiveLicense('记录新的同行人物')) return;
                         if (selectedPersonGroup !== 'all') {
                           setFormPersonGroup(selectedPersonGroup);
                         }
                         setActiveModal('addPerson');
                       }}
-                      className="px-4 py-1.5 text-white text-xs rounded-xl font-medium shadow-2xs transition-all active:scale-95"
+                      className="px-4 py-1.5 text-white text-xs rounded-xl font-medium shadow-2xs transition-all active:scale-95 cursor-pointer"
                       style={{ backgroundColor: currentTheme.primary }}
                     >
                       添加人物
@@ -3503,7 +3765,7 @@ export default function App() {
                       setEditPersonAvatar(selectedPerson.avatar || '');
                       setIsEditingPerson(true);
                     }}
-                    className="text-xs text-[#5B7B6D] hover:text-[#3E564B] flex items-center gap-1 font-medium bg-white px-3 py-1.5 rounded-xl border border-[#5B7B6D]/20 shadow-2xs hover:bg-[#FAF8F5] transition-all"
+                    className="text-xs text-[#5B7B6D] dark:text-[#A7D1BF] hover:text-[#3E564B] dark:hover:text-white flex items-center gap-1 font-medium bg-white dark:bg-[#1A2620] px-3 py-1.5 rounded-xl border border-[#5B7B6D]/20 dark:border-[#5B7B6D]/40 shadow-2xs hover:bg-[#FAF8F5] dark:hover:bg-[#23332B] transition-all cursor-pointer active:scale-95"
                   >
                     <Edit3 className="w-3.5 h-3.5" /> 编辑
                   </button>
@@ -3512,7 +3774,7 @@ export default function App() {
                     onClick={() => {
                       requestDelete('people', selectedPerson.id, selectedPerson.name);
                     }}
-                    className="text-xs text-red-500 hover:text-red-700 flex items-center gap-1 font-medium bg-red-50/80 px-2.5 py-1.5 rounded-xl border border-red-200/70 hover:bg-red-100 transition-all"
+                    className="text-xs text-red-500 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 flex items-center gap-1 font-medium bg-red-50/80 dark:bg-red-950/40 px-2.5 py-1.5 rounded-xl border border-red-200/70 dark:border-red-900/50 hover:bg-red-100 dark:hover:bg-red-900/60 transition-all cursor-pointer active:scale-95"
                     title="删除人物"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
@@ -3523,18 +3785,18 @@ export default function App() {
                       setShareMemoirItem({ type: 'person', data: selectedPerson });
                       setIsShareModalOpen(true);
                     }}
-                    className="text-xs text-[#5B7B6D] hover:text-[#3E564B] flex items-center gap-1 font-medium bg-white px-3 py-1.5 rounded-xl border border-[#5B7B6D]/20 shadow-2xs hover:bg-[#FAF8F5] transition-all"
+                    className="text-xs text-[#5B7B6D] dark:text-[#A7D1BF] hover:text-[#3E564B] dark:hover:text-white flex items-center gap-1 font-medium bg-white dark:bg-[#1A2620] px-3 py-1.5 rounded-xl border border-[#5B7B6D]/20 dark:border-[#5B7B6D]/40 shadow-2xs hover:bg-[#FAF8F5] dark:hover:bg-[#23332B] transition-all cursor-pointer active:scale-95"
                     title="生成人物肖像画报"
                   >
-                    <Share2 className="w-3.5 h-3.5 text-[#E88765]" /> 分享
+                    <Share2 className="w-3.5 h-3.5 text-[#E88765] dark:text-[#FFAF94]" /> 分享
                   </button>
                 </div>
               </div>
 
               {/* Profile Card - Minimalist Japanese Journal Layout */}
-              <div className="bg-white p-6 sm:p-7 rounded-3xl border border-[#D9CFC1] shadow-2xs space-y-6 relative overflow-hidden">
+              <div className="bg-white dark:bg-[#16211B] p-6 sm:p-7 rounded-3xl border border-[#D9CFC1] dark:border-[#5B7B6D]/30 shadow-2xs space-y-6 relative overflow-hidden">
                 {/* Subtle corner watermark */}
-                <div className="absolute top-4 right-4 text-[10px] font-mono text-[#5B7B6D]/40 uppercase tracking-widest pointer-events-none select-none">
+                <div className="absolute top-4 right-4 text-[10px] font-mono text-[#5B7B6D]/40 dark:text-[#5B7B6D]/60 uppercase tracking-widest pointer-events-none select-none">
                   MEMOIR · 拾人
                 </div>
 
@@ -3550,26 +3812,26 @@ export default function App() {
 
                   <div className="space-y-2 flex-1 min-w-0">
                     <div className="flex items-center justify-center sm:justify-start gap-2 flex-wrap">
-                      <h2 className="text-xl font-bold text-[#2B332E] font-serif tracking-wide">{selectedPerson.name}</h2>
+                      <h2 className="text-xl font-bold text-[#2B332E] dark:text-[#FAF8F5] font-serif tracking-wide">{selectedPerson.name}</h2>
                       {selectedPerson.relationship && (
-                        <span className="text-xs px-2.5 py-0.5 rounded-full bg-[#FAF6F0] text-[#E88765] font-medium border border-[#E88765]/25 font-sans">
+                        <span className="text-xs px-2.5 py-0.5 rounded-full bg-[#FAF6F0] dark:bg-[#E88765]/15 text-[#E88765] dark:text-[#FFAF94] font-medium border border-[#E88765]/25 dark:border-[#E88765]/40 font-sans">
                           {selectedPerson.relationship}
                         </span>
                       )}
                       {selectedPerson.group && selectedPerson.group !== '未分组' && (
-                        <span className="text-xs px-2.5 py-0.5 rounded-full bg-[#5B7B6D]/10 text-[#5B7B6D] font-medium border border-[#5B7B6D]/20 font-sans">
+                        <span className="text-xs px-2.5 py-0.5 rounded-full bg-[#5B7B6D]/10 dark:bg-[#5B7B6D]/25 text-[#5B7B6D] dark:text-[#9ECBB8] font-medium border border-[#5B7B6D]/20 dark:border-[#5B7B6D]/40 font-sans">
                           {selectedPerson.group}
                         </span>
                       )}
                     </div>
 
-                    <p className="text-xs text-[#526058] leading-relaxed font-serif max-w-md">
+                    <p className="text-xs text-[#526058] dark:text-[#B2C0B9] leading-relaxed font-serif max-w-md">
                       {selectedPerson.bio || '记录在时光册里的同路人'}
                     </p>
 
                     {selectedPerson.knownDate && calculateDaysKnown(selectedPerson.knownDate) !== null && (
-                      <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-[#FDF0EB]/80 text-[#E88765] rounded-full text-[11px] font-semibold border border-[#E88765]/25 font-sans">
-                        <Calendar className="w-3.5 h-3.5 text-[#E88765]" />
+                      <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-[#FDF0EB]/80 dark:bg-[#E88765]/20 text-[#E88765] dark:text-[#FFAF94] rounded-full text-[11px] font-semibold border border-[#E88765]/25 dark:border-[#E88765]/40 font-sans">
+                        <Calendar className="w-3.5 h-3.5 text-[#E88765] dark:text-[#FFAF94]" />
                         <span>相识于 {selectedPerson.knownDate} · 第 <strong>{calculateDaysKnown(selectedPerson.knownDate)?.toLocaleString()}</strong> 天</span>
                       </div>
                     )}
@@ -3577,17 +3839,17 @@ export default function App() {
                 </div>
 
                 {/* Subtle Divider */}
-                <div className="h-px bg-[#F2EFE9] w-full" />
+                <div className="h-px bg-[#F2EFE9] dark:bg-[#25362E] w-full" />
 
                 {/* Clean 2-Column Info Grid */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs font-sans">
                   {/* 好友生日 */}
                   {selectedPerson.birthday && (
-                    <div className="p-3.5 rounded-2xl bg-[#FAF8F5] border border-[#5B7B6D]/10 flex items-center gap-3">
-                      <span className="text-base p-2 rounded-xl bg-white border border-[#5B7B6D]/10 shrink-0">🎂</span>
+                    <div className="p-3.5 rounded-2xl bg-[#FAF8F5] dark:bg-[#1A2620] border border-[#5B7B6D]/10 dark:border-[#5B7B6D]/25 flex items-center gap-3">
+                      <span className="text-base p-2 rounded-xl bg-white dark:bg-[#121A15] border border-[#5B7B6D]/10 dark:border-[#5B7B6D]/25 shrink-0">🎂</span>
                       <div className="min-w-0 flex-1">
-                        <span className="text-[10px] text-[#6E7C75] block">好友生日</span>
-                        <span className="font-semibold text-[#2B332E] block truncate">
+                        <span className="text-[10px] text-[#6E7C75] dark:text-[#8E9F97] block">好友生日</span>
+                        <span className="font-semibold text-[#2B332E] dark:text-[#FAF8F5] block truncate">
                           {selectedPerson.birthday || '未填生日'}
                         </span>
                       </div>
@@ -3595,11 +3857,11 @@ export default function App() {
                   )}
 
                   {/* 初识地点 */}
-                  <div className="p-3.5 rounded-2xl bg-[#FAF8F5] border border-[#5B7B6D]/10 flex items-center gap-3">
-                    <span className="text-base p-2 rounded-xl bg-white border border-[#5B7B6D]/10 shrink-0">📍</span>
+                  <div className="p-3.5 rounded-2xl bg-[#FAF8F5] dark:bg-[#1A2620] border border-[#5B7B6D]/10 dark:border-[#5B7B6D]/25 flex items-center gap-3">
+                    <span className="text-base p-2 rounded-xl bg-white dark:bg-[#121A15] border border-[#5B7B6D]/10 dark:border-[#5B7B6D]/25 shrink-0">📍</span>
                     <div className="min-w-0 flex-1">
-                      <span className="text-[10px] text-[#6E7C75] block">初识地点</span>
-                      <span className="font-semibold text-[#2B332E] block truncate">
+                      <span className="text-[10px] text-[#6E7C75] dark:text-[#8E9F97] block">初识地点</span>
+                      <span className="font-semibold text-[#2B332E] dark:text-[#FAF8F5] block truncate">
                         {selectedPerson.customFields?.['认识地点'] || '时光长廊'}
                       </span>
                     </div>
@@ -3607,22 +3869,22 @@ export default function App() {
 
                   {/* 喜欢的颜色 */}
                   {selectedPerson.color && (
-                    <div className="p-3.5 rounded-2xl bg-[#FAF8F5] border border-[#5B7B6D]/10 flex items-center gap-3">
-                      <span className="text-base p-2 rounded-xl bg-white border border-[#5B7B6D]/10 shrink-0">🎨</span>
+                    <div className="p-3.5 rounded-2xl bg-[#FAF8F5] dark:bg-[#1A2620] border border-[#5B7B6D]/10 dark:border-[#5B7B6D]/25 flex items-center gap-3">
+                      <span className="text-base p-2 rounded-xl bg-white dark:bg-[#121A15] border border-[#5B7B6D]/10 dark:border-[#5B7B6D]/25 shrink-0">🎨</span>
                       <div className="min-w-0 flex-1">
-                        <span className="text-[10px] text-[#6E7C75] block">喜欢的颜色</span>
-                        <span className="font-semibold text-[#2B332E] block truncate">{selectedPerson.color}</span>
+                        <span className="text-[10px] text-[#6E7C75] dark:text-[#8E9F97] block">喜欢的颜色</span>
+                        <span className="font-semibold text-[#2B332E] dark:text-[#FAF8F5] block truncate">{selectedPerson.color}</span>
                       </div>
                     </div>
                   )}
 
                   {/* 爱好 */}
                   {selectedPerson.hobbies && (
-                    <div className="p-3.5 rounded-2xl bg-[#FAF8F5] border border-[#5B7B6D]/10 flex items-center gap-3">
-                      <span className="text-base p-2 rounded-xl bg-white border border-[#5B7B6D]/10 shrink-0">⚽</span>
+                    <div className="p-3.5 rounded-2xl bg-[#FAF8F5] dark:bg-[#1A2620] border border-[#5B7B6D]/10 dark:border-[#5B7B6D]/25 flex items-center gap-3">
+                      <span className="text-base p-2 rounded-xl bg-white dark:bg-[#121A15] border border-[#5B7B6D]/10 dark:border-[#5B7B6D]/25 shrink-0">⚽</span>
                       <div className="min-w-0 flex-1">
-                        <span className="text-[10px] text-[#6E7C75] block">兴趣爱好</span>
-                        <span className="font-semibold text-[#2B332E] block truncate">{selectedPerson.hobbies}</span>
+                        <span className="text-[10px] text-[#6E7C75] dark:text-[#8E9F97] block">兴趣爱好</span>
+                        <span className="font-semibold text-[#2B332E] dark:text-[#FAF8F5] block truncate">{selectedPerson.hobbies}</span>
                       </div>
                     </div>
                   )}
@@ -3632,43 +3894,43 @@ export default function App() {
                 {(selectedPerson.wechat || selectedPerson.qq || selectedPerson.phone) && (
                   <div className="pt-2">
                     <div className="flex items-center justify-between mb-2">
-                      <span className="text-[11px] font-bold text-[#5B7B6D] font-serif flex items-center gap-1.5">
-                        <MessageCircle className="w-3.5 h-3.5 text-[#5B7B6D]" /> 联络信息
+                      <span className="text-[11px] font-bold text-[#5B7B6D] dark:text-[#9ECBB8] font-serif flex items-center gap-1.5">
+                        <MessageCircle className="w-3.5 h-3.5 text-[#5B7B6D] dark:text-[#9ECBB8]" /> 联络信息
                       </span>
-                      <span className="text-[10px] text-[#6E7C75]">轻触快速复制</span>
+                      <span className="text-[10px] text-[#6E7C75] dark:text-[#8E9F97]">轻触快速复制</span>
                     </div>
                     <div className="flex flex-wrap gap-2 text-xs font-sans">
                       {selectedPerson.wechat && (
                         <button
                           type="button"
                           onClick={() => handleCopyText(selectedPerson.wechat!, '微信号')}
-                          className="px-3 py-1.5 rounded-xl bg-[#FAF8F5] hover:bg-[#5B7B6D] hover:text-white text-[#2B332E] border border-[#5B7B6D]/15 flex items-center gap-1.5 transition-all active:scale-95 shadow-2xs group/btn"
+                          className="px-3 py-1.5 rounded-xl bg-[#FAF8F5] dark:bg-[#1A2620] hover:bg-[#5B7B6D] dark:hover:bg-[#5B7B6D] hover:text-white text-[#2B332E] dark:text-[#E2ECE6] border border-[#5B7B6D]/15 dark:border-[#5B7B6D]/30 flex items-center gap-1.5 transition-all active:scale-95 shadow-2xs group/btn cursor-pointer"
                         >
-                          <span className="text-[#5B7B6D] group-hover/btn:text-white font-medium text-[11px]">微:</span>
+                          <span className="text-[#5B7B6D] dark:text-[#9ECBB8] group-hover/btn:text-white font-medium text-[11px]">微:</span>
                           <span className="font-mono text-xs">{selectedPerson.wechat}</span>
-                          <Copy className="w-3 h-3 text-[#6E7C75] group-hover/btn:text-white ml-1 opacity-70" />
+                          <Copy className="w-3 h-3 text-[#6E7C75] dark:text-[#8E9F97] group-hover/btn:text-white ml-1 opacity-70" />
                         </button>
                       )}
                       {selectedPerson.qq && (
                         <button
                           type="button"
                           onClick={() => handleCopyText(selectedPerson.qq!, 'QQ号')}
-                          className="px-3 py-1.5 rounded-xl bg-[#FAF8F5] hover:bg-[#E88765] hover:text-white text-[#2B332E] border border-[#E88765]/20 flex items-center gap-1.5 transition-all active:scale-95 shadow-2xs group/btn"
+                          className="px-3 py-1.5 rounded-xl bg-[#FAF8F5] dark:bg-[#1A2620] hover:bg-[#E88765] dark:hover:bg-[#E88765] hover:text-white text-[#2B332E] dark:text-[#E2ECE6] border border-[#E88765]/20 dark:border-[#E88765]/35 flex items-center gap-1.5 transition-all active:scale-95 shadow-2xs group/btn cursor-pointer"
                         >
-                          <span className="text-[#E88765] group-hover/btn:text-white font-medium text-[11px]">QQ:</span>
+                          <span className="text-[#E88765] dark:text-[#FFAF94] group-hover/btn:text-white font-medium text-[11px]">QQ:</span>
                           <span className="font-mono text-xs">{selectedPerson.qq}</span>
-                          <Copy className="w-3 h-3 text-[#6E7C75] group-hover/btn:text-white ml-1 opacity-70" />
+                          <Copy className="w-3 h-3 text-[#6E7C75] dark:text-[#8E9F97] group-hover/btn:text-white ml-1 opacity-70" />
                         </button>
                       )}
                       {selectedPerson.phone && (
                         <button
                           type="button"
                           onClick={() => handleCopyText(selectedPerson.phone!, '手机号')}
-                          className="px-3 py-1.5 rounded-xl bg-[#FAF8F5] hover:bg-[#5B7B6D] hover:text-white text-[#2B332E] border border-[#5B7B6D]/15 flex items-center gap-1.5 transition-all active:scale-95 shadow-2xs group/btn"
+                          className="px-3 py-1.5 rounded-xl bg-[#FAF8F5] dark:bg-[#1A2620] hover:bg-[#5B7B6D] dark:hover:bg-[#5B7B6D] hover:text-white text-[#2B332E] dark:text-[#E2ECE6] border border-[#5B7B6D]/15 dark:border-[#5B7B6D]/30 flex items-center gap-1.5 transition-all active:scale-95 shadow-2xs group/btn cursor-pointer"
                         >
-                          <span className="text-[#5B7B6D] group-hover/btn:text-white font-medium text-[11px]">电话:</span>
+                          <span className="text-[#5B7B6D] dark:text-[#9ECBB8] group-hover/btn:text-white font-medium text-[11px]">电话:</span>
                           <span className="font-mono text-xs">{selectedPerson.phone}</span>
-                          <Copy className="w-3 h-3 text-[#6E7C75] group-hover/btn:text-white ml-1 opacity-70" />
+                          <Copy className="w-3 h-3 text-[#6E7C75] dark:text-[#8E9F97] group-hover/btn:text-white ml-1 opacity-70" />
                         </button>
                       )}
                     </div>
@@ -3737,12 +3999,13 @@ export default function App() {
                   <div className="flex justify-center gap-2 pt-1 font-sans">
                     <button
                       onClick={() => {
+                        if (!requireActiveLicense('书写新的长篇随笔')) return;
                         if (selectedYear !== 'all') {
                           setFormStoryDate(`${selectedYear}-01-01`);
                         }
                         setActiveModal('addStory');
                       }}
-                      className="text-xs px-3.5 py-1.5 text-white rounded-xl font-medium transition-all active:scale-95"
+                      className="text-xs px-3.5 py-1.5 text-white rounded-xl font-medium transition-all active:scale-95 cursor-pointer"
                       style={{ backgroundColor: currentTheme.primary }}
                     >
                       {selectedYear !== 'all' ? `＋ 记录 ${selectedYear} 年首篇长章` : '新增章节'}
@@ -3922,12 +4185,13 @@ export default function App() {
                   <div className="flex justify-center gap-2 pt-1 font-sans">
                     <button
                       onClick={() => {
+                        if (!requireActiveLicense('珍藏新的时光信物')) return;
                         if (selectedYear !== 'all') {
                           setFormArtifactDate(`${selectedYear}-01-01`);
                         }
                         setActiveModal('addArtifact');
                       }}
-                      className="text-xs px-3.5 py-1.5 text-white rounded-xl font-medium transition-all active:scale-95"
+                      className="text-xs px-3.5 py-1.5 text-white rounded-xl font-medium transition-all active:scale-95 cursor-pointer"
                       style={{ backgroundColor: currentTheme.primary }}
                     >
                       {selectedYear !== 'all' ? `＋ 记录 ${selectedYear} 年首件旧物` : '收藏新物'}
@@ -4370,6 +4634,9 @@ export default function App() {
                     showToast('请填写或选择与该人物的关系（必填项）');
                     return;
                   }
+                  if (formPersonAvatar) {
+                    uploadPersonAvatarToCloud(formPersonAvatar).catch(() => {});
+                  }
                   addItem('people', {
                     id: 'p-' + Date.now(),
                     name: nameVal,
@@ -4399,7 +4666,10 @@ export default function App() {
                   <div className="flex flex-col items-center gap-2 pt-1">
                     <LocalImageUploader
                       value={formPersonAvatar}
-                      onChange={setFormPersonAvatar}
+                      onChange={(val) => {
+                        setFormPersonAvatar(val);
+                        if (val) uploadPersonAvatarToCloud(val).catch(() => {});
+                      }}
                       mode="avatar"
                       required={true}
                     />
@@ -4887,6 +5157,9 @@ export default function App() {
                   showToast('请填写与该人物的关系（必填项）');
                   return;
                 }
+                if (finalAvatar) {
+                  uploadPersonAvatarToCloud(finalAvatar).catch(() => {});
+                }
                 handleUpdatePerson({
                   name: nameVal,
                   relationship: relVal,
@@ -4912,7 +5185,10 @@ export default function App() {
                 <div className="flex flex-col items-center gap-2 pt-1">
                   <LocalImageUploader
                     value={editPersonAvatar || selectedPerson.avatar}
-                    onChange={setEditPersonAvatar}
+                    onChange={(val) => {
+                      setEditPersonAvatar(val);
+                      if (val) uploadPersonAvatarToCloud(val).catch(() => {});
+                    }}
                     mode="avatar"
                     required={true}
                   />
@@ -6135,29 +6411,26 @@ export default function App() {
                 const user = getLocalDomesticUser();
                 if (!user) {
                   setIsAuthPortalOpen(true);
-                } else {
-                  try {
-                    const hasSeenPrologue = localStorage.getItem('shinian_prologue_v1_seen');
-                    if (hasSeenPrologue !== 'true') {
-                      setIsPrologueOpen(true);
-                    }
-                  } catch {}
                 }
               }}
             />
           )}
         </AnimatePresence>
 
-        {/* 拾年 · 国内用户入卷启封 / 登录认证门禁 */}
+        {/* 拾年 · 国内用户全屏认证门禁（未登录强阻断，登出后直达全屏） */}
         <AuthPortalModal
-          isOpen={isAuthPortalOpen}
+          isOpen={!showSplash && (!currentDomesticUser || isAuthPortalOpen)}
           onSuccess={(user) => {
             setCurrentDomesticUser(user);
             setIsAuthPortalOpen(false);
             try {
-              const hasSeenPrologue = localStorage.getItem('shinian_prologue_v1_seen');
-              if (hasSeenPrologue !== 'true') {
+              // 首次登录账号，自动唤起设计产品介绍与设计理念长卷（隐藏返回空间按键）
+              const introKey = 'shinian_seen_intro_' + (user.account || 'default');
+              const hasSeen = localStorage.getItem(introKey);
+              if (!hasSeen) {
+                setIsFirstLoginPrologue(true);
                 setIsPrologueOpen(true);
+                localStorage.setItem(introKey, 'true');
               }
             } catch {}
           }}
@@ -6169,7 +6442,11 @@ export default function App() {
         {/* 首次打开与关于软件：诗意引导序章（星海微光与文学级哲思题跋演播） */}
         <PoeticPrologueModal
           isOpen={isPrologueOpen}
-          onClose={() => setIsPrologueOpen(false)}
+          isFirstLogin={isFirstLoginPrologue}
+          onClose={() => {
+            setIsPrologueOpen(false);
+            setIsFirstLoginPrologue(false);
+          }}
           currentTheme={currentTheme}
           isDarkMode={isDarkMode}
         />
@@ -6179,19 +6456,73 @@ export default function App() {
           isOpen={isMyProfileModalOpen}
           onClose={() => setIsMyProfileModalOpen(false)}
           currentUser={currentDomesticUser}
-          onUserUpdated={(updated) => setCurrentDomesticUser(updated)}
+          onUserUpdated={(updated) => {
+            setCurrentDomesticUser(updated);
+            if (!updated) {
+              setIsAuthPortalOpen(true);
+              setIsMyProfileModalOpen(false);
+            }
+          }}
           appData={data}
           onRestoreData={(restored) => {
             setData(restored);
             localStorage.setItem('shinian_app_data_v1', JSON.stringify(restored));
           }}
           onOpenAdminPortal={() => setIsAdminPortalOpen(true)}
+          onOpenCheckout={() => {
+            setCheckoutTriggerReason('拾年 · 岁华令（终身买断授权）');
+            setIsCheckoutModalOpen(true);
+          }}
           currentTheme={currentTheme}
           isDarkMode={isDarkMode}
           showToast={(msg) => showToast(msg)}
         />
 
-        {/* 版本热更新公告通知 */}
+        {/* 拾年 · 岁华令终身买断收银台与卡密兑换 */}
+        <CheckoutLicenseModal
+          isOpen={isCheckoutModalOpen}
+          onClose={() => setIsCheckoutModalOpen(false)}
+          currentUser={currentDomesticUser}
+          onUserUpdated={(updated) => setCurrentDomesticUser(updated)}
+          currentTheme={currentTheme}
+          isDarkMode={isDarkMode}
+          showToast={(msg) => showToast(msg)}
+          triggerReason={checkoutTriggerReason}
+        />
+
+        {/* 东方微印水滴平抛波纹长卷公告通知 */}
+        <OrientalScrollNoticeModal
+          isOpen={isScrollNoticeOpen}
+          onClose={async () => {
+            setIsScrollNoticeOpen(false);
+            setHasUnreadNotice(false);
+            if (activeScrollVersion) {
+              localStorage.setItem('shinian_last_seen_version_id', activeScrollVersion.versionId);
+              setActiveScrollVersion(null);
+              // 检查是否还有未读的系统广播
+              try {
+                const notices = await getPublishedNotices().catch(() => []);
+                const lastSeenNoticeId = localStorage.getItem('shinian_last_seen_notice_id');
+                const unreadNotice = notices && notices.length > 0 ? notices.find(n => n.noticeId !== lastSeenNoticeId) : null;
+                if (unreadNotice) {
+                  setTimeout(() => {
+                    setActiveScrollNotice(unreadNotice);
+                    setIsScrollNoticeOpen(true);
+                  }, 350);
+                }
+              } catch {}
+            } else if (activeScrollNotice) {
+              localStorage.setItem('shinian_last_seen_notice_id', activeScrollNotice.noticeId);
+              setActiveScrollNotice(null);
+            }
+          }}
+          notice={activeScrollNotice}
+          version={activeScrollVersion}
+          currentTheme={currentTheme}
+          isDarkMode={isDarkMode}
+        />
+
+        {/* 版本热更新公告通知（备用弹窗） */}
         <UpdateNoticeModal
           isOpen={isUpdateModalOpen}
           onClose={() => setIsUpdateModalOpen(false)}
@@ -6203,7 +6534,18 @@ export default function App() {
         {/* 灵台 · 独立后端管理控制中枢 */}
         <AdminPortal
           isOpen={isAdminPortalOpen}
-          onClose={() => setIsAdminPortalOpen(false)}
+          onClose={() => {
+            setIsAdminPortalOpen(false);
+            checkForNoticesAndUpdates();
+          }}
+          currentUser={currentDomesticUser}
+          onUserUpdated={(updated) => {
+            setCurrentDomesticUser(updated);
+            if (!updated) {
+              setIsAuthPortalOpen(true);
+              setIsAdminPortalOpen(false);
+            }
+          }}
           currentTheme={currentTheme}
           isDarkMode={isDarkMode}
           showToast={(msg) => showToast(msg)}

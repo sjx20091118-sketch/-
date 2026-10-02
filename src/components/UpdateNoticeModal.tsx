@@ -1,7 +1,7 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
-import { Sparkles, Download, CheckCircle, X, ShieldAlert } from 'lucide-react';
+import { Download, CheckCircle, X, ShieldAlert, Check } from 'lucide-react';
 import { CloudAppVersion } from '../services/cloudSyncService';
 import { sound } from '../utils/soundEngine';
 import { HealingTheme } from '../App';
@@ -21,7 +21,80 @@ export const UpdateNoticeModal: React.FC<UpdateNoticeModalProps> = ({
   currentTheme,
   isDarkMode
 }) => {
+  const [isDownloading, setIsDownloading] = useState(false);
+  const [downloadProgress, setDownloadProgress] = useState(0);
+  const [downloadComplete, setDownloadComplete] = useState(false);
+
   if (!isOpen || !version) return null;
+
+  const handleInstallApp = () => {
+    sound.playZenBell(600);
+    const rawUrl = version.downloadUrl?.trim();
+    if (rawUrl) {
+      try {
+        const link = document.createElement('a');
+        link.href = rawUrl;
+        link.setAttribute('type', 'application/vnd.android.package-archive');
+        link.setAttribute('target', '_blank');
+        link.setAttribute('rel', 'noopener noreferrer');
+        const inferredFilename = rawUrl.split('/').pop()?.split('?')[0] || `shinian-${version.versionNumber || 'update'}.apk`;
+        link.setAttribute('download', inferredFilename);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+
+        window.location.href = rawUrl;
+      } catch {
+        window.open(rawUrl, '_blank', 'noopener,noreferrer');
+      }
+    } else {
+      try {
+        window.location.reload();
+      } catch {}
+    }
+    onClose();
+  };
+
+  const handleDownload = () => {
+    if (downloadComplete) {
+      handleInstallApp();
+      return;
+    }
+    if (isDownloading) return;
+    setIsDownloading(true);
+    setDownloadProgress(20);
+    sound.playWaterDrop(880);
+
+    const rawUrl = version.downloadUrl?.trim();
+    if (rawUrl) {
+      try {
+        const link = document.createElement('a');
+        link.href = rawUrl;
+        link.target = '_blank';
+        link.rel = 'noopener noreferrer';
+        const inferredFilename = rawUrl.split('/').pop()?.split('?')[0] || `shinian-${version.versionNumber || 'update'}`;
+        link.setAttribute('download', inferredFilename);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      } catch {
+        window.open(rawUrl, '_blank', 'noopener,noreferrer');
+      }
+    }
+
+    const interval = setInterval(() => {
+      setDownloadProgress((prev) => {
+        if (prev >= 100) {
+          clearInterval(interval);
+          setIsDownloading(false);
+          setDownloadComplete(true);
+          sound.playZenBell(640);
+          return 100;
+        }
+        return prev + Math.floor(Math.random() * 25) + 20;
+      });
+    }, 180);
+  };
 
   return createPortal(
     <AnimatePresence>
@@ -55,25 +128,21 @@ export const UpdateNoticeModal: React.FC<UpdateNoticeModalProps> = ({
                   background: `linear-gradient(135deg, ${currentTheme.primary} 0%, ${currentTheme.primaryDark} 100%)`
                 }}
               >
-                <Sparkles size={20} />
+                <svg className="w-5 h-5 text-white" viewBox="0 0 20 20" fill="none">
+                  <circle cx="10" cy="10" r="7" stroke="currentColor" strokeWidth="1.5" strokeOpacity="0.6" />
+                  <circle cx="10" cy="10" r="3" fill="currentColor" />
+                </svg>
               </div>
               <div>
-                <div className="flex items-center gap-2">
-                  <h3 className="text-base font-serif font-bold tracking-wider" style={{ color: isDarkMode ? '#FAF8F5' : '#2B332E' }}>
-                    发现新版本
-                  </h3>
-                  <span
-                    className="text-[10px] px-2 py-0.5 rounded-full font-mono font-bold"
-                    style={{
-                      backgroundColor: `${currentTheme.primary}20`,
-                      color: isDarkMode ? currentTheme.primary : currentTheme.primaryDark
-                    }}
-                  >
-                    {version.versionNumber}
+                <h3 className="text-base font-serif font-bold tracking-wider" style={{ color: isDarkMode ? '#FAF8F5' : '#2B332E' }}>
+                  {version.title || '新版本启程'}
+                </h3>
+                <p className="text-xs font-serif opacity-70 tracking-wide mt-1 flex items-center gap-1.5" style={{ color: isDarkMode ? '#C2CDC7' : '#526058' }}>
+                  <span className="font-mono font-medium px-1.5 py-0.5 rounded-full bg-black/5 dark:bg-white/10 text-[10px]">
+                    版本 {version.versionNumber}
                   </span>
-                </div>
-                <p className="text-xs font-serif opacity-70 tracking-wide mt-0.5" style={{ color: isDarkMode ? '#C2CDC7' : '#526058' }}>
-                  {version.title} · {version.releaseDate}
+                  <span>·</span>
+                  <span>{version.releaseDate}</span>
                 </p>
               </div>
             </div>
@@ -112,6 +181,31 @@ export const UpdateNoticeModal: React.FC<UpdateNoticeModalProps> = ({
               </div>
             </div>
 
+            {/* 下载进度条 */}
+            {(isDownloading || downloadComplete) && (
+              <div className="p-3.5 rounded-2xl bg-black/[0.03] dark:bg-white/[0.05] border border-black/5 dark:border-white/10 space-y-1.5">
+                <div className="flex justify-between text-xs font-serif">
+                  <span style={{ color: currentTheme.primary }}>
+                    {downloadComplete ? '下载就绪' : `正在下载新版本... ${downloadProgress}%`}
+                  </span>
+                  <span className="font-mono text-[11px] opacity-70">
+                    {downloadProgress}%
+                  </span>
+                </div>
+                <div className="w-full bg-black/5 dark:bg-white/10 rounded-full h-1.5 overflow-hidden">
+                  <motion.div
+                    className="h-full rounded-full"
+                    style={{
+                      background: `linear-gradient(90deg, ${currentTheme.primaryDark}, ${currentTheme.primary})`
+                    }}
+                    initial={{ width: 0 }}
+                    animate={{ width: `${downloadProgress}%` }}
+                    transition={{ ease: 'easeOut', duration: 0.2 }}
+                  />
+                </div>
+              </div>
+            )}
+
             {version.isForceUpdate && (
               <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center gap-2 text-amber-600 dark:text-amber-400 text-xs font-serif">
                 <ShieldAlert size={15} className="shrink-0" />
@@ -136,21 +230,29 @@ export const UpdateNoticeModal: React.FC<UpdateNoticeModalProps> = ({
             )}
 
             <button
-              onClick={() => {
-                sound.playWaterDrop(1000);
-                if (version.downloadUrl) {
-                  window.open(version.downloadUrl, '_blank');
-                } else {
-                  window.location.reload();
-                }
-              }}
-              className="flex-1 py-2.5 rounded-xl text-xs font-serif font-bold text-white shadow-md flex items-center justify-center gap-1.5 hover:opacity-95 transition-opacity cursor-pointer"
+              onClick={handleDownload}
+              disabled={isDownloading}
+              className="flex-1 py-2.5 rounded-xl text-xs font-serif font-bold text-white shadow-md flex items-center justify-center gap-1.5 hover:opacity-95 transition-opacity cursor-pointer disabled:opacity-75"
               style={{
                 background: `linear-gradient(135deg, ${currentTheme.primary} 0%, ${currentTheme.primaryDark} 100%)`
               }}
             >
-              <Download size={14} />
-              立即体验新版本
+              {downloadComplete ? (
+                <>
+                  <Check size={14} />
+                  <span>立即安装</span>
+                </>
+              ) : isDownloading ? (
+                <>
+                  <Download size={14} className="animate-bounce" />
+                  <span>正在下载... {downloadProgress}%</span>
+                </>
+              ) : (
+                <>
+                  <Download size={14} />
+                  <span>立即下载</span>
+                </>
+              )}
             </button>
           </div>
         </motion.div>

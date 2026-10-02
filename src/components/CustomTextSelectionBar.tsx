@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { Copy, Scissors, ClipboardPaste, CheckCheck, Check } from 'lucide-react';
 import { sound } from '../utils/soundEngine';
@@ -123,8 +124,9 @@ export const CustomTextSelectionBar: React.FC<CustomTextSelectionBarProps> = ({
     };
 
     const handlePointerUp = () => {
+      isInteractingWithBarRef.current = false;
       clearTimeout(timeoutId);
-      timeoutId = setTimeout(updateSelection, 60);
+      timeoutId = setTimeout(updateSelection, 50);
     };
 
     const handleScroll = (e: Event) => {
@@ -137,12 +139,19 @@ export const CustomTextSelectionBar: React.FC<CustomTextSelectionBarProps> = ({
       if (barRef.current && barRef.current.contains(e.target as Node)) {
         return;
       }
-      setTimeout(updateSelection, 100);
+      isInteractingWithBarRef.current = false;
+      setTimeout(updateSelection, 80);
+    };
+
+    const handleGlobalPointerRelease = () => {
+      isInteractingWithBarRef.current = false;
     };
 
     document.addEventListener('selectionchange', handleSelectionChange);
     document.addEventListener('mouseup', handlePointerUp);
     document.addEventListener('touchend', handlePointerUp);
+    window.addEventListener('mouseup', handleGlobalPointerRelease);
+    window.addEventListener('touchend', handleGlobalPointerRelease);
     window.addEventListener('scroll', handleScroll, { capture: true, passive: true });
     document.addEventListener('mousedown', handleMouseDownOutside);
 
@@ -151,6 +160,8 @@ export const CustomTextSelectionBar: React.FC<CustomTextSelectionBarProps> = ({
       document.removeEventListener('selectionchange', handleSelectionChange);
       document.removeEventListener('mouseup', handlePointerUp);
       document.removeEventListener('touchend', handlePointerUp);
+      window.removeEventListener('mouseup', handleGlobalPointerRelease);
+      window.removeEventListener('touchend', handleGlobalPointerRelease);
       window.removeEventListener('scroll', handleScroll, { capture: true });
       document.removeEventListener('mousedown', handleMouseDownOutside);
     };
@@ -168,14 +179,17 @@ export const CustomTextSelectionBar: React.FC<CustomTextSelectionBarProps> = ({
       sound.playWaterDrop(960);
       setCopiedSuccess(true);
       notify('已复制');
+      isInteractingWithBarRef.current = false;
       setTimeout(() => {
         setCopiedSuccess(false);
         setSelectionState(null);
-      }, 600);
+        isInteractingWithBarRef.current = false;
+      }, 500);
     } catch (err) {
       document.execCommand('copy');
       sound.playWaterDrop(720);
       notify('已复制');
+      isInteractingWithBarRef.current = false;
       setSelectionState(null);
     }
   };
@@ -219,10 +233,12 @@ export const CustomTextSelectionBar: React.FC<CustomTextSelectionBarProps> = ({
 
       sound.playWaterDrop(840);
       notify('已剪切 ✂️');
+      isInteractingWithBarRef.current = false;
       setSelectionState(null);
     } catch (err) {
       document.execCommand('cut');
       notify('已剪切 ✂️');
+      isInteractingWithBarRef.current = false;
       setSelectionState(null);
     }
   };
@@ -246,6 +262,7 @@ export const CustomTextSelectionBar: React.FC<CustomTextSelectionBarProps> = ({
         try {
           const ok = document.execCommand('paste');
           if (ok) {
+            isInteractingWithBarRef.current = false;
             setSelectionState(null);
             return;
           }
@@ -253,6 +270,7 @@ export const CustomTextSelectionBar: React.FC<CustomTextSelectionBarProps> = ({
           // ignore
         }
         notify('请长按或使用快捷键粘贴 📋');
+        isInteractingWithBarRef.current = false;
         setSelectionState(null);
         return;
       }
@@ -285,25 +303,30 @@ export const CustomTextSelectionBar: React.FC<CustomTextSelectionBarProps> = ({
         sound.playWaterDrop(880);
         setPastedSuccess(true);
         notify(`已粘贴 ${pasteText.length > 30 ? pasteText.length + ' 字' : ''} 📋`);
+        isInteractingWithBarRef.current = false;
         setTimeout(() => {
           setPastedSuccess(false);
           setSelectionState(null);
         }, 500);
       } else if (activeEl?.isContentEditable) {
         document.execCommand('insertText', false, pasteText);
+        isInteractingWithBarRef.current = false;
         setSelectionState(null);
       } else {
         document.execCommand('paste');
+        isInteractingWithBarRef.current = false;
         setSelectionState(null);
       }
     } catch (err) {
       document.execCommand('paste');
+      isInteractingWithBarRef.current = false;
       setSelectionState(null);
     }
   };
 
   // 全选 (Select All)
   const handleSelectAll = () => {
+    isInteractingWithBarRef.current = false;
     const activeEl = document.activeElement as HTMLElement | null;
     if (activeEl instanceof HTMLInputElement || activeEl instanceof HTMLTextAreaElement) {
       activeEl.select();
@@ -325,7 +348,7 @@ export const CustomTextSelectionBar: React.FC<CustomTextSelectionBarProps> = ({
 
   if (!selectionState) return null;
 
-  return (
+  const content = (
     <AnimatePresence>
       <motion.div
         ref={barRef}
@@ -338,7 +361,7 @@ export const CustomTextSelectionBar: React.FC<CustomTextSelectionBarProps> = ({
           left: `${selectionState.x}px`,
           top: `${selectionState.y}px`,
           transform: `translate(-50%, ${selectionState.placement === 'top' ? '-100%' : '0%'})`,
-          zIndex: 999999,
+          zIndex: 9999999,
           pointerEvents: 'auto'
         }}
         onMouseDown={(e) => {
@@ -422,4 +445,6 @@ export const CustomTextSelectionBar: React.FC<CustomTextSelectionBarProps> = ({
       </motion.div>
     </AnimatePresence>
   );
+
+  return typeof document !== 'undefined' ? createPortal(content, document.body) : null;
 };

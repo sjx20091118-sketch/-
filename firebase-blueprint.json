@@ -11,7 +11,7 @@
         "displayName": { "type": "string", "maxLength": 128 },
         "userNumber": { "type": "string", "maxLength": 32 },
         "passwordHash": { "type": "string", "maxLength": 256 },
-        "photoURL": { "type": "string", "maxLength": 1024 },
+        "photoURL": { "type": "string", "maxLength": 524288 },
         "createdAt": { "type": "string", "maxLength": 64 },
         "updatedAt": { "type": "string", "maxLength": 64 },
         "lastSyncAt": { "type": "string", "maxLength": 64 },
