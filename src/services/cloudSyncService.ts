@@ -14,6 +14,7 @@ import {
 } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../firebase';
 import { AppData } from '../types';
+import { buildApiUrl } from './apiConfig';
 
 export interface DomesticUser {
   uid: string;
@@ -273,7 +274,7 @@ export async function registerDomesticUser(
 
   // 2. 同步写入服务端磁盘持久化存储
   try {
-    await fetch('/api/admin/users/save', {
+    await fetch(buildApiUrl('/api/admin/users/save'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(newUser)
@@ -348,7 +349,7 @@ export async function loginDomesticUser(accountOrEmailOrPhone: string, passwordP
   // 3. 检查服务端持久化存储 API (针对新注册或多设备用户)
   if (!matchedUser) {
     try {
-      const res = await fetch('/api/admin/users');
+      const res = await fetch(buildApiUrl('/api/admin/users'));
       if (res.ok) {
         const resJson = await res.json();
         if (Array.isArray(resJson.users)) {
@@ -693,7 +694,7 @@ const SMTP_CONFIG_KEY = 'shinian_smtp_config_v1';
 
 export async function fetchServerSmtpConfig(): Promise<SmtpConfig> {
   try {
-    const res = await fetch('/api/admin/smtp-config');
+    const res = await fetch(buildApiUrl('/api/admin/smtp-config'));
     if (res.ok) {
       const data = await res.json();
       if (data.config && data.config.user && data.config.pass) {
@@ -735,7 +736,7 @@ export function getSmtpConfig(): SmtpConfig {
 export function saveSmtpConfig(config: SmtpConfig): void {
   localStorage.setItem(SMTP_CONFIG_KEY, JSON.stringify(config));
   // 同步通知服务端持久化保存
-  fetch('/api/admin/save-smtp', {
+  fetch(buildApiUrl('/api/admin/save-smtp'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(config)
@@ -746,7 +747,7 @@ export async function testSmtpConnection(
   config: SmtpConfig,
   toEmail?: string
 ): Promise<{ success: boolean; message: string; messageId?: string; previewCode?: string; diagnostic?: string; elapsed?: number }> {
-  const response = await fetch('/api/admin/test-smtp', {
+  const response = await fetch(buildApiUrl('/api/admin/test-smtp'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -840,7 +841,7 @@ export async function listAllUsers(): Promise<DomesticUser[]> {
 
   // 3. 从后端服务端磁盘持久化接口读取 (杜绝云端波动导致用户消失)
   try {
-    const res = await fetch('/api/admin/users');
+    const res = await fetch(buildApiUrl('/api/admin/users'));
     if (res.ok) {
       const resJson = await res.json();
       if (Array.isArray(resJson.users)) {
@@ -945,7 +946,7 @@ export async function adminUpdateUser(uid: string, updates: Partial<DomesticUser
 
   // 2. 写入服务端持久化存储
   try {
-    await fetch('/api/admin/users/save', {
+    await fetch(buildApiUrl('/api/admin/users/save'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ uid, ...payload })
@@ -983,7 +984,7 @@ export async function adminDeleteUser(uid: string): Promise<void> {
 
   // 2. 从服务端磁盘持久化文件删除
   try {
-    await fetch('/api/admin/users/delete', {
+    await fetch(buildApiUrl('/api/admin/users/delete'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ uid })
@@ -1037,7 +1038,7 @@ export async function sendEmailVerificationCode(
   const cleanEmail = email.trim().toLowerCase();
   const smtp = getSmtpConfig();
 
-  const response = await fetch('/api/auth/send-code', {
+  const response = await fetch(buildApiUrl('/api/auth/send-code'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -1059,7 +1060,7 @@ export async function verifyEmailCode(
   code: string,
   purpose?: string
 ): Promise<boolean> {
-  const response = await fetch('/api/auth/verify-code', {
+  const response = await fetch(buildApiUrl('/api/auth/verify-code'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -1151,7 +1152,7 @@ export function getEffectiveBuyoutPrice(): number {
 
 export async function fetchServerSystemSettings(): Promise<SystemSettings> {
   try {
-    const res = await fetch('/api/admin/system-settings');
+    const res = await fetch(buildApiUrl('/api/admin/system-settings'));
     if (res.ok) {
       const data = await res.json();
       if (data.settings) {
@@ -1202,7 +1203,7 @@ export async function saveServerSystemSettings(settings: Partial<SystemSettings>
     localStorage.setItem('sn_easypay_key', String(settings.easypayKey));
   }
   try {
-    const res = await fetch('/api/admin/system-settings', {
+    const res = await fetch(buildApiUrl('/api/admin/system-settings'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(settings)
@@ -1315,7 +1316,7 @@ export function checkUserLicenseStatus(user: DomesticUser | null): {
 
 // 使用激活码激活买断授权
 export async function activateLicenseWithCode(code: string, user: DomesticUser): Promise<DomesticUser> {
-  const response = await fetch('/api/license/activate-code', {
+  const response = await fetch(buildApiUrl('/api/license/activate-code'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -1356,7 +1357,7 @@ export async function createLicensePaymentOrder(
   payUrl?: string;
   isEasyPayConfigured?: boolean;
 }> {
-  const response = await fetch('/api/pay/create-order', {
+  const response = await fetch(buildApiUrl('/api/pay/create-order'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -1384,7 +1385,7 @@ export async function createLicensePaymentOrder(
 // 检查订单支付状态
 export async function checkLicensePaymentOrder(orderId: string): Promise<boolean> {
   try {
-    const response = await fetch(`/api/pay/check-order/${orderId}`);
+    const response = await fetch(buildApiUrl(`/api/pay/check-order/${orderId}`));
     if (!response.ok) return false;
     const resJson = await response.json();
     return resJson.status === 'paid';
@@ -1395,7 +1396,7 @@ export async function checkLicensePaymentOrder(orderId: string): Promise<boolean
 
 // 模拟完成支付（供无签约环境调试体验）
 export async function simulateLicensePaymentSuccess(orderId: string, user: DomesticUser): Promise<DomesticUser> {
-  const response = await fetch(`/api/pay/simulate-success/${orderId}`, {
+  const response = await fetch(buildApiUrl(`/api/pay/simulate-success/${orderId}`), {
     method: 'POST'
   });
   if (!response.ok) {
@@ -1450,7 +1451,7 @@ export async function listAllLicenseCodes(): Promise<any[]> {
 
   // 3. 从后端服务器持久化文件 API 拉取
   try {
-    const response = await fetch('/api/license/codes');
+    const response = await fetch(buildApiUrl('/api/license/codes'));
     if (response.ok) {
       const resJson = await response.json();
       if (Array.isArray(resJson.codes)) {
@@ -1493,7 +1494,7 @@ export async function generateBatchLicenseCodes(count = 5, note = '后台批量�
 
   // 1. 调用服务端生成并写入磁盘
   try {
-    const response = await fetch('/api/license/generate-codes', {
+    const response = await fetch(buildApiUrl('/api/license/generate-codes'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ count, note })
@@ -1556,7 +1557,7 @@ export async function deleteLicenseCode(code: string): Promise<void> {
 
   // 2. 从服务端删除
   try {
-    await fetch('/api/license/delete-code', {
+    await fetch(buildApiUrl('/api/license/delete-code'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ code: cleanCode })

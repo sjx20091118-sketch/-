@@ -26,8 +26,11 @@ import {
   Key,
   Leaf,
   CheckCircle2,
-  Camera
+  Camera,
+  Globe,
+  Wifi
 } from 'lucide-react';
+import { getApiBaseUrl, setApiBaseUrl, DEFAULT_CLOUD_API_URL, testApiConnection } from '../services/apiConfig';
 import {
   DomesticUser,
   CloudAppVersion,
@@ -336,6 +339,68 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
         ? '商业买断配置已生效：体验天数已设为 0 天（全站即刻阻断未买断创作）'
         : `商业买断配置已生效：体验天数 ${cleanTrialDays} 天，买断价格 ¥${cleanBuyoutPrice}`
     );
+  };
+
+  // 云端服务器基址与全终端双向同步诊断
+  const [cloudApiHost, setCloudApiHost] = useState<string>(getApiBaseUrl() || DEFAULT_CLOUD_API_URL);
+  const [isTestingCloud, setIsTestingCloud] = useState<boolean>(false);
+  const [cloudTestResult, setCloudTestResult] = useState<{ success: boolean; latencyMs: number; message: string; host: string } | null>(null);
+  const [isSyncingFromCloud, setIsSyncingFromCloud] = useState<boolean>(false);
+
+  const handleTestCloudConnection = async () => {
+    setIsTestingCloud(true);
+    try {
+      const res = await testApiConnection(cloudApiHost);
+      setCloudTestResult(res);
+      if (res.success) {
+        showToast(`云端服务器连接畅通，响应延迟 ${res.latencyMs}ms`);
+      } else {
+        showToast(res.message);
+      }
+    } finally {
+      setIsTestingCloud(false);
+    }
+  };
+
+  const handleSaveCloudHost = async () => {
+    setApiBaseUrl(cloudApiHost);
+    showToast('云端服务接口地址已保存');
+    await handleTestCloudConnection();
+  };
+
+  const handleResetDefaultCloudHost = () => {
+    setCloudApiHost(DEFAULT_CLOUD_API_URL);
+    setApiBaseUrl(DEFAULT_CLOUD_API_URL);
+    setCloudTestResult(null);
+    showToast('已恢复为《拾年》官方默认云端后台地址');
+  };
+
+  const handleForceSyncFromCloud = async () => {
+    setIsSyncingFromCloud(true);
+    showToast('正在从云端服务器全量拉取数据...');
+    try {
+      const [settings, smtp, users, codes] = await Promise.all([
+        fetchServerSystemSettings(),
+        fetchServerSmtpConfig(),
+        listAllUsers(),
+        listAllLicenseCodes()
+      ]);
+      if (settings) {
+        setTrialDays(String(settings.trialDays ?? 7));
+        setBuyoutPrice(String(settings.buyoutPrice ?? 19.9));
+        setEasypayUrl(settings.easypayUrl || '');
+        setEasypayPid(settings.easypayPid || '');
+        setEasypayKey(settings.easypayKey || '');
+      }
+      if (smtp) setSmtpConfig(smtp);
+      if (users) setUsersList(users);
+      if (codes) setLicenseCodes(codes);
+      showToast('云端数据全量同步成功！');
+    } catch (err: any) {
+      showToast('云端同步异常: ' + (err.message || '网络连接超时'));
+    } finally {
+      setIsSyncingFromCloud(false);
+    }
   };
 
   const handleGenerateBatchCodes = async () => {
@@ -2130,6 +2195,101 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                     </div>
                   );
                 })}
+              </div>
+
+              {/* 云端后台通信与全终端数据同步卡片 */}
+              <div
+                className="p-5 sm:p-6 rounded-[28px] border apple-liquid-glass space-y-4"
+                style={{
+                  borderColor: isDarkMode ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)'
+                }}
+              >
+                <div className="flex items-center justify-between pb-2 border-b border-black/5 dark:border-white/5">
+                  <div className="flex items-center gap-2">
+                    <Globe size={16} style={{ color: currentTheme.primary }} />
+                    <h3 className="text-sm font-serif font-bold text-[#2B332E] dark:text-[#FAF8F5]">
+                      云端后台通信与全终端数据同步
+                    </h3>
+                  </div>
+                  <span className="text-[11px] font-serif text-[#6E7C75] dark:text-[#A7B4AD]">
+                    Web 网页端与安卓 APK 实时互通
+                  </span>
+                </div>
+
+                <div className="space-y-3">
+                  <div className="space-y-1">
+                    <label className="text-xs font-serif font-medium opacity-80 block">
+                      云端服务器通信接口 (API Base URL)
+                    </label>
+                    <input
+                      type="url"
+                      value={cloudApiHost}
+                      onChange={e => setCloudApiHost(e.target.value)}
+                      placeholder="https://ais-dev-cq7pozdu24b5b7weqvtffs-80463223160.asia-northeast1.run.app"
+                      className="w-full px-3.5 py-2.5 rounded-xl text-xs font-mono apple-glass-input focus:outline-none"
+                    />
+                    <p className="text-[11px] font-serif text-[#6E7C75] dark:text-[#A7B4AD]">
+                      安卓打包生成的 APK 将通过此统一地址实时存取云端数据（网关、商业授权、用户档案及配置）。
+                    </p>
+                  </div>
+
+                  <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <button
+                        type="button"
+                        onClick={handleTestCloudConnection}
+                        disabled={isTestingCloud}
+                        className="px-3.5 py-2 rounded-xl text-xs font-serif font-semibold border flex items-center gap-1.5 transition-all cursor-pointer hover:bg-black/5 dark:hover:bg-white/5 active:scale-95 disabled:opacity-50"
+                        style={{ borderColor: `${currentTheme.primary}40`, color: currentTheme.primary }}
+                      >
+                        <Wifi size={13} className={isTestingCloud ? 'animate-pulse' : ''} />
+                        <span>{isTestingCloud ? '正在检测连通性...' : '测试云端通信'}</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={handleForceSyncFromCloud}
+                        disabled={isSyncingFromCloud}
+                        className="px-3.5 py-2 rounded-xl text-xs font-serif font-semibold border flex items-center gap-1.5 transition-all cursor-pointer hover:bg-black/5 dark:hover:bg-white/5 active:scale-95 disabled:opacity-50"
+                        style={{ borderColor: `${currentTheme.primary}40`, color: currentTheme.primary }}
+                      >
+                        <RefreshCw size={13} className={isSyncingFromCloud ? 'animate-spin' : ''} />
+                        <span>{isSyncingFromCloud ? '正在拉取...' : '从云端全量拉取数据'}</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={handleResetDefaultCloudHost}
+                        className="text-[11px] font-serif text-[#6E7C75] hover:text-[#2B332E] dark:hover:text-white underline cursor-pointer px-1"
+                      >
+                        重置为官方云端
+                      </button>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={handleSaveCloudHost}
+                      className="px-4 py-2 rounded-xl text-white text-xs font-serif font-bold transition-all cursor-pointer active:scale-95 shadow-2xs"
+                      style={{ backgroundColor: currentTheme.primary }}
+                    >
+                      保存云端配置
+                    </button>
+                  </div>
+
+                  {cloudTestResult && (
+                    <div
+                      className={`p-3 rounded-2xl border text-xs font-serif flex items-center gap-2 ${
+                        cloudTestResult.success
+                          ? 'bg-emerald-50/80 dark:bg-emerald-950/20 border-emerald-500/30 text-emerald-800 dark:text-emerald-300'
+                          : 'bg-red-50/80 dark:bg-red-950/20 border-red-500/30 text-red-800 dark:text-red-300'
+                      }`}
+                    >
+                      {cloudTestResult.success ? <CheckCircle2 size={15} /> : <AlertTriangle size={15} />}
+                      <span>{cloudTestResult.message}</span>
+                      <span className="font-mono text-[10px] opacity-70 ml-auto truncate max-w-[200px]">{cloudTestResult.host}</span>
+                    </div>
+                  )}
+                </div>
               </div>
 
               {/* 支付网关对接与定价配置卡片 */}

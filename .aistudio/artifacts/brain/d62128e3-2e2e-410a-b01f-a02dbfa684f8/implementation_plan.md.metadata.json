@@ -1,6 +1,6 @@
 {
-  "summary":  "Implementation plan for adapting '拾年' frontend with the latest 2026 Android native packaging guide, multi-level physical back navigation expansion, and three-button navigation bar anti-occlusion.",
-  "updatedAt":  "2026-10-03T07:24:05.983240538Z",
+  "summary":  "《拾年》最新全套安卓原生打包与功能落地实施指南（2026 最终终极融合版）：大融合前端GPU硬件加速与scale/opacity纯合成、原生文本选择器无白块透明贴合、软键盘原生防抖、关系单行纯净输入、90Hz/120Hz全系高刷解锁、相册与ZIP公共直存通道、以及Debug调试与Release正式签名双模打包的保姆级完整代码与实操指南。",
+  "updatedAt":  "2026-10-03T11:32:50.006318741Z",
   "requestFeedback":  true,
   "userFacing":  true
 }

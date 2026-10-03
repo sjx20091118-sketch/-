@@ -5,6 +5,7 @@
 
 import { TextToSpeech } from '@capacitor-community/text-to-speech';
 import { TTSAudioEngine } from '../utils/audioUnlocker';
+import { buildApiUrl } from './apiConfig';
 
 export interface EasternVoiceOption {
   id: string;
@@ -167,7 +168,7 @@ async function playNeuralTTS(
   callbacks?: SpeechPlayCallbacks
 ): Promise<boolean> {
   try {
-    const response = await fetch('/api/ai/tts', {
+    const response = await fetch(buildApiUrl('/api/ai/tts'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({

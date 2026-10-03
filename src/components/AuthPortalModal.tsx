@@ -450,7 +450,8 @@ export const AuthPortalModal: React.FC<AuthPortalModalProps> = ({
                       <input
                         type="email"
                         value={loginEmail}
-                        onChange={(e) => setLoginEmail(e.target.value.trim())}
+                        onChange={(e) => setLoginEmail(e.target.value)}
+                        onBlur={() => setLoginEmail(prev => prev.trim().toLowerCase())}
                         placeholder="输入您的电子邮箱地址"
                         required
                         className="w-full min-h-[48px] px-4 rounded-2xl border text-sm font-sans outline-none transition-all apple-liquid-glass"
@@ -470,7 +471,8 @@ export const AuthPortalModal: React.FC<AuthPortalModalProps> = ({
                           type="text"
                           maxLength={6}
                           value={loginOtp}
-                          onChange={(e) => setLoginOtp(e.target.value.replace(/\D/g, ''))}
+                          onChange={(e) => setLoginOtp(e.target.value)}
+                          onBlur={() => setLoginOtp(prev => prev.replace(/\D/g, '').trim())}
                           placeholder="输入 6 位验证码"
                           required
                           className="sm:col-span-3 min-h-[48px] px-4 rounded-2xl border text-sm font-mono tracking-widest outline-none transition-all apple-liquid-glass text-center font-bold"
@@ -509,7 +511,8 @@ export const AuthPortalModal: React.FC<AuthPortalModalProps> = ({
                       <input
                         type="text"
                         value={account}
-                        onChange={(e) => setAccount(e.target.value.toLowerCase().trim())}
+                        onChange={(e) => setAccount(e.target.value)}
+                        onBlur={() => setAccount(prev => prev.trim().toLowerCase())}
                         placeholder="输入账号或绑定的电子邮箱"
                         required
                         className="w-full min-h-[48px] px-4 rounded-2xl border text-sm font-sans outline-none transition-all apple-liquid-glass"
@@ -652,7 +655,8 @@ export const AuthPortalModal: React.FC<AuthPortalModalProps> = ({
                   <input
                     type="text"
                     value={account}
-                    onChange={(e) => setAccount(e.target.value.toLowerCase().trim())}
+                    onChange={(e) => setAccount(e.target.value)}
+                    onBlur={() => setAccount(prev => prev.trim().toLowerCase())}
                     placeholder="输入专属账号（英文/数字）"
                     required
                     minLength={3}

@@ -73,29 +73,25 @@ input, textarea, select, [contenteditable="true"] {
   touch-action: manipulation !important;
 }
 
-/* 主题调色板动态半透明水墨晕染文本高亮 (Theme Palette Reactive Water-Ink Selection Highlight) */
+/* 主题调色板动态半透明水墨晕染文本高亮 (Theme Palette Reactive Water-Ink Selection Highlight - Clean Native Fit) */
 ::selection {
-  background-color: rgba(var(--primary-rgb, 91, 123, 109), 0.28) !important;
+  background-color: rgba(var(--primary-rgb, 91, 123, 109), 0.32) !important;
   color: inherit !important;
-  text-shadow: 0 0 1px rgba(var(--primary-rgb, 91, 123, 109), 0.3);
 }
 
 ::-moz-selection {
-  background-color: rgba(var(--primary-rgb, 91, 123, 109), 0.28) !important;
+  background-color: rgba(var(--primary-rgb, 91, 123, 109), 0.32) !important;
   color: inherit !important;
-  text-shadow: 0 0 1px rgba(var(--primary-rgb, 91, 123, 109), 0.3);
 }
 
 .dark ::selection, .dark-zen-theme ::selection {
-  background-color: rgba(var(--primary-rgb, 78, 186, 134), 0.42) !important;
+  background-color: rgba(var(--primary-rgb, 78, 186, 134), 0.45) !important;
   color: #FAF8F5 !important;
-  text-shadow: 0 0 2px rgba(var(--primary-rgb, 78, 186, 134), 0.5);
 }
 
 .dark ::-moz-selection, .dark-zen-theme ::-moz-selection {
-  background-color: rgba(var(--primary-rgb, 78, 186, 134), 0.42) !important;
+  background-color: rgba(var(--primary-rgb, 78, 186, 134), 0.45) !important;
   color: #FAF8F5 !important;
-  text-shadow: 0 0 2px rgba(var(--primary-rgb, 78, 186, 134), 0.5);
 }
 
 /* Ensure placeholder visibility */
@@ -703,6 +699,156 @@ button {
 html, body {
   overscroll-behavior-y: none;
   -webkit-tap-highlight-color: transparent;
+}
+
+/* =========================================================================
+   Android WebView & Mobile GPU Compositor Engine
+   Anti-Stutter, Zero Tile Crash & No White/Gradient Tearing Blocks
+   ========================================================================= */
+
+/* 1. Global Touch Highlight & Outline Neutralization */
+*, *::before, *::after {
+  -webkit-tap-highlight-color: transparent !important;
+  -webkit-touch-callout: default;
+}
+
+/* 2. Keyframes for Pure GPU Composite Scale & Opacity Animations */
+@keyframes gpuModalFadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes gpuModalScaleIn {
+  0% {
+    opacity: 0;
+    transform: translate3d(0, 0, 0) scale(0.94);
+  }
+  100% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+@keyframes gpuCardScaleEnter {
+  0% {
+    opacity: 0;
+    transform: translate3d(0, 0, 0) scale(0.97);
+  }
+  100% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+/* 3. Major Modals & Overlay Containers: Pure GPU Hardware Acceleration */
+.modal-overlay,
+.modal-backdrop,
+[class*="fixed inset-0"][class*="bg-black"],
+[class*="fixed inset-0"][class*="bg-stone-"],
+[class*="fixed inset-0"][class*="bg-[#2B332E]"],
+[class*="fixed inset-0"][class*="backdrop-blur"] {
+  transform: translate3d(0, 0, 0);
+  -webkit-transform: translate3d(0, 0, 0);
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  contain: layout paint;
+  /* Transitions strictly use composite opacity only; no dynamic blur interpolation across frames */
+  transition-property: opacity !important;
+}
+
+/* Dialog Sheets & Modal Panels */
+[role="dialog"],
+.modal-sheet,
+.modal-panel,
+.modal-content,
+.card-dialog,
+[class*="fixed inset-0"] > div[role="dialog"],
+[class*="fixed inset-0"] > div > div[class*="rounded-2xl"],
+[class*="fixed inset-0"] > div > div[class*="rounded-3xl"] {
+  transform: translate3d(0, 0, 0);
+  -webkit-transform: translate3d(0, 0, 0);
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  perspective: 1000px;
+  -webkit-perspective: 1000px;
+  contain: layout paint;
+  will-change: transform, opacity;
+  animation: gpuModalScaleIn 0.22s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  transition-property: transform, opacity !important;
+}
+
+/* 4. Major Card Components: Hardware Acceleration & GPU Transitions */
+.card-sheet,
+.ios-glass-card,
+.card-contain,
+.memory-card,
+.album-card,
+.story-card,
+.smooth-render-layer,
+[class*="rounded-2xl border"],
+[class*="rounded-3xl border"] {
+  transform: translate3d(0, 0, 0);
+  -webkit-transform: translate3d(0, 0, 0);
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  contain: layout paint;
+  transition-property: transform, opacity, background-color, border-color, box-shadow;
+}
+
+/* Mount will-change on active interactions and during animation phases */
+.card-sheet:hover,
+.card-sheet:active,
+.card-sheet:focus-within,
+.ios-glass-card:hover,
+.ios-glass-card:active,
+.ios-glass-card:focus-within,
+[class*="rounded-2xl border"]:active,
+[class*="rounded-3xl border"]:active {
+  will-change: transform, opacity;
+  transform: translate3d(0, 0, 0) scale(0.985);
+  opacity: 0.95;
+  transition: transform 0.12s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.12s ease;
+}
+
+/* 5. Containment Utilities */
+.contain-paint {
+  contain: paint layout;
+}
+.card-contain {
+  contain: layout paint;
+}
+
+/* 6. Android WebView & Mobile Touch Optimization:
+   High-performance GPU solid/translucent fallback that eliminates
+   GPU tile exhaustion (white blank rects & raw gradient flash) */
+@media (hover: none) and (pointer: coarse) {
+  /* Replace excessive 20px+ multi-pass Gaussian blur on mobile with ultra-smooth 
+     hardware composited semi-translucent ink backgrounds */
+  .backdrop-blur-xl,
+  .backdrop-blur-2xl,
+  .backdrop-blur-3xl {
+    -webkit-backdrop-filter: blur(8px) !important;
+    backdrop-filter: blur(8px) !important;
+  }
+}
+
+/* Specific Capacitor Native Android Optimization */
+body.capacitor-native .backdrop-blur-xl,
+body.capacitor-native .backdrop-blur-2xl,
+body.capacitor-native .backdrop-blur-3xl {
+  -webkit-backdrop-filter: blur(6px) !important;
+  backdrop-filter: blur(6px) !important;
+}
+
+/* Ensure composite-only transitions on Android */
+@media (prefers-reduced-motion: no-preference) {
+  * {
+    scroll-behavior: smooth;
+  }
 }
 
 

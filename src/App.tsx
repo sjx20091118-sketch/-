@@ -121,6 +121,7 @@ import { saveMediaBlob, resolveMediaUrl, isIndexedDbMedia, offloadBase64MediaToI
 import { MediaImage } from './components/MediaImage';
 import { PoeticPrologueModal } from './components/PoeticPrologueModal';
 import { LockScreen } from './components/LockScreen';
+import { AddPersonModalForm, EditPersonModalForm } from './components/PersonForms';
 
 export type TtsVoiceOption = EasternVoiceOption;
 export const TTS_VOICES = EASTERN_VOICES;
@@ -4488,15 +4489,14 @@ export default function App() {
         </main>
 
         {/* Universal Creation & Settings Modals */}
-        {activeModal && (
+        {activeModal && activeModal !== 'addPerson' && (
           <div className="absolute inset-0 bg-[#2B332E]/40 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 animate-fadeIn">
-            <div className={`bg-[#FAF8F5] dark:bg-[#141B18] text-[#2B332E] dark:text-[#FAF8F5] w-full max-w-lg ${isKeyboardVisible ? 'max-h-[96%] pb-12' : 'max-h-[88%]'} overflow-y-auto p-5 sm:p-6 rounded-t-[32px] sm:rounded-3xl border border-[#5B7B6D]/15 dark:border-white/15 shadow-2xl space-y-4 transition-all duration-200 paper-texture`}>
+            <div className="bg-[#FAF8F5] dark:bg-[#141B18] text-[#2B332E] dark:text-[#FAF8F5] w-full max-w-lg max-h-[92vh] overflow-y-auto p-5 sm:p-6 rounded-t-[32px] sm:rounded-3xl border border-[#5B7B6D]/15 dark:border-white/15 shadow-2xl space-y-4 paper-texture pb-8">
               {/* Apple Sheet Pull Indicator */}
               <div className="w-10 h-1 bg-black/15 dark:bg-white/20 rounded-full mx-auto -mt-1 mb-2 sm:hidden" />
               <div className="flex justify-between items-center border-b border-black/5 dark:border-white/10 pb-3">
                 <h3 className="font-bold text-base flex items-center gap-2 font-serif" style={{ color: currentTheme.primary }}>
                   {activeModal === 'addTimeline' && '新建时光节点'}
-                  {activeModal === 'addPerson' && '添加人物档案'}
                   {activeModal === 'addStory' && '新增故事章节'}
                   {activeModal === 'addArtifact' && '收藏旧物档案'}
                   {activeModal === 'addLetter' && '撰写未来寄信'}
@@ -4640,218 +4640,7 @@ export default function App() {
                 </form>
               )}
 
-              {/* Modal 2: Add Person */}
-              {activeModal === 'addPerson' && (
-                <form onSubmit={(e) => {
-                  e.preventDefault();
-                  const fd = new FormData(e.currentTarget);
-                  const nameVal = (fd.get('name') as string)?.trim();
-                  const relVal = formPersonRel || (fd.get('relationship') as string)?.trim();
-                  const birthdayVal = (fd.get('birthday') as string)?.trim() || '';
-                  const groupVal = formPersonGroup || (fd.get('group') as string)?.trim() || '未分组';
-                  const knowWhereVal = (fd.get('knowWhere') as string)?.trim() || '时光长廊';
-                  const zodiacVal = birthdayVal ? getZodiacFromBirthday(birthdayVal) : '未知';
-                  const knownDateVal = (fd.get('knownDate') as string)?.trim() || '2021-09-01';
-                  const wechatVal = (fd.get('wechat') as string)?.trim() || '';
-                  const qqVal = (fd.get('qq') as string)?.trim() || '';
-                  const phoneVal = (fd.get('phone') as string)?.trim() || '';
-                  const tagsInput = (fd.get('tags') as string)?.trim();
-                  const tagsVal = tagsInput ? tagsInput.split(/[\s,，]+/).filter(Boolean) : [];
-                  const messageVal = (fd.get('message') as string)?.trim() || '';
-
-                  if (!formPersonAvatar) {
-                    showToast('请上传人物头像相片（必填项）');
-                    return;
-                  }
-                  if (!nameVal) {
-                    showToast('请填写人物姓名或称谓（必填项）');
-                    return;
-                  }
-                  if (!relVal) {
-                    showToast('请填写或选择与该人物的关系（必填项）');
-                    return;
-                  }
-                  if (formPersonAvatar) {
-                    uploadPersonAvatarToCloud(formPersonAvatar).catch(() => {});
-                  }
-                  addItem('people', {
-                    id: 'p-' + Date.now(),
-                    name: nameVal,
-                    avatar: formPersonAvatar,
-                    relationship: relVal,
-                    group: groupVal,
-                    birthday: birthdayVal || '未填写',
-                    zodiac: zodiacVal,
-                    knownDate: knownDateVal,
-                    wechat: wechatVal,
-                    qq: qqVal,
-                    phone: phoneVal,
-                    hobbies: (fd.get('hobbies') as string)?.trim() || '未填写',
-                    color: (fd.get('color') as string)?.trim() || '暖杏粉',
-                    bio: (fd.get('bio') as string)?.trim() || `${relVal} · 珍贵回忆的同路人`,
-                    customFields: { '认识地点': knowWhereVal },
-                    impressions: (fd.get('impression') as string)?.trim()
-                      ? [{ id: 'imp-0', year: new Date().getFullYear().toString(), text: (fd.get('impression') as string)?.trim() }]
-                      : []
-                  });
-                  setFormPersonAvatar('');
-                  setFormPersonRel('挚友');
-                  setFormPersonGroup('未分组');
-                }} className="space-y-4 text-xs font-sans">
-
-                  {/* Header: Pure Minimalist Avatar Frame & Centered Name Input */}
-                  <div className="flex flex-col items-center gap-2 pt-1">
-                    <LocalImageUploader
-                      value={formPersonAvatar}
-                      onChange={(val) => {
-                        setFormPersonAvatar(val);
-                        if (val) uploadPersonAvatarToCloud(val).catch(() => {});
-                      }}
-                      mode="avatar"
-                      required={true}
-                    />
-                    <div className="w-full text-center">
-                      <input
-                        name="name"
-                        required
-                        placeholder="好友姓名或称谓..."
-                        className="w-full text-center text-xl font-serif font-bold bg-transparent border-b-2 border-stone-200/90 dark:border-white/10 pb-1 text-[#2B332E] dark:text-[#FAF8F5] focus:outline-none placeholder-[#6E7C75]/50"
-                      />
-                    </div>
-                  </div>
-
-                  {/* Card 1: 身名与岁月坐标 (Identity, Group & Milestones) */}
-                  <div className="bg-white/90 dark:bg-white/[0.04] rounded-2xl border border-black/5 dark:border-white/10 divide-y divide-black/5 dark:divide-white/10 shadow-2xs">
-                    {/* Relationship Row */}
-                    <div className="flex items-center justify-between p-3 gap-2">
-                      <span className="text-[11px] font-serif text-[#6E7C75] dark:text-[#A7B4AD] shrink-0">身份关系</span>
-                      <input
-                        name="relationship"
-                        required
-                        value={formPersonRel}
-                        onChange={(e) => setFormPersonRel(e.target.value)}
-                        placeholder="输入关系"
-                        className="w-28 sm:w-32 text-right text-xs bg-stone-50/90 dark:bg-black/20 p-2 rounded-xl border border-stone-200/80 dark:border-white/10 text-[#2B332E] dark:text-[#FAF8F5] focus:outline-none placeholder-[#6E7C75]/50 font-serif"
-                      />
-                    </div>
-
-                    {/* Group Row */}
-                    <div className="flex items-center justify-between p-3">
-                      <span className="text-[11px] font-serif text-[#6E7C75] dark:text-[#A7B4AD] shrink-0">所属分组</span>
-                      <button
-                        type="button"
-                        onClick={() => setFormGroupPickerTarget('add')}
-                        className="font-mono text-xs text-[#2B332E] dark:text-[#FAF8F5] font-bold flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-stone-100/80 dark:bg-white/10 border border-stone-200 dark:border-white/10 hover:border-primary transition-all cursor-pointer shadow-2xs active:scale-95"
-                      >
-                        <Folder className="w-3.5 h-3.5 text-[#5B7B6D]" />
-                        <span>{formPersonGroup || '未分组'}</span>
-                        <ChevronDown className="w-3 h-3 text-[#6E7C75]" />
-                      </button>
-                      <input type="hidden" name="group" value={formPersonGroup || '未分组'} />
-                    </div>
-
-                    {/* Known Date Row */}
-                    <div className="flex items-center justify-between p-3">
-                      <span className="text-[11px] font-serif text-[#6E7C75] dark:text-[#A7B4AD] shrink-0">相识时日</span>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setDatePickerConfig({
-                            isOpen: true,
-                            title: '选择相识起始日期',
-                            value: addPersonKnownDate || '2021-09-01',
-                            mode: 'full',
-                            onConfirm: (val) => setAddPersonKnownDate(val)
-                          });
-                        }}
-                        className="font-mono text-xs text-[#2B332E] dark:text-[#FAF8F5] font-bold flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-stone-100/80 dark:bg-white/10 border border-stone-200 dark:border-white/10 hover:border-primary transition-all cursor-pointer shadow-2xs active:scale-95"
-                      >
-                        <Calendar className="w-3.5 h-3.5 text-[#5B7B6D]" />
-                        <span>{addPersonKnownDate || '2021-09-01'}</span>
-                      </button>
-                      <input type="hidden" name="knownDate" value={addPersonKnownDate || '2021-09-01'} />
-                    </div>
-
-                    {/* Birthday Row */}
-                    <div className="flex items-center justify-between p-3">
-                      <span className="text-[11px] font-serif text-[#6E7C75] dark:text-[#A7B4AD] shrink-0">好友生辰</span>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setDatePickerConfig({
-                            isOpen: true,
-                            title: '选择好友生日',
-                            value: addPersonBirthday || '',
-                            mode: 'month-day',
-                            onConfirm: (val) => setAddPersonBirthday(val)
-                          });
-                        }}
-                        className="font-mono text-xs text-[#2B332E] dark:text-[#FAF8F5] font-bold flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-stone-100/80 dark:bg-white/10 border border-stone-200 dark:border-white/10 hover:border-primary transition-all cursor-pointer shadow-2xs active:scale-95"
-                      >
-                        <Calendar className="w-3.5 h-3.5 text-[#E88765]" />
-                        <span>{addPersonBirthday || '选填生日'}</span>
-                      </button>
-                      <input type="hidden" name="birthday" value={addPersonBirthday || ''} />
-                    </div>
-
-                    {/* Know Where Row */}
-                    <div className="flex items-center justify-between p-3 gap-2">
-                      <span className="text-[11px] font-serif text-[#6E7C75] dark:text-[#A7B4AD] shrink-0">初遇地点</span>
-                      <input
-                        name="knowWhere"
-                        placeholder="选填，如：新沂一中"
-                        className="w-40 sm:w-44 text-right text-xs bg-stone-50/90 dark:bg-black/20 p-2 rounded-xl border border-stone-200/80 dark:border-white/10 text-[#2B332E] dark:text-[#FAF8F5] focus:outline-none placeholder-[#6E7C75]/50 font-serif"
-                      />
-                    </div>
-                  </div>
-
-                  {/* Card 3: 社交信息 (Contacts) - 电话、微信、QQ 三栏均分并列 */}
-                  <div className="bg-white/90 dark:bg-white/[0.04] p-3.5 rounded-2xl border border-black/5 dark:border-white/10 space-y-2 shadow-2xs">
-                    <span className="text-[11px] font-serif font-medium text-[#526058] dark:text-[#A7B4AD]">联络方式 (选填)</span>
-                    <div className="grid grid-cols-3 gap-2">
-                      <input
-                        name="phone"
-                        placeholder="电话 (选填)"
-                        className="w-full p-2.5 text-xs font-serif rounded-xl border border-stone-200/80 dark:border-white/10 bg-stone-50/90 dark:bg-black/20 text-[#2B332E] dark:text-[#FAF8F5] focus:outline-none placeholder-[#6E7C75]/50"
-                      />
-                      <input
-                        name="wechat"
-                        placeholder="微信 (选填)"
-                        className="w-full p-2.5 text-xs font-serif rounded-xl border border-stone-200/80 dark:border-white/10 bg-stone-50/90 dark:bg-black/20 text-[#2B332E] dark:text-[#FAF8F5] focus:outline-none placeholder-[#6E7C75]/50"
-                      />
-                      <input
-                        name="qq"
-                        placeholder="QQ (选填)"
-                        className="w-full p-2.5 text-xs font-serif rounded-xl border border-stone-200/80 dark:border-white/10 bg-stone-50/90 dark:bg-black/20 text-[#2B332E] dark:text-[#FAF8F5] focus:outline-none placeholder-[#6E7C75]/50"
-                      />
-                    </div>
-                  </div>
-
-                  {/* Card 4: 寄语与初识印象 (Bio & Impression) */}
-                  <div className="bg-white/90 dark:bg-white/[0.04] p-3.5 rounded-2xl border border-black/5 dark:border-white/10 space-y-2 shadow-2xs">
-                    <span className="text-[11px] font-serif font-medium text-[#526058] dark:text-[#A7B4AD]">一句话总结与初识印象</span>
-                    <input
-                      name="bio"
-                      placeholder="选填，如：知心挚友，同路前行"
-                      className="w-full p-2.5 text-xs font-serif rounded-xl border border-stone-200/80 dark:border-white/10 bg-stone-50/90 dark:bg-black/20 text-[#2B332E] dark:text-[#FAF8F5] focus:outline-none placeholder-[#6E7C75]/50"
-                    />
-                    <textarea
-                      name="impression"
-                      rows={2}
-                      placeholder="初识温存细节或深刻回忆（选填）..."
-                      className="w-full p-2.5 text-xs font-serif rounded-xl border border-stone-200/80 dark:border-white/10 bg-stone-50/90 dark:bg-black/20 text-[#2B332E] dark:text-[#FAF8F5] focus:outline-none resize-none placeholder-[#6E7C75]/50"
-                    />
-                  </div>
-
-                  <button
-                    type="submit"
-                    className="w-full py-3 text-white font-serif font-bold text-xs rounded-2xl shadow-xs transition-all active:scale-[0.98] cursor-pointer"
-                    style={{ backgroundColor: currentTheme.primary }}
-                  >
-                    建立人物档案
-                  </button>
-                </form>
-              )}
+              {/* Modal 2: Add Person now rendered by isolated AddPersonModalForm component below */}
 
               {/* Modal 3: Add Story (Apple Segmented Form Sheet) */}
               {activeModal === 'addStory' && (
@@ -5147,248 +4936,46 @@ export default function App() {
           </div>
         )}
 
-        {/* Modal for Editing Person Profile (Apple Segmented Form Sheet) */}
-        {isEditingPerson && selectedPerson && (
-          <div className="absolute inset-0 bg-[#2B332E]/40 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 animate-fadeIn font-sans">
-            <div className={`bg-[#FAF8F5] dark:bg-[#141B18] text-[#2B332E] dark:text-[#FAF8F5] w-full max-w-lg ${isKeyboardVisible ? 'max-h-[96%] pb-12' : 'max-h-[88%]'} overflow-y-auto p-5 sm:p-6 rounded-t-[32px] sm:rounded-3xl border border-black/10 dark:border-white/15 shadow-2xl space-y-4 transition-all duration-200 paper-texture`}>
-              {/* Apple Sheet Pull Indicator */}
-              <div className="w-10 h-1 bg-black/15 dark:bg-white/20 rounded-full mx-auto -mt-1 mb-2 sm:hidden" />
-              <div className="flex justify-between items-center border-b border-black/5 dark:border-white/10 pb-3">
-                <h3 className="font-bold text-base flex items-center gap-2 font-serif" style={{ color: currentTheme.primary }}>
-                  <UserPlus className="w-4 h-4" />
-                  <span>编辑【{selectedPerson.name}】档案</span>
-                </h3>
-                <button
-                  type="button"
-                  onClick={() => setIsEditingPerson(false)}
-                  className="p-1 rounded-full text-[#6E7C75] hover:text-[#2B332E] dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/10 transition-colors"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
+        {/* Isolated & Stable Add Person Modal Form */}
+        <AddPersonModalForm
+          isOpen={activeModal === 'addPerson'}
+          onClose={() => setActiveModal(null)}
+          onSubmit={(newPerson) => {
+            addItem('people', newPerson);
+            setActiveModal(null);
+            showToast(`已成功收录【${newPerson.name}】档案`);
+          }}
+          currentTheme={currentTheme}
+          isDarkMode={isDarkMode}
+          showToast={showToast}
+          uploadPersonAvatarToCloud={uploadPersonAvatarToCloud}
+          getZodiacFromBirthday={getZodiacFromBirthday}
+          setDatePickerConfig={setDatePickerConfig}
+          setFormGroupPickerTarget={setFormGroupPickerTarget}
+          formPersonGroup={formPersonGroup}
+          addPersonBirthday={addPersonBirthday}
+          addPersonKnownDate={addPersonKnownDate}
+        />
 
-              <form onSubmit={(e) => {
-                e.preventDefault();
-                const fd = new FormData(e.currentTarget);
-                const nameVal = (fd.get('name') as string)?.trim();
-                const relVal = editPersonRel || (fd.get('relationship') as string)?.trim() || selectedPerson.relationship;
-                const birthdayVal = (fd.get('birthday') as string)?.trim() || selectedPerson.birthday || '';
-                const groupVal = editPersonGroup || (fd.get('group') as string)?.trim() || selectedPerson.group || '未分组';
-                const knowWhereVal = (fd.get('knowWhere') as string)?.trim() || selectedPerson.customFields?.['认识地点'] || '时光长廊';
-                const zodiacVal = birthdayVal && birthdayVal !== '未填写' ? getZodiacFromBirthday(birthdayVal) : (selectedPerson.zodiac || '未知');
-                const knownDateVal = (fd.get('knownDate') as string)?.trim() || selectedPerson.knownDate || '2021-09-01';
-                const wechatVal = (fd.get('wechat') as string)?.trim() || '';
-                const qqVal = (fd.get('qq') as string)?.trim() || '';
-                const phoneVal = (fd.get('phone') as string)?.trim() || '';
-                const finalAvatar = editPersonAvatar || selectedPerson.avatar;
-
-                if (!finalAvatar) {
-                  showToast('请上传人物头像相片（必填项）');
-                  return;
-                }
-                if (!nameVal) {
-                  showToast('请填写人物姓名（必填项）');
-                  return;
-                }
-                if (!relVal) {
-                  showToast('请填写与该人物的关系（必填项）');
-                  return;
-                }
-                if (finalAvatar) {
-                  uploadPersonAvatarToCloud(finalAvatar).catch(() => {});
-                }
-                handleUpdatePerson({
-                  name: nameVal,
-                  relationship: relVal,
-                  group: groupVal,
-                  birthday: birthdayVal || '未填写',
-                  zodiac: zodiacVal,
-                  knownDate: knownDateVal,
-                  wechat: wechatVal,
-                  qq: qqVal,
-                  phone: phoneVal,
-                  hobbies: (fd.get('hobbies') as string)?.trim() || '未填写',
-                  color: (fd.get('color') as string)?.trim() || '暖杏粉',
-                  bio: (fd.get('bio') as string)?.trim() || `${relVal} · 珍贵回忆的同路人`,
-                  avatar: finalAvatar,
-                  customFields: {
-                    ...(selectedPerson.customFields || {}),
-                    '认识地点': knowWhereVal
-                  }
-                });
-              }} className="space-y-4 text-xs font-sans">
-
-                {/* Hero Avatar & Name Section */}
-                <div className="flex flex-col items-center gap-2 pt-1">
-                  <LocalImageUploader
-                    value={editPersonAvatar || selectedPerson.avatar}
-                    onChange={(val) => {
-                      setEditPersonAvatar(val);
-                      if (val) uploadPersonAvatarToCloud(val).catch(() => {});
-                    }}
-                    mode="avatar"
-                    required={true}
-                  />
-                  <div className="w-full text-center">
-                    <input
-                      name="name"
-                      defaultValue={selectedPerson.name}
-                      required
-                      placeholder="姓名或称谓..."
-                      className="w-full text-center text-xl font-serif font-bold bg-transparent border-b-2 border-stone-200/90 dark:border-white/10 pb-1 text-[#2B332E] dark:text-[#FAF8F5] focus:outline-none placeholder-[#6E7C75]/50"
-                    />
-                  </div>
-                </div>
-
-                {/* Card 1: 身名与岁月坐标 (Identity, Group & Milestones) */}
-                <div className="bg-white/90 dark:bg-white/[0.04] rounded-2xl border border-black/5 dark:border-white/10 divide-y divide-black/5 dark:divide-white/10 shadow-2xs">
-                  {/* Relationship Row */}
-                  <div className="flex items-center justify-between p-3 gap-2">
-                    <span className="text-[11px] font-serif text-[#6E7C75] dark:text-[#A7B4AD] shrink-0">身份关系</span>
-                    <input
-                      name="relationship"
-                      required
-                      value={editPersonRel || selectedPerson.relationship}
-                      onChange={(e) => setEditPersonRel(e.target.value)}
-                      placeholder="输入关系"
-                      className="w-28 sm:w-32 text-right text-xs bg-stone-50/90 dark:bg-black/20 p-2 rounded-xl border border-stone-200/80 dark:border-white/10 text-[#2B332E] dark:text-[#FAF8F5] focus:outline-none placeholder-[#6E7C75]/50 font-serif"
-                    />
-                  </div>
-
-                  {/* Group Row */}
-                  <div className="flex items-center justify-between p-3">
-                    <span className="text-[11px] font-serif text-[#6E7C75] dark:text-[#A7B4AD] shrink-0">所属分组</span>
-                    <button
-                      type="button"
-                      onClick={() => setFormGroupPickerTarget('edit')}
-                      className="font-mono text-xs text-[#2B332E] dark:text-[#FAF8F5] font-bold flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-stone-100/80 dark:bg-white/10 border border-stone-200 dark:border-white/10 hover:border-primary transition-all cursor-pointer shadow-2xs active:scale-95"
-                    >
-                      <Folder className="w-3.5 h-3.5 text-[#5B7B6D]" />
-                      <span>{editPersonGroup || selectedPerson.group || '未分组'}</span>
-                      <ChevronDown className="w-3 h-3 text-[#6E7C75]" />
-                    </button>
-                    <input type="hidden" name="group" value={editPersonGroup || selectedPerson.group || '未分组'} />
-                  </div>
-
-                  {/* Known Date Row */}
-                  <div className="flex items-center justify-between p-3">
-                    <span className="text-[11px] font-serif text-[#6E7C75] dark:text-[#A7B4AD] shrink-0">相识时日</span>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setDatePickerConfig({
-                          isOpen: true,
-                          title: `设置与【${selectedPerson.name}】相识日期`,
-                          value: editPersonKnownDate || selectedPerson.knownDate || '2021-09-01',
-                          mode: 'full',
-                          onConfirm: (val) => setEditPersonKnownDate(val)
-                        });
-                      }}
-                      className="font-mono text-xs text-[#2B332E] dark:text-[#FAF8F5] font-bold flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-stone-100/80 dark:bg-white/10 border border-stone-200 dark:border-white/10 hover:border-primary transition-all cursor-pointer shadow-2xs active:scale-95"
-                    >
-                      <Calendar className="w-3.5 h-3.5 text-[#5B7B6D]" />
-                      <span>{editPersonKnownDate || selectedPerson.knownDate || '2021-09-01'}</span>
-                    </button>
-                    <input type="hidden" name="knownDate" value={editPersonKnownDate || selectedPerson.knownDate || '2021-09-01'} />
-                  </div>
-
-                  {/* Birthday Row */}
-                  <div className="flex items-center justify-between p-3">
-                    <span className="text-[11px] font-serif text-[#6E7C75] dark:text-[#A7B4AD] shrink-0">好友生辰</span>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setDatePickerConfig({
-                          isOpen: true,
-                          title: `设置【${selectedPerson.name}】的生日`,
-                          value: editPersonBirthday || (selectedPerson.birthday !== '未填写' ? selectedPerson.birthday : ''),
-                          mode: 'month-day',
-                          onConfirm: (val) => setEditPersonBirthday(val)
-                        });
-                      }}
-                      className="font-mono text-xs text-[#2B332E] dark:text-[#FAF8F5] font-bold flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-stone-100/80 dark:bg-white/10 border border-stone-200 dark:border-white/10 hover:border-primary transition-all cursor-pointer shadow-2xs active:scale-95"
-                    >
-                      <Calendar className="w-3.5 h-3.5 text-[#E88765]" />
-                      <span>{editPersonBirthday || (selectedPerson.birthday !== '未填写' ? selectedPerson.birthday : '选填生日')}</span>
-                    </button>
-                    <input type="hidden" name="birthday" value={editPersonBirthday || (selectedPerson.birthday !== '未填写' ? selectedPerson.birthday : '')} />
-                  </div>
-
-                  {/* Know Where Row */}
-                  <div className="flex items-center justify-between p-3 gap-2">
-                    <span className="text-[11px] font-serif text-[#6E7C75] dark:text-[#A7B4AD] shrink-0">初遇地点</span>
-                    <input
-                      name="knowWhere"
-                      defaultValue={selectedPerson.customFields?.['认识地点'] || ''}
-                      placeholder="选填，如：新沂一中"
-                      className="w-40 sm:w-44 text-right text-xs bg-stone-50/90 dark:bg-black/20 p-2 rounded-xl border border-stone-200/80 dark:border-white/10 text-[#2B332E] dark:text-[#FAF8F5] focus:outline-none placeholder-[#6E7C75]/50 font-serif"
-                    />
-                  </div>
-
-                  {/* Hobbies Row */}
-                  <div className="flex items-center justify-between p-3 gap-2">
-                    <span className="text-[11px] font-serif text-[#6E7C75] dark:text-[#A7B4AD] shrink-0">兴趣偏好</span>
-                    <input
-                      name="hobbies"
-                      defaultValue={selectedPerson.hobbies !== '未填写' ? selectedPerson.hobbies : ''}
-                      placeholder="选填如摄影旅行"
-                      className="w-40 sm:w-44 text-right text-xs bg-stone-50/90 dark:bg-black/20 p-2 rounded-xl border border-stone-200/80 dark:border-white/10 text-[#2B332E] dark:text-[#FAF8F5] focus:outline-none placeholder-[#6E7C75]/50 font-serif"
-                    />
-                  </div>
-                </div>
-
-                {/* Card 3: 社交信息与总结寄语 (Contacts & Bio) - 电话、微信、QQ 三栏均分并列 */}
-                <div className="bg-white/90 dark:bg-white/[0.04] p-3.5 rounded-2xl border border-black/5 dark:border-white/10 space-y-2.5 shadow-2xs">
-                  <div className="grid grid-cols-3 gap-2">
-                    <input
-                      name="phone"
-                      defaultValue={selectedPerson.phone || ''}
-                      placeholder="电话 (选填)"
-                      className="w-full p-2.5 text-xs font-serif rounded-xl border border-stone-200/80 dark:border-white/10 bg-stone-50/90 dark:bg-black/20 text-[#2B332E] dark:text-[#FAF8F5] focus:outline-none placeholder-[#6E7C75]/50"
-                    />
-                    <input
-                      name="wechat"
-                      defaultValue={selectedPerson.wechat || ''}
-                      placeholder="微信 (选填)"
-                      className="w-full p-2.5 text-xs font-serif rounded-xl border border-stone-200/80 dark:border-white/10 bg-stone-50/90 dark:bg-black/20 text-[#2B332E] dark:text-[#FAF8F5] focus:outline-none placeholder-[#6E7C75]/50"
-                    />
-                    <input
-                      name="qq"
-                      defaultValue={selectedPerson.qq || ''}
-                      placeholder="QQ (选填)"
-                      className="w-full p-2.5 text-xs font-serif rounded-xl border border-stone-200/80 dark:border-white/10 bg-stone-50/90 dark:bg-black/20 text-[#2B332E] dark:text-[#FAF8F5] focus:outline-none placeholder-[#6E7C75]/50"
-                    />
-                  </div>
-                  <textarea
-                    name="bio"
-                    defaultValue={selectedPerson.bio}
-                    rows={2}
-                    placeholder="人物总结寄语 (如: 晚自习后看过无数次晚霞的知心挚友)..."
-                    className="w-full p-2.5 text-xs font-serif rounded-xl border border-stone-200/80 dark:border-white/10 bg-stone-50/90 dark:bg-black/20 text-[#2B332E] dark:text-[#FAF8F5] focus:outline-none resize-none placeholder-[#6E7C75]/50"
-                  />
-                </div>
-
-                {/* Footer Buttons */}
-                <div className="flex gap-2.5 pt-1">
-                  <button
-                    type="button"
-                    onClick={() => setIsEditingPerson(false)}
-                    className="flex-1 py-3 rounded-2xl border border-black/10 dark:border-white/10 bg-white/70 dark:bg-white/[0.05] text-[#6E7C75] dark:text-[#A7B4AD] font-serif font-semibold text-xs hover:bg-black/5 transition-all active:scale-[0.98] cursor-pointer"
-                  >
-                    取消
-                  </button>
-                  <button
-                    type="submit"
-                    className="flex-1 py-3 rounded-2xl text-white font-serif font-bold text-xs shadow-xs transition-all active:scale-[0.98] cursor-pointer"
-                    style={{ backgroundColor: currentTheme.primary }}
-                  >
-                    保存档案
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
-        )}
+        {/* Isolated & Stable Edit Person Modal Form */}
+        <EditPersonModalForm
+          isOpen={isEditingPerson && !!selectedPerson}
+          selectedPerson={selectedPerson}
+          onClose={() => setIsEditingPerson(false)}
+          onUpdate={(updatedData) => {
+            handleUpdatePerson(updatedData);
+            setIsEditingPerson(false);
+            showToast('已保存人物档案修订');
+          }}
+          currentTheme={currentTheme}
+          isDarkMode={isDarkMode}
+          showToast={showToast}
+          uploadPersonAvatarToCloud={uploadPersonAvatarToCloud}
+          getZodiacFromBirthday={getZodiacFromBirthday}
+          setDatePickerConfig={setDatePickerConfig}
+          setFormGroupPickerTarget={setFormGroupPickerTarget}
+          editPersonGroup={editPersonGroup}
+        />
 
         {/* Selected Artifact Detail Modal */}
         {selectedArtifact && (

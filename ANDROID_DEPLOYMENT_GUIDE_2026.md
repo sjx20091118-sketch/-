@@ -1,14 +1,12 @@
-# 《拾年》最新全套安卓原生打包与功能落地实施指南（2026 最终终极融合版）
+# 《拾年》最新全套安卓原生打包与功能落地实施指南（2026 最终版）
 
-本文档为《拾年》移动端落地的最终权威落地方案，融合了：
-1. **全景 GPU 硬件加速与纯合成层渲染**：所有模态框（Modal）与卡片（Card）全面基于 `scale` 与 `opacity` 变换，按需挂载 `will-change: transform, opacity`，在保持现有东方美术设计与色彩质感零降级的前提下，彻底杜绝动态高斯模糊导致的瓦片显存击穿、瞬间空白方块与渐变撕裂；
-2. **原生文本选择器透明无白块贴合**：重构 `styles.xml` 与选区 CSS，消除图标下方白色矩形底板，与东方水墨绿主题自然契合；
-3. **软键盘原生防抖与输入法秒级响应**：采用 `KeyboardResize.Native` 配合原生 `adjustResize`，软键盘弹起时不强制拉伸 `body`，彻底解决焦点切换文字消失与软键盘连续删除键延迟卡顿；
-4. **人物关系输入框纯净化**：彻底移除“知己、密友、同窗、自由、通畅”等所有快捷胶囊标签，仅保留纯净单行输入框；
-5. **90Hz / 120Hz / 144Hz 极限屏幕刷新率强制解锁**：覆盖 Android 10 至 Android 15，动态获取并锁定硬件最高帧率；
-6. **本地离线档案优先 + 云端统一中枢**：个人回忆数据本地秒开，用户鉴权、管理网关与在线通知走云端后端；
-7. **相册直存（Pictures/拾年回忆） + ZIP 压缩包公共下载分类直存通道**；
-8. **Debug 快速联调与 Release 正式签名打包双模式实操**。
+本文档为《拾年》移动端终极落地方案，融合了：
+1. **全景软键盘原生防抖适配**（避免页面 body 抖动重排，彻底解决焦点切换文字丢失与按键延迟）
+2. **原生文本选择器无白块透明贴合**（消除图标白色方块底衬，与东方水墨绿主题自然契合）
+3. **90Hz / 120Hz 极限屏幕刷新率强制解锁**（满帧丝滑，告别动画卡顿）
+4. **GPU 硬件加速与复合图层隔离**（消除动态毛玻璃导致的显存瓦片崩溃、瞬间空白方块与渐变色块撕裂）
+5. **本地离线档案优先 + 云端统一鉴权中枢**（日程、相册、故事、信物本地秒开；账号登录、授权、网关走云端）
+6. **相册直存（Pictures/拾年回忆） + ZIP 压缩包公共下载分类直存通道**
 
 ---
 
@@ -17,7 +15,7 @@
 ### 步骤 1：终端定位到项目根目录
 在 VS Code 中打开项目根目录，按快捷键 `Ctrl + ~` 唤起内置终端。确保当前路径下直接可以看到 `package.json`、`index.html` 和 `src` 文件夹。
 ```bash
-# 确认当前处于项目根目录
+# 若存在嵌套路径，先进入对应子目录
 ls -la
 ```
 
@@ -36,7 +34,7 @@ npm run build
 
 ### 步骤 3：初始化 Capacitor 并生成 Android 原生工程
 ```bash
-# 1. 容错清理可能存在的旧配置文件
+# 1. 容错清理旧配置
 rm -f capacitor.config.ts
 
 # 2. 初始化应用基础信息并创建 android 原生工程
@@ -45,7 +43,7 @@ npx cap add android
 ```
 
 ### 步骤 4：配置 `capacitor.config.ts` 并执行原生同步
-在 VS Code 左侧打开 `capacitor.config.ts`，全选替换为以下最新融合配置并保存（`Ctrl + S`）：
+在 VS Code 左侧打开 `capacitor.config.ts`，全选替换为以下最新配置并保存（`Ctrl + S`）：
 
 ```typescript
 import type { CapacitorConfig } from '@capacitor/cli';
@@ -67,7 +65,7 @@ const config: CapacitorConfig = {
       splashImmersive: true,
     },
     Keyboard: {
-      // 关键：采用原生 WindowInsets 适配模式，杜绝 body 尺寸抖动与软键盘连续删除延迟
+      // 采用原生 WindowInsets 适配模式，避免触发布局全屏重排与软键盘删除键延迟
       resize: KeyboardResize.Native,
       style: KeyboardStyle.Light,
       resizeOnFullScreen: true,
@@ -105,8 +103,8 @@ npx cap sync android
 - 直接点击蓝色的 **Apply compatible Gradle JDK configuration and sync**；
 - 或在 **Settings ➔ Build, Execution, Deployment ➔ Build Tools ➔ Gradle** 中，将 **Gradle JDK** 切换为 **Embedded JDK (17 或 21)**，等待右下角 Gradle Sync 完成。
 
-### 步骤 6：配置沉浸式主题与原生选择器无白块透明样式 `styles.xml`
-在左侧目录树展开：`app ➔ res ➔ values ➔ styles.xml`（或 `themes.xml`），全选替换为以下深度优化代码：
+### 步骤 6：配置沉浸式主题与文本选择器透明样式 `styles.xml`
+在左侧目录树展开：`app ➔ res ➔ values ➔ styles.xml`（或 `themes.xml`），全选替换为以下代码：
 
 ```xml
 <?xml version="1.0" encoding="utf-8"?>
@@ -133,7 +131,7 @@ npx cap sync android
         <item name="android:windowLightStatusBar">true</item>
         <item name="android:windowLightNavigationBar">true</item>
 
-        <!-- 彻底修复原生文本选择器白块问题：让 Floating Toolbar / ActionMode 背景全透明无矩形方块 -->
+        <!-- 彻底修复原生文本选择器白块问题：让 Floating Toolbar / ActionMode 背景全透明无方块 -->
         <item name="windowActionModeOverlay">true</item>
         <item name="actionModeBackground">@android:color/transparent</item>
         <item name="actionModeSplitBackground">@android:color/transparent</item>
@@ -148,8 +146,8 @@ npx cap sync android
 </resources>
 ```
 
-### 步骤 7：配置清单文件 `AndroidManifest.xml`（大显存、硬件加速与全版本权限）
-在左侧展开：`app ➔ manifests ➔ AndroidManifest.xml`，全选替换为以下完整代码：
+### 步骤 7：配置清单文件 `AndroidManifest.xml`（权限、硬件加速与大内存）
+在左侧展开：`app ➔ manifests ➔ AndroidManifest.xml`，全选替换为以下代码：
 
 ```xml
 <?xml version="1.0" encoding="utf-8"?>
@@ -192,7 +190,7 @@ npx cap sync android
         </provider>
     </application>
 
-    <!-- 网络请求、音频播放、相册与文件下载存取完整权限（兼容 Android 10 至 Android 15） -->
+    <!-- 网络请求、音频播放、相册与文件下载存取权限 -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
@@ -204,7 +202,7 @@ npx cap sync android
 ```
 
 ### 步骤 8：配置核心入口 `MainActivity.java`（90Hz/120Hz 高刷解锁 + 相册直存 + ZIP 压缩包公共直存）
-在左侧展开：`app ➔ java ➔ com.shinian.app ➔ MainActivity.java`，全选替换为以下终极融合代码：
+在左侧展开：`app ➔ java ➔ com.shinian.app ➔ MainActivity.java`，全选替换为以下最新融合代码：
 
 ```java
 package com.shinian.app;
@@ -238,7 +236,7 @@ import java.io.OutputStream;
 public class MainActivity extends BridgeActivity {
 
     public class WebAppInterface {
-        // 1. 卡片工坊：相片直存至系统相册（Pictures/拾年回忆）
+        // 1. 卡片工坊：相片直存至系统相册
         @JavascriptInterface
         public void saveImageToGallery(String base64Data, String filename) {
             try {
@@ -319,20 +317,20 @@ public class MainActivity extends BridgeActivity {
         window.setStatusBarColor(Color.TRANSPARENT);
         window.setNavigationBarColor(Color.TRANSPARENT);
 
-        // 2. 状态栏与导航栏图标深色化，完美适配东方米色背景
+        // 2. 状态栏与导航栏图标深色化，适配东方米色背景
         WindowInsetsControllerCompat controller = WindowCompat.getInsetsController(window, window.getDecorView());
         if (controller != null) {
             controller.setAppearanceLightStatusBars(true);
             controller.setAppearanceLightNavigationBars(true);
         }
 
-        // 3. Android 10+ 禁用系统强制追加的半透明蒙层
+        // 3. Android 10+ 禁用系统强制追加的半透明遮罩
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             window.setStatusBarContrastEnforced(false);
             window.setNavigationBarContrastEnforced(false);
         }
 
-        // 4. 【核心性能突破】强制解锁 90Hz / 120Hz / 144Hz 极限屏幕刷新率
+        // 4. 【核心性能突破】强制解锁 90Hz / 120Hz 极限屏幕刷新率
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             try {
                 WindowManager.LayoutParams params = window.getAttributes();
@@ -368,8 +366,7 @@ public class MainActivity extends BridgeActivity {
             if (webView != null) {
                 String js = String.format(
                     "document.documentElement.style.setProperty('--safe-area-top', '%dpx');" +
-                    "document.documentElement.style.setProperty('--safe-area-bottom', '%dpx');",
-                    topDp, bottomDp
+                    "document.documentElement.style.setProperty('--safe-area-bottom', '%dpx');", topDp, bottomDp
                 );
                 webView.post(() -> webView.evaluateJavascript(js, null));
             }
@@ -380,7 +377,7 @@ public class MainActivity extends BridgeActivity {
         // 6. 【WebView 渲染加速引擎与原生 JSBridge 挂载】
         WebView bridgeWebView = getBridge().getWebView();
         if (bridgeWebView != null) {
-            // 启用硬件加速绘制层与透明背景
+            // 启用硬件加速与透明背景
             bridgeWebView.setLayerType(View.LAYER_TYPE_HARDWARE, null);
             bridgeWebView.setBackgroundColor(Color.TRANSPARENT);
 
@@ -402,7 +399,7 @@ public class MainActivity extends BridgeActivity {
 
 ---
 
-## 第三阶段：真机编译运行与导出 APK（双模式）
+## 第三阶段：真机编译运行与导出 APK
 
 ### 步骤 9：生成全套高清分辨率图标
 1. 在 Android Studio 左侧目录树右键点击 `app ➔ res` 文件夹；
@@ -411,29 +408,12 @@ public class MainActivity extends BridgeActivity {
 4. 在 **Background Layer** 选中 Color，填入东方米色 `#FAF8F5`；
 5. 点击 **Next ➔ Finish**，自动生成全套自适应图标。
 
-### 步骤 10：构建缓存清理与双模式打包
-
-#### 模式 A：Debug 极速联调模式（日常真机推送）
+### 步骤 10：构建缓存清理与真机安装 / 导出 APK
 1. 点击 Android Studio 顶部菜单：**Build ➔ Clean Project**；
 2. 点击 **Build ➔ Rebuild Project**；
 3. 用 USB 数据线将开启了「开发者选项 & USB 调试」的安卓手机连接电脑；
 4. 在顶部设备下拉框选中手机，点击绿色运行按钮 **Run 'app'**（快捷键 `Shift + F10`）直接推送到手机安装；
-5. 若需导出离线测试 APK 安装包，点击顶部菜单 **Build ➔ Build Bundle(s) / APK(s) ➔ Build APK(s)**，即可在 `app/build/outputs/apk/debug/app-debug.apk` 获取安装包。
-
-#### 模式 B：Release 正式签名打包模式（生产发布版本）
-1. **生成正式签名密钥库（Keystore）**：
-   在终端运行以下命令（首次执行，请妥善保管密码与密钥文件 `shinian.jks`）：
-   ```bash
-   keytool -genkey -v -keystore shinian.jks -keyalg RSA -keysize 2048 -validity 10000 -alias shinian
-   ```
-2. **在 Android Studio 中图形化签名打包**：
-   - 点击顶部菜单 **Build ➔ Generate Signed Bundle / APK...**；
-   - 选择 **APK**，点击 **Next**；
-   - **Key store path** 选择刚生成的 `shinian.jks`；
-   - 输入密钥库密码（Key store password）与别名密码（Key password）；
-   - **Build Variants** 选择 **release**；
-   - 签名版本同时勾选 **V1 (Jar Signature)** 与 **V2 (Full APK Signature)**；
-   - 点击 **Finish**，编译完成后将在 `app/release/app-release.apk` 获取正式签名发布包。
+5. 若需导出离线 APK 安装包，点击顶部菜单 **Build ➔ Build Bundle(s) / APK(s) ➔ Build APK(s)** 即可获取 `.apk` 文件。
 
 ---
 
@@ -441,8 +421,8 @@ public class MainActivity extends BridgeActivity {
 
 1. **90Hz / 120Hz 高刷新率极致丝滑**：页面滚动、大图抽屉进出与黑胶唱片旋转保持满帧，绝不出现空白方块或渐变撕裂色块。
 2. **输入框焦点与删除健秒级响应**：在添加人物、登录注册等所有输入框输入文字，切换到其他输入框文字稳定保留；点击软键盘删除键立刻响应无延迟。
-3. **原生文本选择器无白块贴合**：选中文本长按时，系统原生浮动菜单图标下底色完全透明，不产生突兀的白色矩形方块，与水墨绿选区高亮自然统一。
-4. **关系输入框纯净极简**：添加与编辑人物界面中无任何“知己、密友”等多余胶囊标签，纯净单行输入，输入即存。
+3. **原生文本选择器无白块贴合**：选中文本长按时，系统原生浮动菜单图标下底色完全透明，不产生突兀的白色矩形方块，与水墨绿高亮自然统一。
+4. **关系输入框纯净极简**：添加与编辑人物界面中无任何“知己、密友”等多余胶囊标签，纯净单行输入。
 5. **ZIP 压缩包公共直存**：在「离线档案备份」中点击「全量打包导出 ZIP」，手机「文件管理 ➔ 压缩包」或「下载」分类中可直接看到 `.zip` 备份包。
 6. **回忆卡片工坊相册直存**：点击「保存卡片到手机相册」，直接无缝写入手机自带相册的「拾年回忆」相簿。
 7. **安卓三键导航栏防遮挡**：无论开启全屏手势还是传统三键导航，底部导航栏与黑胶唱片胶囊均自适应抬升避让。

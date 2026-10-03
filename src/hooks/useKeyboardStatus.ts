@@ -45,22 +45,7 @@ export function useKeyboardStatus(): KeyboardStatus {
 
     if (window.visualViewport) {
       window.visualViewport.addEventListener('resize', onViewportResize);
-      window.visualViewport.addEventListener('scroll', onViewportResize);
     }
-
-    // 3. Global focusin scroll-into-view helper for inputs/textareas to prevent obscuring
-    const handleFocusIn = (e: FocusEvent) => {
-      const target = e.target as HTMLElement;
-      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) {
-        setTimeout(() => {
-          try {
-            target.scrollIntoView({ behavior: 'smooth', block: 'center' });
-          } catch (err) {}
-        }, 320);
-      }
-    };
-
-    document.addEventListener('focusin', handleFocusIn);
 
     return () => {
       if (showListenerHandle && typeof showListenerHandle.remove === 'function') {
@@ -71,9 +56,7 @@ export function useKeyboardStatus(): KeyboardStatus {
       }
       if (window.visualViewport) {
         window.visualViewport.removeEventListener('resize', onViewportResize);
-        window.visualViewport.removeEventListener('scroll', onViewportResize);
       }
-      document.removeEventListener('focusin', handleFocusIn);
     };
   }, []);
 
