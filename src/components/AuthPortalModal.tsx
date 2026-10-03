@@ -50,22 +50,14 @@ export const AuthPortalModal: React.FC<AuthPortalModalProps> = ({
     }
   }, [isOpen]);
 
-  // 表单字段
+  // 表单状态
   const [avatar, setAvatar] = useState('');
-  const [displayName, setDisplayName] = useState('');
-  const [account, setAccount] = useState('');
-  const [email, setEmail] = useState('');
-  const [otpCode, setOtpCode] = useState('');
   const [countdown, setCountdown] = useState(0);
-  const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   // 验证码登录专属状态
   const [loginMethod, setLoginMethod] = useState<'code' | 'password'>('code');
-  const [loginEmail, setLoginEmail] = useState('');
-  const [loginOtp, setLoginOtp] = useState('');
   const [loginCountdown, setLoginCountdown] = useState(0);
   const [isSendingLoginOtp, setIsSendingLoginOtp] = useState(false);
   const [isSendingRegisterOtp, setIsSendingRegisterOtp] = useState(false);
@@ -95,7 +87,8 @@ export const AuthPortalModal: React.FC<AuthPortalModalProps> = ({
   }, [loginCountdown]);
 
   const handleSendLoginOtp = async () => {
-    const cleanEmail = loginEmail.trim().toLowerCase();
+    const emailInput = document.querySelector('input[name="loginEmail"]') as HTMLInputElement;
+    const cleanEmail = (emailInput?.value || '').trim().toLowerCase();
     if (!cleanEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
       showToast('请输入有效的电子邮箱地址');
       return;
@@ -115,7 +108,8 @@ export const AuthPortalModal: React.FC<AuthPortalModalProps> = ({
   };
 
   const handleSendRegisterOtp = async () => {
-    const cleanEmail = email.trim().toLowerCase();
+    const emailInput = document.querySelector('input[name="registerEmail"]') as HTMLInputElement;
+    const cleanEmail = (emailInput?.value || '').trim().toLowerCase();
     if (!cleanEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
       showToast('请输入有效的电子邮箱地址');
       return;
@@ -152,29 +146,35 @@ export const AuthPortalModal: React.FC<AuthPortalModalProps> = ({
     }
   };
 
-  const handleRegister = async (e: React.FormEvent) => {
+  const handleRegister = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    if (!displayName.trim()) {
+    const fd = new FormData(e.currentTarget);
+    const dName = ((fd.get('displayName') as string) || '').trim();
+    const rawAccount = ((fd.get('account') as string) || '').trim().toLowerCase();
+    const rawPassword = (fd.get('password') as string) || '';
+    const rawConfirmPassword = (fd.get('confirmPassword') as string) || '';
+
+    if (!dName) {
       showToast('请输入昵称');
       return;
     }
-    if (!account.trim()) {
+    if (!rawAccount) {
       showToast('请输入专属账号');
       return;
     }
-    if (account.trim().length < 3) {
+    if (rawAccount.length < 3) {
       showToast('账号至少需要 3 个字符');
       return;
     }
-    if (!password) {
+    if (!rawPassword) {
       showToast('请设置密码');
       return;
     }
-    if (password.length < 6) {
+    if (rawPassword.length < 6) {
       showToast('密码至少需要 6 位字符');
       return;
     }
-    if (password !== confirmPassword) {
+    if (rawPassword !== rawConfirmPassword) {
       showToast('两次输入的密码不一致');
       return;
     }
@@ -183,9 +183,9 @@ export const AuthPortalModal: React.FC<AuthPortalModalProps> = ({
       setLoading(true);
       sound.playWaterDrop(920);
       const user = await registerDomesticUser({
-        account: account.trim().toLowerCase(),
-        displayName: displayName.trim(),
-        passwordPlain: password,
+        account: rawAccount,
+        displayName: dName,
+        passwordPlain: rawPassword,
         photoURL: avatar || undefined
       });
       sound.playSealStamp();
@@ -203,24 +203,26 @@ export const AuthPortalModal: React.FC<AuthPortalModalProps> = ({
     }
   };
 
-  const handleLogin = async (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    const fd = new FormData(e.currentTarget);
 
     // 1. 验证码免密直接登录
     if (loginMethod === 'code') {
-      const cleanEmail = loginEmail.trim().toLowerCase();
+      const cleanEmail = ((fd.get('loginEmail') as string) || '').trim().toLowerCase();
+      const otpCode = ((fd.get('loginOtp') as string) || '').trim();
       if (!cleanEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
         showToast('请输入有效的电子邮箱地址');
         return;
       }
-      if (!loginOtp.trim()) {
+      if (!otpCode) {
         showToast('请输入 6 位邮箱验证码');
         return;
       }
       try {
         setLoading(true);
         sound.playWaterDrop(880);
-        const user = await loginWithEmailVerificationCode(cleanEmail, loginOtp.trim());
+        const user = await loginWithEmailVerificationCode(cleanEmail, otpCode);
         sound.playSealStamp();
         sound.playZenBell();
         showToast(`欢迎入卷，${user.displayName}`);
@@ -235,11 +237,14 @@ export const AuthPortalModal: React.FC<AuthPortalModalProps> = ({
     }
 
     // 2. 账号/邮箱 + 密码传统登录
-    if (!account.trim()) {
+    const rawAccount = ((fd.get('account') as string) || '').trim();
+    const rawPassword = (fd.get('password') as string) || '';
+
+    if (!rawAccount) {
       showToast('请输入账号或电子邮箱');
       return;
     }
-    if (!password) {
+    if (!rawPassword) {
       showToast('请输入密码');
       return;
     }
@@ -247,7 +252,7 @@ export const AuthPortalModal: React.FC<AuthPortalModalProps> = ({
     try {
       setLoading(true);
       sound.playWaterDrop(880);
-      const user = await loginDomesticUser(account, password);
+      const user = await loginDomesticUser(rawAccount, rawPassword);
       sound.playSealStamp();
       sound.playZenBell();
       showToast(`欢迎回来，${user.displayName}`);
@@ -265,8 +270,15 @@ export const AuthPortalModal: React.FC<AuthPortalModalProps> = ({
 
   if (!isOpen) return null;
 
-  const isPasswordMatch = password && confirmPassword && password === confirmPassword;
-  const isPasswordMismatch = password && confirmPassword && password !== confirmPassword;
+  // 东方微透暖纸底色融合主题微光与内阴影：高性能无动态模糊，彻底根除丢词卡顿，确保移动端沉淀质感与PC完全一致
+  const inputSurfaceStyle: React.CSSProperties = {
+    backgroundColor: isDarkMode ? 'rgba(26, 36, 31, 0.78)' : 'rgba(255, 255, 255, 0.78)',
+    borderColor: isDarkMode ? 'rgba(255, 255, 255, 0.14)' : 'rgba(var(--primary-rgb, 91, 123, 109), 0.22)',
+    boxShadow: isDarkMode
+      ? 'inset 0 1.5px 3px rgba(0,0,0,0.4), 0 1px 2px rgba(0,0,0,0.2)'
+      : 'inset 0 1px 2.5px rgba(0,0,0,0.04), 0 1px 3px rgba(var(--primary-rgb, 91, 123, 109), 0.08)',
+    color: isDarkMode ? '#FAF8F5' : '#223028'
+  };
 
   return createPortal(
     <div
@@ -306,10 +318,15 @@ export const AuthPortalModal: React.FC<AuthPortalModalProps> = ({
         <div className="absolute inset-0 ambient-glow-dither opacity-70" />
       </div>
 
-      {/* 2. 页面主体内容（min-h-full flex-col 确保内容拉伸与滚动时背景全连贯贯通，彻底消除底部白边与割裂） */}
-      <div className="relative z-10 min-h-full w-full flex flex-col justify-between p-6 sm:p-10 pb-16 box-border bg-transparent">
+      {/* 2. 页面主体内容（自适应系统状态栏安全区避让，min-h-full flex-col 确保内容拉伸与滚动时背景全连贯贯通） */}
+      <div 
+        className="relative z-10 min-h-full w-full flex flex-col justify-between px-6 sm:px-10 pb-16 box-border bg-transparent"
+        style={{
+          paddingTop: 'calc(var(--safe-area-top, env(safe-area-inset-top, 0px)) + 1.25rem)'
+        }}
+      >
         {/* 顶部极简品牌标志与氛围 */}
-        <header className="relative z-10 w-full max-w-4xl mx-auto flex items-center justify-between pt-2 shrink-0">
+        <header className="relative z-10 w-full max-w-4xl mx-auto flex items-center justify-between pt-1 sm:pt-2 shrink-0">
         <div className="flex items-center gap-3">
           <div
             className="w-3 h-3 rounded-full animate-pulse shadow-xs"
@@ -448,21 +465,17 @@ export const AuthPortalModal: React.FC<AuthPortalModalProps> = ({
                         电子邮箱
                       </label>
                       <input
+                        name="loginEmail"
                         type="email"
-                        value={loginEmail}
-                        onChange={(e) => setLoginEmail(e.target.value)}
-                        onBlur={(e) => setLoginEmail(e.currentTarget.value.trim().toLowerCase())}
+                        inputMode="email"
                         autoComplete="off"
                         autoCorrect="off"
                         autoCapitalize="none"
                         spellCheck={false}
                         placeholder="输入您的电子邮箱地址"
                         required
-                        className="w-full min-h-[48px] px-4 rounded-2xl border text-sm font-sans outline-none transition-all apple-liquid-glass"
-                        style={{
-                          backgroundColor: isDarkMode ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.02)',
-                          borderColor: isDarkMode ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.08)'
-                        }}
+                        className="w-full min-h-[48px] px-4 rounded-2xl border text-sm font-sans outline-none transition-all placeholder:opacity-40 focus:border-[#5B7B6D]"
+                        style={inputSurfaceStyle}
                       />
                     </div>
 
@@ -472,22 +485,18 @@ export const AuthPortalModal: React.FC<AuthPortalModalProps> = ({
                       </label>
                       <div className="grid grid-cols-1 sm:grid-cols-5 gap-2">
                         <input
+                          name="loginOtp"
                           type="text"
+                          inputMode="numeric"
                           maxLength={6}
-                          value={loginOtp}
-                          onChange={(e) => setLoginOtp(e.target.value)}
-                          onBlur={(e) => setLoginOtp(e.currentTarget.value.replace(/\D/g, '').trim())}
                           autoComplete="one-time-code"
                           autoCorrect="off"
                           autoCapitalize="none"
                           spellCheck={false}
                           placeholder="输入 6 位验证码"
                           required
-                          className="sm:col-span-3 min-h-[48px] px-4 rounded-2xl border text-sm font-mono tracking-widest outline-none transition-all apple-liquid-glass text-center font-bold"
-                          style={{
-                            backgroundColor: isDarkMode ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.02)',
-                            borderColor: isDarkMode ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.08)'
-                          }}
+                          className="sm:col-span-3 min-h-[48px] px-4 rounded-2xl border text-sm font-mono tracking-widest outline-none transition-all text-center font-bold placeholder:opacity-40 focus:border-[#5B7B6D]"
+                          style={inputSurfaceStyle}
                         />
                         <button
                           type="button"
@@ -517,21 +526,17 @@ export const AuthPortalModal: React.FC<AuthPortalModalProps> = ({
                         账号或电子邮箱
                       </label>
                       <input
+                        name="account"
                         type="text"
-                        value={account}
-                        onChange={(e) => setAccount(e.target.value)}
-                        onBlur={(e) => setAccount(e.currentTarget.value.trim().toLowerCase())}
+                        inputMode="text"
                         autoComplete="off"
                         autoCorrect="off"
                         autoCapitalize="none"
                         spellCheck={false}
                         placeholder="输入账号或绑定的电子邮箱"
                         required
-                        className="w-full min-h-[48px] px-4 rounded-2xl border text-sm font-sans outline-none transition-all apple-liquid-glass"
-                        style={{
-                          backgroundColor: isDarkMode ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.02)',
-                          borderColor: isDarkMode ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.08)'
-                        }}
+                        className="w-full min-h-[48px] px-4 rounded-2xl border text-sm font-sans outline-none transition-all placeholder:opacity-40 focus:border-[#5B7B6D]"
+                        style={inputSurfaceStyle}
                       />
                     </div>
 
@@ -541,21 +546,17 @@ export const AuthPortalModal: React.FC<AuthPortalModalProps> = ({
                       </label>
                       <div className="relative">
                         <input
+                          name="password"
                           type={showPassword ? 'text' : 'password'}
-                          value={password}
-                          onChange={(e) => setPassword(e.target.value)}
-                          onBlur={(e) => setPassword(e.currentTarget.value)}
+                          inputMode="text"
                           autoComplete="new-password"
                           autoCorrect="off"
                           autoCapitalize="none"
                           spellCheck={false}
                           placeholder="输入登录密码"
                           required
-                          className="w-full min-h-[48px] pl-4 pr-10 rounded-2xl border text-sm font-sans outline-none transition-all apple-liquid-glass"
-                          style={{
-                            backgroundColor: isDarkMode ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.02)',
-                            borderColor: isDarkMode ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.08)'
-                          }}
+                          className="w-full min-h-[48px] pl-4 pr-10 rounded-2xl border text-sm font-sans outline-none transition-all placeholder:opacity-40 focus:border-[#5B7B6D]"
+                          style={inputSurfaceStyle}
                         />
                         <button
                           type="button"
@@ -651,21 +652,17 @@ export const AuthPortalModal: React.FC<AuthPortalModalProps> = ({
                     昵称
                   </label>
                   <input
+                    name="displayName"
                     type="text"
-                    value={displayName}
-                    onChange={(e) => setDisplayName(e.target.value)}
-                    onBlur={(e) => setDisplayName(e.currentTarget.value.trim())}
+                    inputMode="text"
                     autoComplete="off"
                     autoCorrect="off"
                     autoCapitalize="none"
                     spellCheck={false}
                     placeholder="输入您的昵称"
                     required
-                    className="w-full min-h-[48px] px-4 rounded-2xl border text-sm font-serif outline-none transition-all apple-liquid-glass"
-                    style={{
-                      backgroundColor: isDarkMode ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.02)',
-                      borderColor: isDarkMode ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.08)'
-                    }}
+                    className="w-full min-h-[48px] px-4 rounded-2xl border text-sm font-serif outline-none transition-all placeholder:opacity-40 focus:border-[#5B7B6D]"
+                    style={inputSurfaceStyle}
                   />
                 </div>
 
@@ -675,10 +672,9 @@ export const AuthPortalModal: React.FC<AuthPortalModalProps> = ({
                     专属账号
                   </label>
                   <input
+                    name="account"
                     type="text"
-                    value={account}
-                    onChange={(e) => setAccount(e.target.value)}
-                    onBlur={(e) => setAccount(e.currentTarget.value.trim().toLowerCase())}
+                    inputMode="text"
                     autoComplete="off"
                     autoCorrect="off"
                     autoCapitalize="none"
@@ -686,11 +682,8 @@ export const AuthPortalModal: React.FC<AuthPortalModalProps> = ({
                     placeholder="输入专属账号（英文/数字）"
                     required
                     minLength={3}
-                    className="w-full min-h-[48px] px-4 rounded-2xl border text-sm font-mono outline-none transition-all apple-liquid-glass"
-                    style={{
-                      backgroundColor: isDarkMode ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.02)',
-                      borderColor: isDarkMode ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.08)'
-                    }}
+                    className="w-full min-h-[48px] px-4 rounded-2xl border text-sm font-mono outline-none transition-all placeholder:opacity-40 focus:border-[#5B7B6D]"
+                    style={inputSurfaceStyle}
                   />
                 </div>
 
@@ -702,10 +695,9 @@ export const AuthPortalModal: React.FC<AuthPortalModalProps> = ({
                     </label>
                     <div className="relative">
                       <input
+                        name="password"
                         type={showPassword ? 'text' : 'password'}
-                        value={password}
-                        onChange={(e) => setPassword(e.target.value)}
-                        onBlur={(e) => setPassword(e.currentTarget.value)}
+                        inputMode="text"
                         autoComplete="new-password"
                         autoCorrect="off"
                         autoCapitalize="none"
@@ -713,11 +705,8 @@ export const AuthPortalModal: React.FC<AuthPortalModalProps> = ({
                         placeholder="密码至少 6 位"
                         required
                         minLength={6}
-                        className="w-full min-h-[48px] pl-4 pr-10 rounded-2xl border text-sm font-sans outline-none transition-all apple-liquid-glass"
-                        style={{
-                          backgroundColor: isDarkMode ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.02)',
-                          borderColor: isDarkMode ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.08)'
-                        }}
+                        className="w-full min-h-[48px] pl-4 pr-10 rounded-2xl border text-sm font-sans outline-none transition-all placeholder:opacity-40 focus:border-[#5B7B6D]"
+                        style={inputSurfaceStyle}
                       />
                       <button
                         type="button"
@@ -730,25 +719,14 @@ export const AuthPortalModal: React.FC<AuthPortalModalProps> = ({
                   </div>
 
                   <div className="space-y-1.5">
-                    <label className="text-xs font-serif font-bold tracking-wider flex items-center justify-between opacity-80">
-                      <span>确认密码</span>
-                      {isPasswordMatch && (
-                        <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-serif flex items-center gap-0.5">
-                          <CheckCircle2 size={11} /> 一致
-                        </span>
-                      )}
-                      {isPasswordMismatch && (
-                        <span className="text-[10px] text-red-500 font-serif flex items-center gap-0.5">
-                          <AlertCircle size={11} /> 不一致
-                        </span>
-                      )}
+                    <label className="text-xs font-serif font-bold tracking-wider block opacity-80">
+                      确认密码
                     </label>
                     <div className="relative">
                       <input
+                        name="confirmPassword"
                         type={showConfirmPassword ? 'text' : 'password'}
-                        value={confirmPassword}
-                        onChange={(e) => setConfirmPassword(e.target.value)}
-                        onBlur={(e) => setConfirmPassword(e.currentTarget.value)}
+                        inputMode="text"
                         autoComplete="new-password"
                         autoCorrect="off"
                         autoCapitalize="none"
@@ -756,11 +734,8 @@ export const AuthPortalModal: React.FC<AuthPortalModalProps> = ({
                         placeholder="再次输入密码"
                         required
                         minLength={6}
-                        className="w-full min-h-[48px] pl-4 pr-10 rounded-2xl border text-sm font-sans outline-none transition-all apple-liquid-glass"
-                        style={{
-                          backgroundColor: isDarkMode ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.02)',
-                          borderColor: isDarkMode ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.08)'
-                        }}
+                        className="w-full min-h-[48px] pl-4 pr-10 rounded-2xl border text-sm font-sans outline-none transition-all placeholder:opacity-40 focus:border-[#5B7B6D]"
+                        style={inputSurfaceStyle}
                       />
                       <button
                         type="button"
@@ -776,7 +751,7 @@ export const AuthPortalModal: React.FC<AuthPortalModalProps> = ({
                 <div className="pt-3">
                   <button
                     type="submit"
-                    disabled={loading || Boolean(isPasswordMismatch)}
+                    disabled={loading}
                     className="w-full min-h-[48px] rounded-2xl text-white font-serif font-bold text-sm tracking-wider shadow-sm flex items-center justify-center gap-2 cursor-pointer transition-all hover:opacity-95 disabled:opacity-50"
                     style={{
                       backgroundColor: currentTheme.primary

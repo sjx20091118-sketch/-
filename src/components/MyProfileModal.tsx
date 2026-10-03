@@ -229,10 +229,11 @@ export const MyProfileModal: React.FC<MyProfileModalProps> = ({
     }
   };
 
-  const handleUpdateName = async (e: React.FormEvent) => {
+  const handleUpdateName = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!currentUser) return;
-    const cleanName = editingName.trim();
+    const fd = new FormData(e.currentTarget);
+    const cleanName = ((fd.get('displayName') as string) || editingName).trim();
     if (!cleanName) {
       showToast('请输入新昵称');
       return;
@@ -265,7 +266,8 @@ export const MyProfileModal: React.FC<MyProfileModalProps> = ({
   };
 
   const handleSendBindOtp = async () => {
-    const cleanEmail = editingEmail.trim().toLowerCase();
+    const emailInput = document.querySelector('input[name="bindEmail"]') as HTMLInputElement;
+    const cleanEmail = (emailInput?.value || editingEmail).trim().toLowerCase();
     if (!cleanEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
       showToast('请输入有效的电子邮箱地址');
       return;
@@ -289,15 +291,18 @@ export const MyProfileModal: React.FC<MyProfileModalProps> = ({
     }
   };
 
-  const handleConfirmBind = async (e?: React.FormEvent) => {
+  const handleConfirmBind = async (e?: React.FormEvent<HTMLFormElement>) => {
     if (e) e.preventDefault();
     if (!currentUser) return;
-    const cleanEmail = editingEmail.trim().toLowerCase();
+    const emailInput = document.querySelector('input[name="bindEmail"]') as HTMLInputElement;
+    const otpInput = document.querySelector('input[name="bindOtp"]') as HTMLInputElement;
+    const cleanEmail = (emailInput?.value || editingEmail).trim().toLowerCase();
+    const cleanOtp = (otpInput?.value || bindOtp).trim();
     if (!cleanEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
       showToast('请输入有效的电子邮箱地址');
       return;
     }
-    if (!bindOtp.trim() || bindOtp.trim().length < 4) {
+    if (!cleanOtp || cleanOtp.length < 4) {
       showToast('请输入 6 位邮箱验证码');
       return;
     }
@@ -307,7 +312,7 @@ export const MyProfileModal: React.FC<MyProfileModalProps> = ({
       sound.playWaterDrop(880);
 
       // 校验验证码合法性
-      await verifyEmailCode(cleanEmail, bindOtp.trim(), 'bind');
+      await verifyEmailCode(cleanEmail, cleanOtp, 'bind');
 
       const isRebind = !!currentUser.email;
       const updatedUser: DomesticUser = {
@@ -350,10 +355,12 @@ export const MyProfileModal: React.FC<MyProfileModalProps> = ({
     }
   };
 
-  const handleConfirmUnbind = async (e?: React.FormEvent) => {
+  const handleConfirmUnbind = async (e?: React.FormEvent<HTMLFormElement>) => {
     if (e) e.preventDefault();
     if (!currentUser?.email) return;
-    if (!unbindOtp.trim() || unbindOtp.trim().length < 4) {
+    const unbindInput = document.querySelector('input[name="unbindOtp"]') as HTMLInputElement;
+    const cleanUnbindOtp = (unbindInput?.value || unbindOtp).trim();
+    if (!cleanUnbindOtp || cleanUnbindOtp.length < 4) {
       showToast('请输入 6 位解绑验证码');
       return;
     }
@@ -363,7 +370,7 @@ export const MyProfileModal: React.FC<MyProfileModalProps> = ({
       sound.playWaterDrop(880);
 
       // 校验解绑验证码
-      await verifyEmailCode(currentUser.email, unbindOtp.trim(), 'unbind');
+      await verifyEmailCode(currentUser.email, cleanUnbindOtp, 'unbind');
 
       const updatedUser: DomesticUser = {
         ...currentUser,
@@ -386,21 +393,25 @@ export const MyProfileModal: React.FC<MyProfileModalProps> = ({
     }
   };
 
-  const handleChangePassword = async (e: React.FormEvent) => {
+  const handleChangePassword = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!currentUser) return;
-    if (!newPassword || newPassword.length < 4) {
+    const fd = new FormData(e.currentTarget);
+    const pass = ((fd.get('newPassword') as string) || newPassword).trim();
+    const confPass = ((fd.get('confirmNewPassword') as string) || confirmNewPassword).trim();
+
+    if (!pass || pass.length < 4) {
       showToast('密码至少需要 4 位');
       return;
     }
-    if (newPassword !== confirmNewPassword) {
+    if (pass !== confPass) {
       showToast('两次输入的密码不一致');
       return;
     }
     try {
       setIsSavingPass(true);
       sound.playWaterDrop(880);
-      const hashedPassword = await hashPassword(newPassword);
+      const hashedPassword = await hashPassword(pass);
 
       const updatedUser: DomesticUser = {
         ...currentUser,
@@ -411,10 +422,11 @@ export const MyProfileModal: React.FC<MyProfileModalProps> = ({
       onUserUpdated(updatedUser);
 
       await updateDomesticUserProfile({ passwordHash: hashedPassword });
-      setNewPassword('');
-      setConfirmNewPassword('');
       sound.playZenBell();
       showToast('密码设置成功');
+      if (e.currentTarget) {
+        e.currentTarget.reset();
+      }
     } catch (err) {
       showToast('设置密码失败');
     } finally {
@@ -579,9 +591,13 @@ export const MyProfileModal: React.FC<MyProfileModalProps> = ({
                 }}
               >
                 <input
+                  name="displayName"
                   type="text"
-                  value={editingName}
-                  onChange={(e) => setEditingName(e.target.value)}
+                  defaultValue={currentUser.displayName}
+                  autoComplete="off"
+                  autoCorrect="off"
+                  autoCapitalize="none"
+                  spellCheck={false}
                   placeholder="输入新昵称"
                   required
                   className="w-full min-h-[44px] pl-4 pr-20 bg-transparent text-xs sm:text-sm font-serif outline-none"
@@ -589,7 +605,7 @@ export const MyProfileModal: React.FC<MyProfileModalProps> = ({
                 <div className="absolute right-1.5 top-1/2 -translate-y-1/2">
                   <button
                     type="submit"
-                    disabled={isSavingName || !editingName.trim() || editingName.trim() === currentUser.displayName}
+                    disabled={isSavingName}
                     className="px-3 py-1.5 rounded-xl text-white text-xs font-serif font-bold transition-all cursor-pointer disabled:opacity-30 hover:opacity-95 shadow-2xs"
                     style={{
                       backgroundColor: currentTheme.primary
@@ -693,18 +709,20 @@ export const MyProfileModal: React.FC<MyProfileModalProps> = ({
                     }}
                   >
                     <input
+                      name="bindEmail"
                       type="email"
-                      value={editingEmail}
-                      onChange={(e) => {
-                        setEditingEmail(e.target.value);
-                      }}
+                      defaultValue={currentUser.email || ''}
+                      autoComplete="off"
+                      autoCorrect="off"
+                      autoCapitalize="none"
+                      spellCheck={false}
                       placeholder="输入电子邮箱地址"
                       className="w-full min-h-[44px] pl-4 pr-24 bg-transparent text-xs sm:text-sm font-sans outline-none"
                     />
                     <div className="absolute right-1.5 top-1/2 -translate-y-1/2">
                       <button
                         type="button"
-                        disabled={isSendingBindOtp || bindCountdown > 0 || !editingEmail.trim() || editingEmail.trim().toLowerCase() === (currentUser.email || '').toLowerCase()}
+                        disabled={isSendingBindOtp || bindCountdown > 0}
                         onClick={handleSendBindOtp}
                         className="px-3 py-1.5 rounded-xl text-white text-xs font-serif font-bold transition-all cursor-pointer disabled:opacity-30 hover:opacity-95 shadow-2xs"
                         style={{
@@ -721,10 +739,14 @@ export const MyProfileModal: React.FC<MyProfileModalProps> = ({
                     <div className="space-y-2 pt-1">
                       <div className="grid grid-cols-1 sm:grid-cols-5 gap-2">
                         <input
+                          name="bindOtp"
                           type="text"
                           maxLength={6}
-                          value={bindOtp}
-                          onChange={(e) => setBindOtp(e.target.value.replace(/\D/g, ''))}
+                          defaultValue=""
+                          autoComplete="one-time-code"
+                          autoCorrect="off"
+                          autoCapitalize="none"
+                          spellCheck={false}
                           placeholder="输入 6 位验证码"
                           className="sm:col-span-3 min-h-[42px] px-3.5 rounded-2xl border text-xs font-mono tracking-widest outline-none transition-all apple-liquid-glass text-center font-bold"
                           style={{
@@ -734,7 +756,7 @@ export const MyProfileModal: React.FC<MyProfileModalProps> = ({
                         />
                         <button
                           type="button"
-                          disabled={isSavingEmail || !bindOtp.trim() || bindOtp.trim().length < 4}
+                          disabled={isSavingEmail}
                           onClick={() => handleConfirmBind()}
                           className="sm:col-span-2 min-h-[42px] px-3 rounded-2xl text-xs font-serif font-bold text-white transition-all shadow-sm flex items-center justify-center cursor-pointer disabled:opacity-30 hover:opacity-95"
                           style={{
@@ -745,7 +767,7 @@ export const MyProfileModal: React.FC<MyProfileModalProps> = ({
                         </button>
                       </div>
                       <p className="text-[10px] font-serif opacity-60 text-center">
-                        验证码已发送至 {editingEmail.trim()}，请查收邮件并填入校验
+                        请查收邮件并将 6 位验证码填入校验
                       </p>
                     </div>
                   )}
@@ -785,10 +807,14 @@ export const MyProfileModal: React.FC<MyProfileModalProps> = ({
 
                   <div className="grid grid-cols-1 sm:grid-cols-5 gap-2 pt-1">
                     <input
+                      name="unbindOtp"
                       type="text"
                       maxLength={6}
-                      value={unbindOtp}
-                      onChange={(e) => setUnbindOtp(e.target.value.replace(/\D/g, ''))}
+                      defaultValue=""
+                      autoComplete="one-time-code"
+                      autoCorrect="off"
+                      autoCapitalize="none"
+                      spellCheck={false}
                       placeholder="输入 6 位解绑码"
                       className="sm:col-span-3 min-h-[42px] px-3.5 rounded-2xl border text-xs font-mono tracking-widest outline-none transition-all apple-liquid-glass text-center font-bold"
                       style={{
@@ -814,7 +840,7 @@ export const MyProfileModal: React.FC<MyProfileModalProps> = ({
                   <div className="pt-1">
                     <button
                       type="button"
-                      disabled={isUnbinding || !unbindOtp.trim() || unbindOtp.trim().length < 4}
+                      disabled={isUnbinding}
                       onClick={() => handleConfirmUnbind()}
                       className="w-full min-h-[40px] rounded-xl text-white text-xs font-serif font-bold transition-all shadow-sm flex items-center justify-center cursor-pointer disabled:opacity-35 hover:brightness-110"
                       style={{
@@ -835,16 +861,6 @@ export const MyProfileModal: React.FC<MyProfileModalProps> = ({
                   <Lock size={13} style={{ color: currentTheme.primary }} />
                   <span>设置密码</span>
                 </label>
-                {isPasswordMatch && (
-                  <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-serif flex items-center gap-0.5">
-                    <CheckCircle2 size={11} /> 密码一致
-                  </span>
-                )}
-                {isPasswordMismatch && (
-                  <span className="text-[10px] text-red-500 font-serif flex items-center gap-0.5">
-                    <AlertCircle size={11} /> 两次密码不一致
-                  </span>
-                )}
               </div>
 
               <div className="space-y-2">
@@ -856,10 +872,16 @@ export const MyProfileModal: React.FC<MyProfileModalProps> = ({
                   }}
                 >
                   <input
+                    name="newPassword"
                     type={showPassword ? 'text' : 'password'}
-                    value={newPassword}
-                    onChange={(e) => setNewPassword(e.target.value)}
-                    placeholder="输入新密码"
+                    defaultValue=""
+                    autoComplete="new-password"
+                    autoCorrect="off"
+                    autoCapitalize="none"
+                    spellCheck={false}
+                    placeholder="输入新密码 (至少 4 位)"
+                    required
+                    minLength={4}
                     className="flex-1 bg-transparent text-xs sm:text-sm font-sans outline-none"
                   />
                   <button
@@ -879,10 +901,16 @@ export const MyProfileModal: React.FC<MyProfileModalProps> = ({
                   }}
                 >
                   <input
+                    name="confirmNewPassword"
                     type={showConfirmPassword ? 'text' : 'password'}
-                    value={confirmNewPassword}
-                    onChange={(e) => setConfirmNewPassword(e.target.value)}
+                    defaultValue=""
+                    autoComplete="new-password"
+                    autoCorrect="off"
+                    autoCapitalize="none"
+                    spellCheck={false}
                     placeholder="再次确认新密码"
+                    required
+                    minLength={4}
                     className="flex-1 bg-transparent text-xs sm:text-sm font-sans outline-none"
                   />
                   <button
@@ -897,13 +925,13 @@ export const MyProfileModal: React.FC<MyProfileModalProps> = ({
                 <div className="pt-0.5 flex justify-end">
                   <button
                     type="submit"
-                    disabled={isSavingPass || !newPassword || newPassword.length < 4 || newPassword !== confirmNewPassword}
+                    disabled={isSavingPass}
                     className="w-full min-h-[40px] rounded-xl text-white text-xs font-serif font-bold transition-all cursor-pointer disabled:opacity-30 hover:opacity-95"
                     style={{
                       backgroundColor: currentTheme.primary
                     }}
                   >
-                    {isSavingPass ? '保存中' : '保存密码'}
+                    {isSavingPass ? '保存中...' : '保存密码'}
                   </button>
                 </div>
               </div>

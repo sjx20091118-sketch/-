@@ -54,8 +54,13 @@ export const ArtifactGalleryViewer: React.FC<ArtifactGalleryViewerProps> = ({
     return uniqueVideos;
   }, [videos, video, videoPoster]);
 
-  // 2. 规范化照片列表（核心修复：以 images 为绝对真理源，绝不把 item.image 重复推入已有 images 列表中！并使用 Set 深度去重）
+  // 2. 规范化照片列表（核心修复：当仅有视频时，杜绝把自动抽帧的封面作为单张照片重复推入相册，确保单视频纯净沉浸播放）
   const cleanImages: string[] = React.useMemo(() => {
+    // 若存在视频，且未显式上传额外的独立照片（images 为空或未定义），则照片流为空，仅呈现单/多视频
+    if (cleanVideos.length > 0 && (!images || images.length === 0)) {
+      return [];
+    }
+
     const rawList = (images && images.length > 0)
       ? images
       : (image ? [image] : []);
@@ -75,6 +80,7 @@ export const ArtifactGalleryViewer: React.FC<ArtifactGalleryViewerProps> = ({
       if (!img || typeof img !== 'string') continue;
       // 排除视频的抽帧封面，杜绝把视频封面当成多余照片
       if (videoPostersAndUrls.has(img)) continue;
+      if (cleanVideos.some(v => v.poster === img || v.url === img)) continue;
       // 强力去重，彻底根除一张照片变成两张相同照片
       if (seen.has(img)) continue;
       seen.add(img);

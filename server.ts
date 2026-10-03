@@ -1935,6 +1935,122 @@ app.post('/api/admin/users/delete', (req, res) => {
   }
 });
 
+// ==================== System Notices & Version Updates (Domestic Direct Channel) ====================
+const NOTICES_FILE = path.join(DATA_DIR, 'notices.json');
+const VERSIONS_FILE = path.join(DATA_DIR, 'versions.json');
+
+let persistentNotices: any[] = [];
+let persistentVersions: any[] = [];
+
+try {
+  if (fs.existsSync(NOTICES_FILE)) {
+    const raw = fs.readFileSync(NOTICES_FILE, 'utf-8');
+    persistentNotices = JSON.parse(raw);
+  }
+} catch (e) {
+  persistentNotices = [];
+}
+
+try {
+  if (fs.existsSync(VERSIONS_FILE)) {
+    const raw = fs.readFileSync(VERSIONS_FILE, 'utf-8');
+    persistentVersions = JSON.parse(raw);
+  }
+} catch (e) {
+  persistentVersions = [];
+}
+
+function savePersistentNotices() {
+  try {
+    fs.writeFileSync(NOTICES_FILE, JSON.stringify(persistentNotices, null, 2), 'utf-8');
+  } catch (e) {}
+}
+
+function savePersistentVersions() {
+  try {
+    fs.writeFileSync(VERSIONS_FILE, JSON.stringify(persistentVersions, null, 2), 'utf-8');
+  } catch (e) {}
+}
+
+// 客户端获取最新已发布公告
+app.get('/api/notices', (req, res) => {
+  const published = persistentNotices.filter(n => n.isPublished !== false);
+  return res.json({ notices: published });
+});
+
+// 管理员发布/更新公告
+app.post('/api/admin/notices/publish', (req, res) => {
+  try {
+    const notice = req.body;
+    if (!notice || !notice.noticeId) {
+      return res.status(400).json({ error: '无效公告数据' });
+    }
+    persistentNotices = [notice, ...persistentNotices.filter(n => n.noticeId !== notice.noticeId)];
+    savePersistentNotices();
+    return res.json({ success: true, notice });
+  } catch (e: any) {
+    return res.status(500).json({ error: '保存公告失败' });
+  }
+});
+
+// 管理员删除公告
+app.post('/api/admin/notices/delete', (req, res) => {
+  try {
+    const { noticeId } = req.body;
+    if (!noticeId) {
+      return res.status(400).json({ error: '缺失 noticeId' });
+    }
+    persistentNotices = persistentNotices.filter(n => n.noticeId !== noticeId);
+    savePersistentNotices();
+    return res.json({ success: true });
+  } catch (e: any) {
+    return res.status(500).json({ error: '删除公告失败' });
+  }
+});
+
+// 客户端获取最新版本
+app.get('/api/versions/latest', (req, res) => {
+  if (persistentVersions.length > 0) {
+    return res.json({ version: persistentVersions[0] });
+  }
+  return res.json({ version: null });
+});
+
+// 客户端获取全部版本列表
+app.get('/api/versions', (req, res) => {
+  return res.json({ versions: persistentVersions });
+});
+
+// 管理员发布新版本
+app.post('/api/admin/versions/publish', (req, res) => {
+  try {
+    const version = req.body;
+    if (!version || !version.versionId) {
+      return res.status(400).json({ error: '无效版本数据' });
+    }
+    persistentVersions = [version, ...persistentVersions.filter(v => v.versionId !== version.versionId)];
+    savePersistentVersions();
+    return res.json({ success: true, version });
+  } catch (e: any) {
+    return res.status(500).json({ error: '保存版本失败' });
+  }
+});
+
+// 管理员删除版本
+app.post('/api/admin/versions/delete', (req, res) => {
+  try {
+    const { versionId } = req.body;
+    if (!versionId) {
+      return res.status(400).json({ error: '缺失 versionId' });
+    }
+    persistentVersions = persistentVersions.filter(v => v.versionId !== versionId);
+    savePersistentVersions();
+    return res.json({ success: true });
+  } catch (e: any) {
+    return res.status(500).json({ error: '删除版本失败' });
+  }
+});
+
 // ==================== Vite Integration ====================
 
 async function startServer() {

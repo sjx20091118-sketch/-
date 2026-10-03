@@ -142,10 +142,11 @@ export const CheckoutLicenseModal: React.FC<CheckoutLicenseModalProps> = ({
     }
   };
 
-  const handleRedeemCode = async (e: React.FormEvent) => {
+  const handleRedeemCode = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!currentUser) return;
-    const cleanCode = inputCode.trim();
+    const fd = new FormData(e.currentTarget);
+    const cleanCode = (((fd.get('code') as string) || inputCode).trim()).toUpperCase();
     if (!cleanCode) {
       showToast('请输入 16 位激活卡密');
       return;
@@ -502,9 +503,13 @@ export const CheckoutLicenseModal: React.FC<CheckoutLicenseModalProps> = ({
                       输入 16 位官方买断卡密
                     </label>
                     <input
+                      name="code"
                       type="text"
-                      value={inputCode}
-                      onChange={(e) => setInputCode(e.target.value.toUpperCase())}
+                      defaultValue=""
+                      autoComplete="off"
+                      autoCorrect="off"
+                      autoCapitalize="characters"
+                      spellCheck={false}
                       placeholder="SHINIAN-XXXX-XXXX-XXXX"
                       required
                       className="w-full min-h-[46px] px-4 rounded-xl border text-sm font-mono tracking-widest outline-none transition-all apple-liquid-glass text-center font-bold"
@@ -521,7 +526,7 @@ export const CheckoutLicenseModal: React.FC<CheckoutLicenseModalProps> = ({
                   <div className="pt-1">
                     <button
                       type="submit"
-                      disabled={isActivatingCode || !inputCode.trim()}
+                      disabled={isActivatingCode}
                       className="w-full min-h-[44px] rounded-xl text-white font-serif font-bold text-xs tracking-wider shadow-sm flex items-center justify-center gap-1.5 cursor-pointer transition-all hover:opacity-95 disabled:opacity-40"
                       style={{ backgroundColor: currentTheme.primary }}
                     >

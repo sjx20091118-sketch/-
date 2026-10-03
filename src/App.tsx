@@ -407,31 +407,20 @@ const ttsAudioCache = new Map<string, string>();
 
 export default function App() {
   const [data, setData] = useState<AppData>(() => {
-    const local = localStorage.getItem('shinian_app_data_v6');
+    const local = localStorage.getItem('shinian_app_data_v7');
     if (local) {
       try {
         const parsed = JSON.parse(local);
         if (parsed.people && parsed.people.length > 0) {
-          if (parsed.artifacts) {
-            parsed.artifacts = parsed.artifacts.filter((a: any) => a.id !== 'a-103' && a.name !== '装满用尽笔芯的透明笔袋');
-          }
-          if (parsed.timeline) {
-            parsed.timeline = parsed.timeline.map((item: any) => {
-              if (item.id === 't-102' || item.title?.includes('单车道') || item.title?.includes('蝉鸣')) {
-                const { video, videoPoster, ...rest } = item;
-                return { ...rest, mediaType: 'image' };
-              }
-              return item;
-            });
-          }
           return parsed;
         }
       } catch (e) {
         console.error('Failed to parse local storage', e);
       }
     }
-    // Clean up old cached versions
+    // Clean up old cached versions that held bloated video/timeline media
     try {
+      localStorage.removeItem('shinian_app_data_v6');
       localStorage.removeItem('shinian_app_data_v5');
       localStorage.removeItem('shinian_app_data_v4');
       localStorage.removeItem('shinian_app_data_v3');
@@ -531,9 +520,9 @@ export default function App() {
   }, [currentDomesticUser, licenseRefreshKey]);
 
   const checkForNoticesAndUpdates = useCallback(async () => {
-    // 门禁保护：未登录或正在登录认证中，坚决不弹出任何系统广播或版本公告
+    // 门禁保护：未登录、认证中、或正处于首次登录诗意引导序章阅读中，坚决不弹出任何系统广播或版本公告
     const user = getLocalDomesticUser();
-    if (!user) {
+    if (!user || isPrologueOpen || isFirstLoginPrologue) {
       return;
     }
     try {
@@ -568,18 +557,18 @@ export default function App() {
     } catch (err) {
       console.warn('Check notice failed:', err);
     }
-  }, []);
+  }, [isPrologueOpen, isFirstLoginPrologue]);
 
   // Initialize Firebase connection and check for cloud updates & notices after user login (1.5s)
   useEffect(() => {
     testConnection().catch(() => {});
-    if (currentDomesticUser && !isAuthPortalOpen && !showSplash) {
+    if (currentDomesticUser && !isAuthPortalOpen && !showSplash && !isPrologueOpen && !isFirstLoginPrologue) {
       const timer = setTimeout(() => {
         checkForNoticesAndUpdates();
       }, 1500);
       return () => clearTimeout(timer);
     }
-  }, [checkForNoticesAndUpdates, currentDomesticUser, isAuthPortalOpen, showSplash]);
+  }, [checkForNoticesAndUpdates, currentDomesticUser, isAuthPortalOpen, showSplash, isPrologueOpen, isFirstLoginPrologue]);
 
   // Sync admin status when domestic user changes
   useEffect(() => {
@@ -979,7 +968,7 @@ export default function App() {
     offloadBase64MediaToIndexedDb(data).then(({ data: cleanData }) => {
       if (isCancelled) return;
       try {
-        localStorage.setItem('shinian_app_data_v6', JSON.stringify(cleanData));
+        localStorage.setItem('shinian_app_data_v7', JSON.stringify(cleanData));
       } catch (err) {
         console.warn('LocalStorage quota exceeded when saving app data. Safely pruning base64 images for localStorage cache...', err);
         try {
@@ -1001,7 +990,7 @@ export default function App() {
               }
             });
           }
-          localStorage.setItem('shinian_app_data_v6', JSON.stringify(prunedData));
+          localStorage.setItem('shinian_app_data_v7', JSON.stringify(prunedData));
         } catch (fallbackErr) {
           console.error('LocalStorage fallback write error:', fallbackErr);
         }
@@ -1415,11 +1404,12 @@ export default function App() {
     showToast('已添加新年份记忆印象');
   };
 
-  const handleSaveEditedImpression = (e: React.FormEvent) => {
+  const handleSaveEditedImpression = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!editingImpression || !selectedPerson) return;
-    const cleanYear = editImpressionYear.trim() || editingImpression.year;
-    const cleanText = editImpressionText.trim() || editingImpression.text;
+    const fd = new FormData(e.currentTarget);
+    const cleanYear = ((fd.get('year') as string) || editImpressionYear || editingImpression.year).trim();
+    const cleanText = ((fd.get('text') as string) || editImpressionText || editingImpression.text).trim();
 
     const updatedImpressions = (selectedPerson.impressions || []).map(imp => {
       if (imp.id === editingImpression.id) {
@@ -3831,8 +3821,14 @@ export default function App() {
                 </div>
               </div>
 
-              {/* Profile Card - Minimalist Japanese Journal Layout */}
-              <div className="bg-white dark:bg-[#16211B] p-6 sm:p-7 rounded-3xl border border-[#D9CFC1] dark:border-[#5B7B6D]/30 shadow-2xs space-y-6 relative overflow-hidden">
+              {/* Profile Card - Minimalist Japanese Journal Layout with Deep Theme Adaptive Border */}
+              <div 
+                className="bg-white/95 dark:bg-[#16211B]/95 p-6 sm:p-7 rounded-3xl border shadow-2xs space-y-6 relative overflow-hidden backdrop-blur-xs transition-colors duration-300"
+                style={{
+                  borderColor: isDarkMode ? `${currentTheme.primary}45` : `${currentTheme.primary}35`,
+                  boxShadow: isDarkMode ? `0 4px 24px -4px ${currentTheme.primary}18` : `0 4px 20px -4px ${currentTheme.primary}12`
+                }}
+              >
                 {/* Subtle corner watermark */}
                 <div className="absolute top-4 right-4 text-[10px] font-mono text-[#5B7B6D]/40 dark:text-[#5B7B6D]/60 uppercase tracking-widest pointer-events-none select-none">
                   MEMOIR · 拾人
@@ -5818,10 +5814,14 @@ export default function App() {
                     </button>
                   </label>
                   <input
+                    name="year"
                     type="text"
-                    value={editImpressionYear}
-                    onChange={(e) => setEditImpressionYear(e.target.value)}
+                    defaultValue={editImpressionYear || editingImpression.year}
                     placeholder="如：2026.8.6"
+                    autoComplete="off"
+                    autoCorrect="off"
+                    autoCapitalize="none"
+                    spellCheck={false}
                     className="w-full p-2.5 rounded-xl border border-[#5B7B6D]/20 bg-white font-mono text-xs focus:outline-none focus:border-[#5B7B6D]"
                     required
                   />
@@ -5832,10 +5832,14 @@ export default function App() {
                     切片细节描述
                   </label>
                   <textarea
+                    name="text"
                     rows={4}
-                    value={editImpressionText}
-                    onChange={(e) => setEditImpressionText(e.target.value)}
+                    defaultValue={editImpressionText || editingImpression.text}
                     placeholder="记录该年份留下的深刻印象、共同经历或瞬间..."
+                    autoComplete="off"
+                    autoCorrect="off"
+                    autoCapitalize="none"
+                    spellCheck={false}
                     className="w-full p-3 rounded-xl border border-[#5B7B6D]/20 bg-white font-serif text-xs leading-relaxed focus:outline-none focus:border-[#5B7B6D]"
                     required
                   />
@@ -6072,6 +6076,10 @@ export default function App() {
           onClose={() => {
             setIsPrologueOpen(false);
             setIsFirstLoginPrologue(false);
+            // 用户阅读完题跋与产品打字序章并点击“化动起纷，十年长卷”之后，平滑延时唤起系统更新与公告弹窗
+            setTimeout(() => {
+              checkForNoticesAndUpdates();
+            }, 800);
           }}
           currentTheme={currentTheme}
           isDarkMode={isDarkMode}

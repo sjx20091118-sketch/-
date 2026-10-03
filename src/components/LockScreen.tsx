@@ -325,94 +325,104 @@ export const LockScreen: React.FC<LockScreenProps> = ({
                 </button>
               </div>
 
-              <div className="space-y-3.5 text-xs font-serif">
-                <div className="space-y-1">
-                  <label className="text-[11px] text-[#6E7C75] dark:text-[#A7B4AD] block">
-                    原口令 <span className="text-[#5B7B6D] dark:text-[#E88765] font-sans font-normal">(默认: 1234)</span>
-                  </label>
-                  <input
-                    type="password"
-                    maxLength={8}
-                    value={oldPinInput}
-                    onChange={(e) => setOldPinInput(e.target.value)}
-                    placeholder="请输入当前生效口令 (默认 1234)..."
-                    className="w-full bg-white dark:bg-white/[0.06] border border-[#5B7B6D]/20 dark:border-white/15 rounded-xl px-3.5 py-2.5 text-[#2B332E] dark:text-[#FAF8F5] focus:outline-none focus:border-[#5B7B6D] tracking-widest font-sans"
-                  />
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  const fd = new FormData(e.currentTarget);
+                  const oldP = ((fd.get('oldPin') as string) || '').trim();
+                  const newP = ((fd.get('newPin') as string) || '').trim();
+                  const confP = ((fd.get('confirmPin') as string) || '').trim();
+
+                  if (oldP !== lockPin) {
+                    showToast('原口令验证不正确');
+                    return;
+                  }
+                  if (!newP) {
+                    showToast('新口令不能为空');
+                    return;
+                  }
+                  if (newP.length < 4) {
+                    showToast('新口令长度建议至少4位');
+                    return;
+                  }
+                  if (newP !== confP) {
+                    showToast('两次输入的新口令不一致，请核对');
+                    return;
+                  }
+                  onChangePin(newP);
+                  setIsChangingPin(false);
+                  showToast('空间口令已成功重置');
+                }}
+                className="space-y-3.5"
+              >
+                <div className="space-y-3.5 text-xs font-serif">
+                  <div className="space-y-1">
+                    <label className="text-[11px] text-[#6E7C75] dark:text-[#A7B4AD] block">
+                      原口令 <span className="text-[#5B7B6D] dark:text-[#E88765] font-sans font-normal">(默认: 1234)</span>
+                    </label>
+                    <input
+                      name="oldPin"
+                      type="password"
+                      maxLength={8}
+                      defaultValue=""
+                      placeholder="请输入当前生效口令 (默认 1234)..."
+                      required
+                      className="w-full bg-white dark:bg-white/[0.06] border border-[#5B7B6D]/20 dark:border-white/15 rounded-xl px-3.5 py-2.5 text-[#2B332E] dark:text-[#FAF8F5] focus:outline-none focus:border-[#5B7B6D] tracking-widest font-sans"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[11px] text-[#6E7C75] dark:text-[#A7B4AD] block">
+                      新口令 <span className="text-[#6E7C75] dark:text-[#A7B4AD]/70 font-sans font-normal">(建议 4 位数字)</span>
+                    </label>
+                    <input
+                      name="newPin"
+                      type="password"
+                      maxLength={8}
+                      defaultValue=""
+                      placeholder="请输入全新空间口令..."
+                      required
+                      className="w-full bg-white dark:bg-white/[0.06] border border-[#5B7B6D]/20 dark:border-white/15 rounded-xl px-3.5 py-2.5 text-[#2B332E] dark:text-[#FAF8F5] focus:outline-none focus:border-[#5B7B6D] tracking-widest font-sans"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[11px] text-[#6E7C75] dark:text-[#A7B4AD] block">
+                      再次输入新口令 <span className="text-[#6E7C75] dark:text-[#A7B4AD]/70 font-sans font-normal">(确认一致)</span>
+                    </label>
+                    <input
+                      name="confirmPin"
+                      type="password"
+                      maxLength={8}
+                      defaultValue=""
+                      placeholder="请再次输入新口令以确认..."
+                      required
+                      className="w-full bg-white dark:bg-white/[0.06] border border-[#5B7B6D]/20 dark:border-white/15 rounded-xl px-3.5 py-2.5 text-[#2B332E] dark:text-[#FAF8F5] focus:outline-none focus:border-[#5B7B6D] tracking-widest font-sans"
+                    />
+                  </div>
                 </div>
 
-                <div className="space-y-1">
-                  <label className="text-[11px] text-[#6E7C75] dark:text-[#A7B4AD] block">
-                    新口令 <span className="text-[#6E7C75] dark:text-[#A7B4AD]/70 font-sans font-normal">(建议 4 位数字)</span>
-                  </label>
-                  <input
-                    type="password"
-                    maxLength={8}
-                    value={newPinInput}
-                    onChange={(e) => setNewPinInput(e.target.value)}
-                    placeholder="请输入全新空间口令..."
-                    className="w-full bg-white dark:bg-white/[0.06] border border-[#5B7B6D]/20 dark:border-white/15 rounded-xl px-3.5 py-2.5 text-[#2B332E] dark:text-[#FAF8F5] focus:outline-none focus:border-[#5B7B6D] tracking-widest font-sans"
-                  />
+                <div className="flex gap-2.5 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsChangingPin(false);
+                      setOldPinInput('');
+                      setNewPinInput('');
+                      setConfirmPinInput('');
+                    }}
+                    className="flex-1 py-2.5 rounded-xl border border-black/10 dark:border-white/10 text-xs font-serif text-[#6E7C75] dark:text-[#A7B4AD] hover:bg-black/5 cursor-pointer transition-colors"
+                  >
+                    取消
+                  </button>
+                  <button
+                    type="submit"
+                    className="flex-1 py-2.5 rounded-xl bg-[#5B7B6D] hover:bg-[#4A6458] text-white text-xs font-serif font-medium shadow-xs transition-colors cursor-pointer active:scale-95"
+                  >
+                    确认修改
+                  </button>
                 </div>
-
-                <div className="space-y-1">
-                  <label className="text-[11px] text-[#6E7C75] dark:text-[#A7B4AD] block">
-                    再次输入新口令 <span className="text-[#6E7C75] dark:text-[#A7B4AD]/70 font-sans font-normal">(确认一致)</span>
-                  </label>
-                  <input
-                    type="password"
-                    maxLength={8}
-                    value={confirmPinInput}
-                    onChange={(e) => setConfirmPinInput(e.target.value)}
-                    placeholder="请再次输入新口令以确认..."
-                    className="w-full bg-white dark:bg-white/[0.06] border border-[#5B7B6D]/20 dark:border-white/15 rounded-xl px-3.5 py-2.5 text-[#2B332E] dark:text-[#FAF8F5] focus:outline-none focus:border-[#5B7B6D] tracking-widest font-sans"
-                  />
-                </div>
-              </div>
-
-              <div className="flex gap-2.5 pt-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsChangingPin(false);
-                    setOldPinInput('');
-                    setNewPinInput('');
-                    setConfirmPinInput('');
-                  }}
-                  className="flex-1 py-2.5 rounded-xl border border-black/10 dark:border-white/10 text-xs font-serif text-[#6E7C75] dark:text-[#A7B4AD] hover:bg-black/5 cursor-pointer transition-colors"
-                >
-                  取消
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (oldPinInput !== lockPin) {
-                      showToast('原口令验证不正确');
-                      return;
-                    }
-                    if (!newPinInput.trim()) {
-                      showToast('新口令不能为空');
-                      return;
-                    }
-                    if (newPinInput.length < 4) {
-                      showToast('新口令长度建议至少4位');
-                      return;
-                    }
-                    if (newPinInput !== confirmPinInput) {
-                      showToast('两次输入的新口令不一致，请核对');
-                      return;
-                    }
-                    onChangePin(newPinInput.trim());
-                    setIsChangingPin(false);
-                    setOldPinInput('');
-                    setNewPinInput('');
-                    setConfirmPinInput('');
-                    showToast('空间口令已成功重置');
-                  }}
-                  className="flex-1 py-2.5 rounded-xl bg-[#5B7B6D] hover:bg-[#4A6458] text-white text-xs font-serif font-medium shadow-xs transition-colors cursor-pointer active:scale-95"
-                >
-                  确认修改
-                </button>
-              </div>
+              </form>
             </motion.div>
           </div>
         )}

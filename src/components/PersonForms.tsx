@@ -34,22 +34,20 @@ export const AddPersonModalForm: React.FC<AddPersonModalProps> = ({
   addPersonKnownDate
 }) => {
   const [avatar, setAvatar] = useState<string>('');
-  const [name, setName] = useState<string>('');
-  const [relationship, setRelationship] = useState<string>('挚友');
-  const [knowWhere, setKnowWhere] = useState<string>('');
-  const [phone, setPhone] = useState<string>('');
-  const [wechat, setWechat] = useState<string>('');
-  const [qq, setQq] = useState<string>('');
-  const [hobbies, setHobbies] = useState<string>('');
-  const [bio, setBio] = useState<string>('');
-  const [impression, setImpression] = useState<string>('');
 
   if (!isOpen) return null;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    const cleanName = name.trim();
-    const cleanRel = relationship.trim();
+    const fd = new FormData(e.currentTarget);
+    const cleanName = ((fd.get('name') as string) || '').trim();
+    const cleanRel = ((fd.get('relationship') as string) || '').trim();
+    const cleanKnowWhere = ((fd.get('knowWhere') as string) || '').trim();
+    const cleanPhone = ((fd.get('phone') as string) || '').trim();
+    const cleanWechat = ((fd.get('wechat') as string) || '').trim();
+    const cleanQq = ((fd.get('qq') as string) || '').trim();
+    const cleanBio = ((fd.get('bio') as string) || '').trim();
+    const cleanImpression = ((fd.get('impression') as string) || '').trim();
 
     if (!avatar) {
       showToast('请上传人物头像相片（必填项）');
@@ -80,15 +78,15 @@ export const AddPersonModalForm: React.FC<AddPersonModalProps> = ({
       birthday: bDay || '未填写',
       zodiac: zodiacVal,
       knownDate: addPersonKnownDate || '2021-09-01',
-      wechat: wechat.trim(),
-      qq: qq.trim(),
-      phone: phone.trim(),
-      hobbies: hobbies.trim() || '未填写',
+      wechat: cleanWechat,
+      qq: cleanQq,
+      phone: cleanPhone,
+      hobbies: '未填写',
       color: '暖杏粉',
-      bio: bio.trim() || `${cleanRel} · 珍贵回忆的同路人`,
-      customFields: { '认识地点': knowWhere.trim() || '时光长廊' },
-      impressions: impression.trim()
-        ? [{ id: 'imp-0', year: new Date().getFullYear().toString(), text: impression.trim() }]
+      bio: cleanBio || `${cleanRel} · 珍贵回忆的同路人`,
+      customFields: { '认识地点': cleanKnowWhere || '时光长廊' },
+      impressions: cleanImpression
+        ? [{ id: 'imp-0', year: new Date().getFullYear().toString(), text: cleanImpression }]
         : []
     });
   };
@@ -127,9 +125,8 @@ export const AddPersonModalForm: React.FC<AddPersonModalProps> = ({
             />
             <div className="w-full text-center">
               <input
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                onBlur={(e) => setName(e.currentTarget.value.trim())}
+                name="name"
+                defaultValue=""
                 autoComplete="off"
                 autoCorrect="off"
                 autoCapitalize="none"
@@ -147,10 +144,9 @@ export const AddPersonModalForm: React.FC<AddPersonModalProps> = ({
             <div className="flex items-center justify-between p-3 gap-2">
               <span className="text-[11px] font-serif text-[#6E7C75] dark:text-[#A7B4AD] shrink-0">身份关系</span>
               <input
+                name="relationship"
+                defaultValue="挚友"
                 required
-                value={relationship}
-                onChange={(e) => setRelationship(e.target.value)}
-                onBlur={(e) => setRelationship(e.currentTarget.value.trim())}
                 autoComplete="off"
                 autoCorrect="off"
                 autoCapitalize="none"
@@ -220,8 +216,12 @@ export const AddPersonModalForm: React.FC<AddPersonModalProps> = ({
             <div className="flex items-center justify-between p-3 gap-2">
               <span className="text-[11px] font-serif text-[#6E7C75] dark:text-[#A7B4AD] shrink-0">初遇地点</span>
               <input
-                value={knowWhere}
-                onChange={(e) => setKnowWhere(e.target.value)}
+                name="knowWhere"
+                defaultValue=""
+                autoComplete="off"
+                autoCorrect="off"
+                autoCapitalize="none"
+                spellCheck={false}
                 placeholder="选填，如：新沂一中"
                 className="w-40 sm:w-44 text-right text-xs bg-stone-50/90 dark:bg-black/20 p-2 rounded-xl border border-stone-200/80 dark:border-white/10 text-[#2B332E] dark:text-[#FAF8F5] focus:outline-none placeholder-[#6E7C75]/50 font-serif"
               />
@@ -233,20 +233,32 @@ export const AddPersonModalForm: React.FC<AddPersonModalProps> = ({
             <span className="text-[11px] font-serif font-medium text-[#526058] dark:text-[#A7B4AD]">联络方式 (选填)</span>
             <div className="grid grid-cols-3 gap-2">
               <input
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
+                name="phone"
+                defaultValue=""
+                autoComplete="off"
+                autoCorrect="off"
+                autoCapitalize="none"
+                spellCheck={false}
                 placeholder="电话 (选填)"
                 className="w-full p-2.5 text-xs font-serif rounded-xl border border-stone-200/80 dark:border-white/10 bg-stone-50/90 dark:bg-black/20 text-[#2B332E] dark:text-[#FAF8F5] focus:outline-none placeholder-[#6E7C75]/50"
               />
               <input
-                value={wechat}
-                onChange={(e) => setWechat(e.target.value)}
+                name="wechat"
+                defaultValue=""
+                autoComplete="off"
+                autoCorrect="off"
+                autoCapitalize="none"
+                spellCheck={false}
                 placeholder="微信 (选填)"
                 className="w-full p-2.5 text-xs font-serif rounded-xl border border-stone-200/80 dark:border-white/10 bg-stone-50/90 dark:bg-black/20 text-[#2B332E] dark:text-[#FAF8F5] focus:outline-none placeholder-[#6E7C75]/50"
               />
               <input
-                value={qq}
-                onChange={(e) => setQq(e.target.value)}
+                name="qq"
+                defaultValue=""
+                autoComplete="off"
+                autoCorrect="off"
+                autoCapitalize="none"
+                spellCheck={false}
                 placeholder="QQ (选填)"
                 className="w-full p-2.5 text-xs font-serif rounded-xl border border-stone-200/80 dark:border-white/10 bg-stone-50/90 dark:bg-black/20 text-[#2B332E] dark:text-[#FAF8F5] focus:outline-none placeholder-[#6E7C75]/50"
               />
@@ -257,14 +269,22 @@ export const AddPersonModalForm: React.FC<AddPersonModalProps> = ({
           <div className="bg-white/90 dark:bg-white/[0.04] p-3.5 rounded-2xl border border-black/5 dark:border-white/10 space-y-2 shadow-2xs">
             <span className="text-[11px] font-serif font-medium text-[#526058] dark:text-[#A7B4AD]">一句话总结与初识印象</span>
             <input
-              value={bio}
-              onChange={(e) => setBio(e.target.value)}
+              name="bio"
+              defaultValue=""
+              autoComplete="off"
+              autoCorrect="off"
+              autoCapitalize="none"
+              spellCheck={false}
               placeholder="选填，如：知心挚友，同路前行"
               className="w-full p-2.5 text-xs font-serif rounded-xl border border-stone-200/80 dark:border-white/10 bg-stone-50/90 dark:bg-black/20 text-[#2B332E] dark:text-[#FAF8F5] focus:outline-none placeholder-[#6E7C75]/50"
             />
             <textarea
-              value={impression}
-              onChange={(e) => setImpression(e.target.value)}
+              name="impression"
+              defaultValue=""
+              autoComplete="off"
+              autoCorrect="off"
+              autoCapitalize="none"
+              spellCheck={false}
               rows={2}
               placeholder="初识温存细节或深刻回忆（选填）..."
               className="w-full p-2.5 text-xs font-serif rounded-xl border border-stone-200/80 dark:border-white/10 bg-stone-50/90 dark:bg-black/20 text-[#2B332E] dark:text-[#FAF8F5] focus:outline-none resize-none placeholder-[#6E7C75]/50"
@@ -315,19 +335,17 @@ export const EditPersonModalForm: React.FC<EditPersonModalProps> = ({
   if (!isOpen || !selectedPerson) return null;
 
   const [avatar, setAvatar] = useState<string>(selectedPerson.avatar || '');
-  const [name, setName] = useState<string>(selectedPerson.name || '');
-  const [relationship, setRelationship] = useState<string>(selectedPerson.relationship || '挚友');
-  const [knowWhere, setKnowWhere] = useState<string>(selectedPerson.customFields?.['认识地点'] || '');
-  const [phone, setPhone] = useState<string>(selectedPerson.phone || '');
-  const [wechat, setWechat] = useState<string>(selectedPerson.wechat || '');
-  const [qq, setQq] = useState<string>(selectedPerson.qq || '');
-  const [hobbies, setHobbies] = useState<string>(selectedPerson.hobbies || '');
-  const [bio, setBio] = useState<string>(selectedPerson.bio || '');
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    const cleanName = name.trim();
-    const cleanRel = relationship.trim();
+    const fd = new FormData(e.currentTarget);
+    const cleanName = ((fd.get('name') as string) || '').trim();
+    const cleanRel = ((fd.get('relationship') as string) || '').trim();
+    const cleanKnowWhere = ((fd.get('knowWhere') as string) || '').trim();
+    const cleanPhone = ((fd.get('phone') as string) || '').trim();
+    const cleanWechat = ((fd.get('wechat') as string) || '').trim();
+    const cleanQq = ((fd.get('qq') as string) || '').trim();
+    const cleanBio = ((fd.get('bio') as string) || '').trim();
 
     if (!avatar && !selectedPerson.avatar) {
       showToast('请上传人物头像相片（必填项）');
@@ -357,16 +375,16 @@ export const EditPersonModalForm: React.FC<EditPersonModalProps> = ({
       birthday: bDay || '未填写',
       zodiac: zodiacVal,
       knownDate: selectedPerson.knownDate || '2021-09-01',
-      wechat: wechat.trim(),
-      qq: qq.trim(),
-      phone: phone.trim(),
-      hobbies: hobbies.trim() || '未填写',
+      wechat: cleanWechat,
+      qq: cleanQq,
+      phone: cleanPhone,
+      hobbies: selectedPerson.hobbies || '未填写',
       color: '暖杏粉',
-      bio: bio.trim() || `${cleanRel} · 珍贵回忆的同路人`,
+      bio: cleanBio || `${cleanRel} · 珍贵回忆的同路人`,
       avatar: finalAvatar,
       customFields: {
         ...(selectedPerson.customFields || {}),
-        '认识地点': knowWhere.trim() || '时光长廊'
+        '认识地点': cleanKnowWhere || '时光长廊'
       }
     });
   };
@@ -406,9 +424,8 @@ export const EditPersonModalForm: React.FC<EditPersonModalProps> = ({
             />
             <div className="w-full text-center">
               <input
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                onBlur={(e) => setName(e.currentTarget.value.trim())}
+                name="name"
+                defaultValue={selectedPerson.name || ''}
                 autoComplete="off"
                 autoCorrect="off"
                 autoCapitalize="none"
@@ -426,10 +443,9 @@ export const EditPersonModalForm: React.FC<EditPersonModalProps> = ({
             <div className="flex items-center justify-between p-3 gap-2">
               <span className="text-[11px] font-serif text-[#6E7C75] dark:text-[#A7B4AD] shrink-0">身份关系</span>
               <input
+                name="relationship"
+                defaultValue={selectedPerson.relationship || '挚友'}
                 required
-                value={relationship}
-                onChange={(e) => setRelationship(e.target.value)}
-                onBlur={(e) => setRelationship(e.currentTarget.value.trim())}
                 autoComplete="off"
                 autoCorrect="off"
                 autoCapitalize="none"
@@ -499,8 +515,12 @@ export const EditPersonModalForm: React.FC<EditPersonModalProps> = ({
             <div className="flex items-center justify-between p-3 gap-2">
               <span className="text-[11px] font-serif text-[#6E7C75] dark:text-[#A7B4AD] shrink-0">初遇地点</span>
               <input
-                value={knowWhere}
-                onChange={(e) => setKnowWhere(e.target.value)}
+                name="knowWhere"
+                defaultValue={selectedPerson.customFields?.['认识地点'] || ''}
+                autoComplete="off"
+                autoCorrect="off"
+                autoCapitalize="none"
+                spellCheck={false}
                 placeholder="选填地点"
                 className="w-40 sm:w-44 text-right text-xs bg-stone-50/90 dark:bg-black/20 p-2 rounded-xl border border-stone-200/80 dark:border-white/10 text-[#2B332E] dark:text-[#FAF8F5] focus:outline-none placeholder-[#6E7C75]/50 font-serif"
               />
@@ -512,20 +532,32 @@ export const EditPersonModalForm: React.FC<EditPersonModalProps> = ({
             <span className="text-[11px] font-serif font-medium text-[#526058] dark:text-[#A7B4AD]">联络方式 (选填)</span>
             <div className="grid grid-cols-3 gap-2">
               <input
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
+                name="phone"
+                defaultValue={selectedPerson.phone || ''}
+                autoComplete="off"
+                autoCorrect="off"
+                autoCapitalize="none"
+                spellCheck={false}
                 placeholder="电话 (选填)"
                 className="w-full p-2.5 text-xs font-serif rounded-xl border border-stone-200/80 dark:border-white/10 bg-stone-50/90 dark:bg-black/20 text-[#2B332E] dark:text-[#FAF8F5] focus:outline-none placeholder-[#6E7C75]/50"
               />
               <input
-                value={wechat}
-                onChange={(e) => setWechat(e.target.value)}
+                name="wechat"
+                defaultValue={selectedPerson.wechat || ''}
+                autoComplete="off"
+                autoCorrect="off"
+                autoCapitalize="none"
+                spellCheck={false}
                 placeholder="微信 (选填)"
                 className="w-full p-2.5 text-xs font-serif rounded-xl border border-stone-200/80 dark:border-white/10 bg-stone-50/90 dark:bg-black/20 text-[#2B332E] dark:text-[#FAF8F5] focus:outline-none placeholder-[#6E7C75]/50"
               />
               <input
-                value={qq}
-                onChange={(e) => setQq(e.target.value)}
+                name="qq"
+                defaultValue={selectedPerson.qq || ''}
+                autoComplete="off"
+                autoCorrect="off"
+                autoCapitalize="none"
+                spellCheck={false}
                 placeholder="QQ (选填)"
                 className="w-full p-2.5 text-xs font-serif rounded-xl border border-stone-200/80 dark:border-white/10 bg-stone-50/90 dark:bg-black/20 text-[#2B332E] dark:text-[#FAF8F5] focus:outline-none placeholder-[#6E7C75]/50"
               />
@@ -536,8 +568,12 @@ export const EditPersonModalForm: React.FC<EditPersonModalProps> = ({
           <div className="bg-white/90 dark:bg-white/[0.04] p-3.5 rounded-2xl border border-black/5 dark:border-white/10 space-y-2 shadow-2xs">
             <span className="text-[11px] font-serif font-medium text-[#526058] dark:text-[#A7B4AD]">一句话寄语与简述</span>
             <input
-              value={bio}
-              onChange={(e) => setBio(e.target.value)}
+              name="bio"
+              defaultValue={selectedPerson.bio || ''}
+              autoComplete="off"
+              autoCorrect="off"
+              autoCapitalize="none"
+              spellCheck={false}
               placeholder="知心挚友，同路前行"
               className="w-full p-2.5 text-xs font-serif rounded-xl border border-stone-200/80 dark:border-white/10 bg-stone-50/90 dark:bg-black/20 text-[#2B332E] dark:text-[#FAF8F5] focus:outline-none placeholder-[#6E7C75]/50"
             />

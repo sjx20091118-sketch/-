@@ -544,8 +544,20 @@ export async function deleteDomesticUserBackup(backupId: string): Promise<void> 
   }
 }
 
-// App Version Management
+// App Version Management (Domestic Direct Gateway + Firestore Sync)
 export async function getLatestAppVersion(): Promise<CloudAppVersion | null> {
+  // 1. 优先通过国内直连 API 网关获取（国内免翻墙秒级直达）
+  try {
+    const res = await fetch(buildApiUrl('/api/versions/latest'), { signal: AbortSignal.timeout(4000) });
+    if (res.ok) {
+      const data = await res.json();
+      if (data.version) {
+        return data.version as CloudAppVersion;
+      }
+    }
+  } catch (err) {}
+
+  // 2. 备用从 Firestore 云端读取
   const versionsRef = collection(db, 'app_versions');
   try {
     const q = query(versionsRef, orderBy('createdAt', 'desc'), limit(1));
@@ -561,31 +573,72 @@ export async function getLatestAppVersion(): Promise<CloudAppVersion | null> {
 }
 
 export async function listAllAppVersions(): Promise<CloudAppVersion[]> {
-  const versionsRef = collection(db, 'app_versions');
+  const versionsMap = new Map<string, CloudAppVersion>();
+
+  // 1. 从国内直连 API 网关读取
   try {
+    const res = await fetch(buildApiUrl('/api/versions'), { signal: AbortSignal.timeout(4000) });
+    if (res.ok) {
+      const data = await res.json();
+      if (Array.isArray(data.versions)) {
+        data.versions.forEach((v: CloudAppVersion) => versionsMap.set(v.versionId, v));
+      }
+    }
+  } catch (err) {}
+
+  // 2. 从 Firestore 读取补充
+  try {
+    const versionsRef = collection(db, 'app_versions');
     const q = query(versionsRef, orderBy('createdAt', 'desc'), limit(50));
     const snap = await getDocs(q);
-    return snap.docs.map(d => d.data() as CloudAppVersion);
+    snap.docs.forEach(d => {
+      const v = d.data() as CloudAppVersion;
+      if (!versionsMap.has(v.versionId)) {
+        versionsMap.set(v.versionId, v);
+      }
+    });
   } catch (error) {
-    handleFirestoreError(error, OperationType.LIST, 'app_versions');
+    console.warn('Firestore list versions error:', error);
   }
+
+  return Array.from(versionsMap.values()).sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
 }
 
 export async function publishAppVersion(version: CloudAppVersion): Promise<void> {
+  // 1. 同步保存至国内直连网关存储
+  try {
+    await fetch(buildApiUrl('/api/admin/versions/publish'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(version)
+    });
+  } catch (err) {}
+
+  // 2. 同步写入 Firestore
   const versionRef = doc(db, 'app_versions', version.versionId);
   try {
     await setDoc(versionRef, version);
   } catch (error) {
-    handleFirestoreError(error, OperationType.WRITE, `app_versions/${version.versionId}`);
+    console.warn('Firestore publish version error:', error);
   }
 }
 
 export async function deleteAppVersion(versionId: string): Promise<void> {
+  // 1. 从国内直连网关删除
+  try {
+    await fetch(buildApiUrl('/api/admin/versions/delete'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ versionId })
+    });
+  } catch (err) {}
+
+  // 2. 从 Firestore 删除
   const versionRef = doc(db, 'app_versions', versionId);
   try {
     await deleteDoc(versionRef);
   } catch (error) {
-    handleFirestoreError(error, OperationType.DELETE, `app_versions/${versionId}`);
+    console.warn('Firestore delete version error:', error);
   }
 }
 
@@ -630,54 +683,137 @@ function isLegacyTestNotice(n: CloudSystemNotice): boolean {
   );
 }
 
-// System Notices Management (Strictly Cloud-Synced with Firestore)
+// System Notices Management (Domestic Direct API Gateway + Firestore Multi-track)
 export async function getPublishedNotices(): Promise<CloudSystemNotice[]> {
+  const noticesMap = new Map<string, CloudSystemNotice>();
+
+  // 1. 优先通过国内直连 API 网关拉取公告（国内免翻墙直达）
+  try {
+    const res = await fetch(buildApiUrl('/api/notices'), { signal: AbortSignal.timeout(4000) });
+    if (res.ok) {
+      const data = await res.json();
+      if (Array.isArray(data.notices)) {
+        data.notices.forEach((n: CloudSystemNotice) => {
+          if (!isLegacyTestNotice(n) && n.isPublished !== false) {
+            noticesMap.set(n.noticeId, n);
+          }
+        });
+      }
+    }
+  } catch (err) {}
+
+  // 2. 从 Firestore 云端数据库同步
   try {
     const noticesRef = collection(db, 'system_notices');
     const snap = await getDocs(noticesRef);
     if (!snap.empty) {
-      const allDocs = snap.docs.map(d => d.data() as CloudSystemNotice);
-      // Background purge legacy test docs from Firestore
-      for (const docItem of allDocs) {
-        if (isLegacyTestNotice(docItem)) {
-          deleteDoc(doc(db, 'system_notices', docItem.noticeId)).catch(() => {});
+      snap.docs.forEach(d => {
+        const docItem = d.data() as CloudSystemNotice;
+        if (!isLegacyTestNotice(docItem) && docItem.isPublished !== false) {
+          noticesMap.set(docItem.noticeId, docItem);
         }
-      }
-      const remote = allDocs
-        .filter(n => !isLegacyTestNotice(n) && n.isPublished !== false);
-      localStorage.setItem(LOCAL_NOTICES_KEY, JSON.stringify(remote));
-      return remote.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+      });
     }
-    // Remote is empty, clear local stale cache
-    localStorage.removeItem(LOCAL_NOTICES_KEY);
-    return [];
-  } catch (error) {
-    const local = getLocalCachedNotices();
-    return local.filter(n => !isLegacyTestNotice(n) && n.isPublished !== false);
+  } catch (error) {}
+
+  const resultList = Array.from(noticesMap.values()).sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+
+  if (resultList.length > 0) {
+    try {
+      localStorage.setItem(LOCAL_NOTICES_KEY, JSON.stringify(resultList));
+    } catch {}
+    return resultList;
   }
+
+  // 3. 本地缓存兜底
+  const local = getLocalCachedNotices();
+  return local.filter(n => !isLegacyTestNotice(n) && n.isPublished !== false);
 }
 
 export async function listAllSystemNotices(): Promise<CloudSystemNotice[]> {
+  const noticesMap = new Map<string, CloudSystemNotice>();
+
+  // 1. 从国内直连 API 网关拉取全部公告
+  try {
+    const res = await fetch(buildApiUrl('/api/notices'), { signal: AbortSignal.timeout(4000) });
+    if (res.ok) {
+      const data = await res.json();
+      if (Array.isArray(data.notices)) {
+        data.notices.forEach((n: CloudSystemNotice) => {
+          if (!isLegacyTestNotice(n)) {
+            noticesMap.set(n.noticeId, n);
+          }
+        });
+      }
+    }
+  } catch (err) {}
+
+  // 2. 从 Firestore 同步全部公告
   try {
     const noticesRef = collection(db, 'system_notices');
     const snap = await getDocs(noticesRef);
     if (!snap.empty) {
-      const allDocs = snap.docs.map(d => d.data() as CloudSystemNotice);
-      // Background purge legacy test docs from Firestore
-      for (const docItem of allDocs) {
-        if (isLegacyTestNotice(docItem)) {
-          deleteDoc(doc(db, 'system_notices', docItem.noticeId)).catch(() => {});
+      snap.docs.forEach(d => {
+        const docItem = d.data() as CloudSystemNotice;
+        if (!isLegacyTestNotice(docItem)) {
+          noticesMap.set(docItem.noticeId, docItem);
         }
-      }
-      const remote = allDocs.filter(n => !isLegacyTestNotice(n));
-      localStorage.setItem(LOCAL_NOTICES_KEY, JSON.stringify(remote));
-      return remote.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+      });
     }
-    localStorage.removeItem(LOCAL_NOTICES_KEY);
-    return [];
-  } catch (error) {
-    return getLocalCachedNotices().filter(n => !isLegacyTestNotice(n));
+  } catch (error) {}
+
+  const resultList = Array.from(noticesMap.values()).sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+
+  if (resultList.length > 0) {
+    try {
+      localStorage.setItem(LOCAL_NOTICES_KEY, JSON.stringify(resultList));
+    } catch {}
+    return resultList;
   }
+
+  return getLocalCachedNotices().filter(n => !isLegacyTestNotice(n));
+}
+
+export async function publishSystemNotice(notice: CloudSystemNotice): Promise<void> {
+  // 1. 同步保存至国内直连网关
+  try {
+    await fetch(buildApiUrl('/api/admin/notices/publish'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(notice)
+    });
+  } catch (err) {}
+
+  // 2. 写入 Firestore
+  const noticeRef = doc(db, 'system_notices', notice.noticeId);
+  try {
+    await setDoc(noticeRef, notice);
+  } catch (error) {
+    console.warn('Firestore publish notice error:', error);
+  }
+
+  saveLocalCachedNotice(notice);
+}
+
+export async function deleteSystemNotice(noticeId: string): Promise<void> {
+  // 1. 从国内直连网关删除
+  try {
+    await fetch(buildApiUrl('/api/admin/notices/delete'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ noticeId })
+    });
+  } catch (err) {}
+
+  // 2. 从 Firestore 删除
+  const noticeRef = doc(db, 'system_notices', noticeId);
+  try {
+    await deleteDoc(noticeRef);
+  } catch (error) {
+    console.warn('Firestore delete notice error:', error);
+  }
+
+  removeLocalCachedNotice(noticeId);
 }
 
 export interface SmtpConfig {
@@ -766,26 +902,6 @@ export async function testSmtpConnection(
     throw new Error(`${errorMsg}${diag}`);
   }
   return resJson;
-}
-
-export async function publishSystemNotice(notice: CloudSystemNotice): Promise<void> {
-  saveLocalCachedNotice(notice);
-  const noticeRef = doc(db, 'system_notices', notice.noticeId);
-  try {
-    await setDoc(noticeRef, notice);
-  } catch (error) {
-    console.warn('Firestore write notice error, saved in local cache:', error);
-  }
-}
-
-export async function deleteSystemNotice(noticeId: string): Promise<void> {
-  removeLocalCachedNotice(noticeId);
-  const noticeRef = doc(db, 'system_notices', noticeId);
-  try {
-    await deleteDoc(noticeRef);
-  } catch (error) {
-    console.warn('Firestore delete notice error:', error);
-  }
 }
 
 // Admin: List all registered users (全网三层深度持久化同步：Firestore + 服务端磁盘 JSON + 本地缓存)
@@ -1466,11 +1582,13 @@ export async function listAllLicenseCodes(): Promise<any[]> {
     console.warn('Fetch server activation codes:', err);
   }
 
-  // 确保初始预置卡密不丢失
+  // 确保初始 5 组预置卡密不丢失并同步至多端
   const defaultCodes = [
     { code: 'SHINIAN-8888-A3F1-9C2D', createdAt: 1711900000000, note: '系统预置买断卡密' },
     { code: 'SHINIAN-9999-E5B7-1A4C', createdAt: 1711900000000, note: '系统预置买断卡密' },
-    { code: 'SHINIAN-YEAR-2026-ZEN1', createdAt: 1711900000000, note: '系统预置买断卡密' }
+    { code: 'SHINIAN-YEAR-2026-ZEN1', createdAt: 1711900000000, note: '系统预置买断卡密' },
+    { code: 'SHINIAN-VIP-2026-FREE', createdAt: 1711900000000, note: '官方体验卡密' },
+    { code: 'SHINIAN-BUYOUT-VIP-888', createdAt: 1711900000000, note: '官方永久买断卡密' }
   ];
   defaultCodes.forEach(def => {
     if (!codesMap.has(def.code)) {

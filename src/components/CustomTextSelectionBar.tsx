@@ -48,20 +48,8 @@ export const CustomTextSelectionBar: React.FC<CustomTextSelectionBarProps> = ({
         activeEl.isContentEditable
       );
 
-      // 1. 若处于任何可编辑输入框中，完全让渡给经过绿色主题美化的系统原生菜单，彻底杜绝重复弹窗与焦点冲突
-      if (isInput) {
-        setSelectionState(null);
-        return;
-      }
-
-      // 2. 移动端/触摸屏环境下由系统原生 Action Mode 统一接管，不弹出冲突的自定义小条
-      const isMobileTouch = typeof window !== 'undefined' && (
-        'ontouchstart' in window || 
-        navigator.maxTouchPoints > 0 ||
-        (window as any).Capacitor?.isNative ||
-        /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent)
-      );
-      if (isMobileTouch) {
+      // 密码输入框不展示选区条以保障隐私安全
+      if (activeEl instanceof HTMLInputElement && activeEl.type === 'password') {
         setSelectionState(null);
         return;
       }
@@ -449,17 +437,6 @@ export const CustomTextSelectionBar: React.FC<CustomTextSelectionBarProps> = ({
           </>
         )}
 
-        {/* 全选 (Select All) */}
-        <div className="w-px h-2.5 bg-stone-300 dark:bg-stone-700 mx-0.5 shrink-0 opacity-60" />
-        <button
-          type="button"
-          onClick={handleSelectAll}
-          className="flex flex-row items-center gap-1 px-2 py-1 rounded-full text-[11px] font-serif font-medium hover:bg-[rgba(var(--primary-rgb,91,123,109),0.14)] active:scale-95 transition-all cursor-pointer text-slate-800 dark:text-slate-100 whitespace-nowrap"
-          title="全选"
-        >
-          <CheckCheck className="w-3 h-3 text-[var(--theme-primary)] shrink-0" />
-          <span className="whitespace-nowrap">全选</span>
-        </button>
       </motion.div>
     </AnimatePresence>
   );

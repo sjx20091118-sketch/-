@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { TimelineItem, Artifact, Story, Person } from '../types';
 import { isIndexedDbMedia, resolveMediaUrl } from '../services/indexedDbMedia';
+import { buildApiUrl } from '../services/apiConfig';
 
 export type UniversalShareSource =
   | { type: 'timeline'; data: TimelineItem }
@@ -63,7 +64,7 @@ function generateStylizedAvatarDataUrl(name: string, bg = '#5B7B6D', fg = '#FAF8
   return canvas.toDataURL('image/png');
 }
 
-// 针对外链、Base64 与 IndexedDB (idb://) 的多轨安全加载器
+// 针对外链、Base64 与 IndexedDB (idb://) 的多轨安全加载器（防跨域污染保障）
 async function loadCardImage(src: string, fallbackName = '友'): Promise<HTMLImageElement | null> {
   if (!src) return null;
   let trimmed = src.trim();
@@ -88,7 +89,58 @@ async function loadCardImage(src: string, fallbackName = '友'): Promise<HTMLIma
     });
   }
 
-  // 2. HTTP/HTTPS URLs: try direct with crossOrigin = 'anonymous' first
+  // 2. Fetch as Blob and convert to pure data URL via FileReader (100% clean, never taints canvas)
+  try {
+    const dataUrlImg = await new Promise<HTMLImageElement | null>(async (resolve) => {
+      try {
+        const resp = await fetch(trimmed, { mode: 'cors' });
+        if (resp.ok) {
+          const blob = await resp.blob();
+          const reader = new FileReader();
+          reader.onloadend = () => {
+            const dataUrl = reader.result as string;
+            const img = new Image();
+            img.onload = () => resolve(img);
+            img.onerror = () => resolve(null);
+            img.src = dataUrl;
+          };
+          reader.onerror = () => resolve(null);
+          reader.readAsDataURL(blob);
+          return;
+        }
+      } catch {}
+      resolve(null);
+    });
+    if (dataUrlImg) return dataUrlImg;
+  } catch {}
+
+  // 3. Fallback via server CORS image proxy and convert to clean Data URL
+  try {
+    const proxyUrl = buildApiUrl(`/api/image/proxy?url=${encodeURIComponent(trimmed)}`);
+    const proxyImg = await new Promise<HTMLImageElement | null>(async (resolve) => {
+      try {
+        const resp = await fetch(proxyUrl);
+        if (resp.ok) {
+          const blob = await resp.blob();
+          const reader = new FileReader();
+          reader.onloadend = () => {
+            const dataUrl = reader.result as string;
+            const img = new Image();
+            img.onload = () => resolve(img);
+            img.onerror = () => resolve(null);
+            img.src = dataUrl;
+          };
+          reader.onerror = () => resolve(null);
+          reader.readAsDataURL(blob);
+          return;
+        }
+      } catch {}
+      resolve(null);
+    });
+    if (proxyImg) return proxyImg;
+  } catch {}
+
+  // 4. Direct with crossOrigin = 'anonymous'
   try {
     const directImg = await new Promise<HTMLImageElement | null>((resolve) => {
       const img = new Image();
@@ -105,52 +157,6 @@ async function loadCardImage(src: string, fallbackName = '友'): Promise<HTMLIma
       img.src = trimmed;
     });
     if (directImg) return directImg;
-  } catch {}
-
-  // 3. Try fetching as Blob (helps in modern WebViews / PWA where image tag fails crossOrigin)
-  try {
-    const blobImg = await new Promise<HTMLImageElement | null>(async (resolve) => {
-      try {
-        const resp = await fetch(trimmed, { mode: 'cors' });
-        if (resp.ok) {
-          const blob = await resp.blob();
-          const objUrl = URL.createObjectURL(blob);
-          const img = new Image();
-          img.onload = () => {
-            URL.revokeObjectURL(objUrl);
-            resolve(img);
-          };
-          img.onerror = () => {
-            URL.revokeObjectURL(objUrl);
-            resolve(null);
-          };
-          img.src = objUrl;
-          return;
-        }
-      } catch {}
-      resolve(null);
-    });
-    if (blobImg) return blobImg;
-  } catch {}
-
-  // 4. Fallback via server CORS image proxy
-  try {
-    const proxyUrl = `/api/image/proxy?url=${encodeURIComponent(trimmed)}`;
-    const proxyImg = await new Promise<HTMLImageElement | null>((resolve) => {
-      const img = new Image();
-      img.crossOrigin = 'anonymous';
-      const timer = setTimeout(() => resolve(null), 3500);
-      img.onload = () => {
-        clearTimeout(timer);
-        resolve(img);
-      };
-      img.onerror = () => {
-        clearTimeout(timer);
-        resolve(null);
-      };
-      img.src = proxyUrl;
-    });
-    if (proxyImg) return proxyImg;
   } catch {}
 
   // 5. 无法解析或网络阻断时返回 null，绝不误造虚假头像或绿色底板

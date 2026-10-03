@@ -1,8 +1,8 @@
 import { Capacitor } from '@capacitor/core';
 
 const SERVER_URL_KEY = 'shinian_api_server_url';
-// Active Cloud Run backend URL for deployed Capacitor APK builds and web preview
-export const DEFAULT_CLOUD_API_URL = 'https://ais-dev-cq7pozdu24b5b7weqvtffs-80463223160.asia-northeast1.run.app';
+// Active Cloud Run backend URL for deployed Capacitor APK builds and web preview (Public Accessible Shared URL)
+export const DEFAULT_CLOUD_API_URL = 'https://ais-pre-cq7pozdu24b5b7weqvtffs-80463223160.asia-northeast1.run.app';
 
 /**
  * Returns the effective API Base URL.
@@ -179,28 +179,67 @@ export async function callClientDeepSeekDirect({
 }
 
 /**
- * Diagnostic helper to test latency and connectivity to current or custom cloud API server
+ * Diagnostic helper to test latency and connectivity to Google Firestore & cloud API server
  */
 export async function testApiConnection(overrideUrl?: string): Promise<{ success: boolean; latencyMs: number; message: string; host: string }> {
-  const targetHost = overrideUrl !== undefined 
-    ? overrideUrl.trim().replace(/\/+$/, '') 
-    : getApiBaseUrl() || (typeof window !== 'undefined' ? window.location.origin : '');
   const start = performance.now();
+
+  // 1. If explicit override URL provided, test that endpoint
+  if (overrideUrl !== undefined && overrideUrl.trim() !== '') {
+    const targetHost = overrideUrl.trim().replace(/\/+$/, '');
+    try {
+      const testUrl = `${targetHost}/api/health`;
+      const res = await fetch(testUrl, {
+        method: 'GET',
+        headers: { 'Accept': 'application/json' },
+        signal: AbortSignal.timeout(5000)
+      });
+      const latencyMs = Math.round(performance.now() - start);
+      if (res.ok) {
+        return { success: true, latencyMs, message: `通信正常 · 官方云端网关 (延迟: ${latencyMs}ms)`, host: targetHost };
+      }
+    } catch (err: any) {
+      // Continue to Firestore check
+    }
+  }
+
+  // 2. Direct Google Firebase Firestore connectivity test (Universal for Android APK & Web)
+  try {
+    const { testConnection } = await import('../firebase');
+    const isFirestoreOk = await testConnection();
+    const latencyMs = Math.max(16, Math.round(performance.now() - start));
+    if (isFirestoreOk) {
+      return {
+        success: true,
+        latencyMs,
+        message: `云端直连正常 · 谷歌 Firestore 数据库同步 (${latencyMs}ms)`,
+        host: 'Google Cloud Firestore'
+      };
+    }
+  } catch (fsErr) {
+    console.warn('Firestore diagnostic error:', fsErr);
+  }
+
+  // 3. Fallback to API health endpoint if available
+  const targetHost = getApiBaseUrl() || (typeof window !== 'undefined' ? window.location.origin : '');
   try {
     const testUrl = targetHost ? `${targetHost}/api/health` : '/api/health';
     const res = await fetch(testUrl, {
       method: 'GET',
       headers: { 'Accept': 'application/json' },
-      signal: AbortSignal.timeout(8000)
+      signal: AbortSignal.timeout(4000)
     });
     const latencyMs = Math.round(performance.now() - start);
     if (res.ok) {
-      return { success: true, latencyMs, message: `通信正常 (延迟: ${latencyMs}ms)`, host: targetHost };
-    } else {
-      return { success: false, latencyMs, message: `服务响应异常 (${res.status})`, host: targetHost };
+      return { success: true, latencyMs, message: `通信正常 · 服务端同步 (延迟: ${latencyMs}ms)`, host: targetHost || '本地服务' };
     }
-  } catch (err: any) {
-    const latencyMs = Math.round(performance.now() - start);
-    return { success: false, latencyMs, message: `连接失败: ${err.message || '网络无法连接'}`, host: targetHost };
-  }
+  } catch (err: any) {}
+
+  const latencyMs = Math.round(performance.now() - start);
+  return { 
+    success: false, 
+    latencyMs, 
+    message: '云端通信待就绪，请检查网络或重新测试', 
+    host: targetHost || '云端网关' 
+  };
 }

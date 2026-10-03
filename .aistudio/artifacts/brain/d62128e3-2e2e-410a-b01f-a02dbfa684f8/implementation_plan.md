@@ -1,43 +1,36 @@
 # 《拾年》最新全套安卓原生打包与功能落地实施指南（2026 最终终极融合版）
 
-本文档为《拾年》移动端落地的最终权威落地方案，深度融合了历次方案的全部优点、Windows PowerShell 容错命令规范、以及针对真机实拍缺陷的彻底根治方案：
-1. **采用经典步骤一与 PowerShell 容错清理命令**：完美支持包含 `--main` 嵌套路径与 Windows PowerShell 的 `Remove-Item -ErrorAction SilentlyContinue`；
-2. **彻底根治后台挂起 10 秒返回应用时再次冒出蓝色 Capacitor 标志的问题**；
-3. **彻底根治输入框输入英文后转移到其他输入框时英文被清空、仅保留数字的问题**（失焦事件 DOM 强制提权同步与 IME 合成态保护）；
-4. **彻底消除文本选择水滴光标后方的巨大白色矩形方块与浮动操作栏白边割裂**；
-5. **全景 GPU 硬件加速与纯合成层渲染**：模态框与卡片全面基于 `scale` 与 `opacity` 变换，按需挂载 `will-change: transform, opacity`，保持现有东方美术设计与色彩质感零降级，彻底杜绝动态高斯模糊导致的瓦片显存击穿与白块/渐变撕裂；
-6. **软键盘原生防抖与输入法秒级响应**：`KeyboardResize.Native` 配合原生 `adjustResize`，软键盘弹起时不强制拉伸 `body`；
-7. **人物关系输入框纯净化**：彻底移除“知己、密友、同窗、自由、通畅”等所有快捷胶囊标签，仅保留纯净单行输入框；
-8. **90Hz / 120Hz / 144Hz 极限屏幕刷新率强制解锁**；
-9. **本地离线档案优先 + 云端统一中枢**；
-10. **相册直存（Pictures/拾年回忆） + ZIP 压缩包公共下载分类直存通道**；
-11. **Debug 快速联调与 Release 正式签名打包双模式实操**。
+本文档为《拾年》移动端落地的最终权威方案，深度融合了全套最新架构进展、Windows PowerShell 容错规范、**彻底禁用安卓原生选择器浮层并由软件内置东方美化选择条（CustomTextSelectionBar）全权接管**、前端原生桥接通道（相册直存与 ZIP 分类直存）、失焦防丢字、90Hz/120Hz 高刷解锁以及后台防蓝标等全项优化。
 
 ---
 
-## 核心机理剖析与全盘优化策略
+## 核心机理剖析与全盘根治行动
 
-### 1. 为什么转移到其他输入框时英文会被清空、只保留数字？
-- **根因深度透析**：
-  在 Android 系统上，用户使用输入法输入数字时，键盘直接向输入框提交已确认文本（Committed Text）；但当输入英文字母或拼音时，输入法处于“预输入合成态”（IME Composition）。
-  如果用户在未按空格/回车确认的情况下，直接点击另一个输入框（触发原输入框的 `blur` 失焦）：
-  1. Chromium/Blink 内核的原生机制在失去焦点时会尝试调用 `ImeCancelComposition()` 取消未完成的合成，导致输入框 DOM 中的英文临时字符被清空；
-  2. 若输入框的 React `value` 绑定未在 `blur` 瞬间读取 DOM 当前即时值（Raw Input Value），React 会用之前仅包含数字的 `state` 重新覆盖输入框，导致英文全部丢失！
-- **全盘根治行动**：
-  在所有输入框（登录注册、人物关系、昵称等）的 `onBlur` 事件中，强制直接捕获当前 DOM 节点的真实值 `e.currentTarget.value` 并立即同步至状态；同时增加 `autoComplete="off" autoCorrect="off" autoCapitalize="none" spellCheck={false}`，彻底阻断 Android IME 丢词与光标全选误杀。
+### 1. 彻底禁用安卓原生选择器，由软件内置美化选择条全权接管
+- **根因剖析**：
+  Android 原生系统在选中文本时，会自动拉起系统级 `ActionMode` 浮动操作栏（并在某些机型或 MIUI/HyperOS/ColorOS 上附带巨大的白色矩形背景与水滴白色拖拽块），与应用内优雅的东方宣纸与微透琉璃美学发生严重视觉割裂。
+- **全盘根治**：
+  - **原生层物理屏蔽**：在 `MainActivity.java` 中重写 `onWindowStartingActionMode` 并为 `bridgeWebView` 挂载 `setCustomSelectionActionModeCallback`，直接拦截系统原生选择器（返回 `null`/`false`），物理阻断原生白块弹出；
+  - **软件内置美化接管**：由前端 `src/components/CustomTextSelectionBar.tsx` 100% 接管长按选区与操作（支持复制、剪切、粘贴、全选、水墨晕染高亮、禅意音效反馈与触感震动）。
 
-### 2. 为什么后台挂起 10 秒返回后会再次冒出蓝标？
-- **根因透析**：
-  原生工程的 `AppTheme.NoActionBarLaunch` 引用了 `<item name="android:background">@drawable/splash</item>`，而 Capacitor 默认创建的 `@drawable/splash` 就是蓝色的交叉图标。当应用后台挂起 10 秒后，Android 系统进入省电管理，切回时系统重新拉起了该启动主题背景，导致蓝标重现！
-- **全盘根治行动**：
-  在 `styles.xml` 中将 `AppTheme.NoActionBarLaunch` 的 `android:background` 与 `android:windowBackground` 强制统一设为米色 `#FAF8F5`，彻底删除对 `@drawable/splash` 蓝标的引用，并配置 Android 12+ 系统 `SplashScreen` 的动画图标为透明，从底层物理消除蓝标。
+### 2. 输入法合成态与失焦防丢字根因及根治
+- **根因分析**：
+  在 Android 系统上，用户输入英文或拼音时处于 IME 预输入合成态。当未按空格确认直接点击其他输入框时，Chromium/Blink 内核失焦会调用 `ImeCancelComposition()`，若组件绑定了受控状态，React 异步重绘会使用过时 state 冲刷 DOM，导致输入的英文字母全部丢失。
+- **全盘根治**：
+  前端全表单全面升级为**原生非受控架构**（`name="..."` 与 `defaultValue`），配合 `onSubmit` 统一通过 `new FormData(e.currentTarget)` 提交。同时在关键输入框均配置 `autoComplete="off" autoCorrect="off" autoCapitalize="none" spellCheck={false}`，彻底阻断丢词与系统强制误选。
+
+### 3. 后台挂起 10 秒返回应用冒出蓝色 Capacitor 标志根治
+- **根因分析**：
+  原生工程的 `AppTheme.NoActionBarLaunch` 默认引用了 `<item name="android:background">@drawable/splash</item>`，而该资源在休眠唤醒时被系统拉起为蓝色十字图标。
+- **全盘根治**：
+  在 `styles.xml` 中将 `AppTheme.NoActionBarLaunch` 的 `android:background` 与 `android:windowBackground` 强制锁定为东方宣纸米色 `#FAF8F5`，物理剔除 `@drawable/splash`，并设置 Android 12+ `SplashScreen` 动画图标为透明。
 
 ---
 
-## 第一阶段：VS Code（前端产物构建与 Capacitor 原生工程初始化）
+## 第一阶段：VS Code（前端产物构建与 Capacitor 初始化）
 
-### 步骤 1：终端定位到项目根目录
-在 VS Code 中打开项目根目录，按快捷键 `Ctrl + ~` 唤起内置终端。确保当前路径下直接可以看到 `package.json`、`index.html` 和 `src` 文件夹。
+### 步骤 1：定位项目根目录
+在 VS Code 中打开项目根目录，按快捷键 `Ctrl + ~` 唤起终端：
 ```bash
 # 若存在嵌套路径（如末尾为 --main），先进入对应子目录：
 cd --main
@@ -57,7 +50,7 @@ npm run build
 ```
 
 ### 步骤 3：初始化 Capacitor 并生成 Android 原生工程
-```bash
+```powershell
 # 1. 容错清理可能存在的旧配置文件（PowerShell 命令）
 Remove-Item -ErrorAction SilentlyContinue capacitor.config.ts
 
@@ -66,9 +59,8 @@ npx cap init 拾年 com.shinian.app --web-dir dist
 npx cap add android
 ```
 
-### 步骤 4：配置 `capacitor.config.ts` 并执行原生同步
-在 VS Code 左侧打开 `capacitor.config.ts`，全选替换为以下最新融合配置并保存（`Ctrl + S`）：
-
+### 步骤 4：配置 capacitor.config.ts 并执行原生同步
+在 VS Code 左侧打开 `capacitor.config.ts`，全选替换为以下最新配置：
 ```typescript
 import type { CapacitorConfig } from '@capacitor/cli';
 import { KeyboardResize, KeyboardStyle } from '@capacitor/keyboard';
@@ -87,7 +79,7 @@ const config: CapacitorConfig = {
       splashImmersive: true,
     },
     Keyboard: {
-      // 关键：采用原生 WindowInsets 适配模式，杜绝 body 尺寸抖动与软键盘连续删除延迟
+      // 采用原生 WindowInsets 模式，杜绝 body 尺寸抖动与软键盘连续删除延迟
       resize: KeyboardResize.Native,
       style: KeyboardStyle.Light,
       resizeOnFullScreen: true,
@@ -108,7 +100,6 @@ const config: CapacitorConfig = {
 
 export default config;
 ```
-
 保存后，在终端执行原生同步命令：
 ```bash
 npx cap sync android
@@ -118,16 +109,15 @@ npx cap sync android
 
 ## 第二阶段：Android Studio（原生全能融合配置）
 
-打开 Android Studio，点击菜单 **File ➔ Open...**，选中刚才生成的 `android` 文件夹打开。
+打开 Android Studio，点击菜单 `File ➔ Open...`，选中生成的 `android` 目录打开。
 
 ### 步骤 5：处理 JDK 兼容性（若提示 Incompatible Gradle JVM）
-若右下角弹出 `Incompatible Gradle JVM version` 报错：
-- 直接点击蓝色的 **Apply compatible Gradle JDK configuration and sync**；
-- 或在 **Settings ➔ Build, Execution, Deployment ➔ Build Tools ➔ Gradle** 中，将 **Gradle JDK** 切换为 **Embedded JDK (17 或 21)**，等待右下角 Gradle Sync 完成。
+若右下角弹出 Incompatible Gradle JVM version 报错：
+- 点击蓝色的 **Apply compatible Gradle JDK configuration and sync**；
+- 或在 `Settings ➔ Build, Execution, Deployment ➔ Build Tools ➔ Gradle` 中，将 Gradle JDK 切换为 Embedded JDK (17 或 21)。
 
-### 步骤 6：配置沉浸式主题与原生选择器无白块透明样式 `styles.xml`
-展开目录：`app ➔ res ➔ values ➔ styles.xml`（以及若存在 `values-night/styles.xml`、`values-v31/styles.xml`），全选替换为以下深度优化代码：
-
+### 步骤 6：配置沉浸式主题 styles.xml（消除冷启动蓝标与透明无缝背景）
+展开目录：`app ➔ res ➔ values ➔ styles.xml`（以及若存在 `values-night/styles.xml`、`values-v31/styles.xml`），全选替换为以下代码：
 ```xml
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
@@ -157,18 +147,9 @@ npx cap sync android
         <item name="android:windowSplashScreenBackground">#FAF8F5</item>
         <item name="android:windowSplashScreenAnimatedIcon">@android:color/transparent</item>
         <item name="android:windowSplashScreenAnimationDuration">0</item>
-
-        <!-- 【核心修复 2】彻底消除图 2 文本选择水滴光标后方巨大白块与浮动操作栏白底 -->
-        <item name="android:popupBackground">@android:color/transparent</item>
-        <item name="android:windowActionModeOverlay">true</item>
-        <item name="actionModeBackground">@android:color/transparent</item>
-        <item name="actionModeSplitBackground">@android:color/transparent</item>
-        <item name="android:actionModeBackground">@android:color/transparent</item>
-        <item name="android:itemBackground">@android:color/transparent</item>
-        <item name="android:selectableItemBackground">?android:attr/selectableItemBackgroundBorderless</item>
     </style>
 
-    <!-- 【核心修复 3】消除后台挂起 10 秒切回再次冒出蓝标：绝不引用 @drawable/splash，直接锁定为米色背景 -->
+    <!-- 【核心修复 2】消除后台挂起 10 秒切回再次冒出蓝标：绝不引用 @drawable/splash，直接锁定为米色背景 -->
     <style name="AppTheme.NoActionBarLaunch" parent="AppTheme.NoActionBar">
         <item name="android:background">#FAF8F5</item>
         <item name="android:windowBackground">#FAF8F5</item>
@@ -176,9 +157,8 @@ npx cap sync android
 </resources>
 ```
 
-### 步骤 7：配置清单文件 `AndroidManifest.xml`（权限、硬件加速与全版本权限）
+### 步骤 7：配置清单文件 AndroidManifest.xml
 在左侧展开：`app ➔ manifests ➔ AndroidManifest.xml`，全选替换为以下完整代码：
-
 ```xml
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
@@ -231,9 +211,8 @@ npx cap sync android
 </manifest>
 ```
 
-### 步骤 8：配置核心入口 `MainActivity.java`（90Hz/120Hz 高刷解锁 + 相册直存 + ZIP 压缩包公共直存）
+### 步骤 8：配置核心入口 MainActivity.java（彻底禁用原生选择器 + 高刷解锁 + 相册/ZIP分类直存）
 在左侧展开：`app ➔ java ➔ com.shinian.app ➔ MainActivity.java`，全选替换为以下终极融合代码：
-
 ```java
 package com.shinian.app;
 
@@ -245,7 +224,10 @@ import android.os.Bundle;
 import android.os.Environment;
 import android.provider.MediaStore;
 import android.util.Base64;
+import android.view.ActionMode;
 import android.view.Display;
+import android.view.Menu;
+import android.view.MenuItem;
 import android.view.View;
 import android.view.Window;
 import android.view.WindowManager;
@@ -336,6 +318,17 @@ public class MainActivity extends BridgeActivity {
         }
     }
 
+    // 【核心拦截 1】彻底禁用原生 Android 系统的文本选择 ActionMode（拦截系统白色浮动菜单与白块）
+    @Override
+    public ActionMode onWindowStartingActionMode(ActionMode.Callback callback, int type) {
+        return null; // 拦截系统 ActionMode 弹窗，由前端 CustomTextSelectionBar 全权接管
+    }
+
+    @Override
+    public ActionMode onWindowStartingActionMode(ActionMode.Callback callback) {
+        return null; // 拦截传统 ActionMode
+    }
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -421,6 +414,24 @@ public class MainActivity extends BridgeActivity {
             settings.setAllowContentAccess(true);
             settings.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
 
+            // 【核心拦截 2】设置 WebView 回调彻底阻断系统原生选择菜单
+            bridgeWebView.setCustomSelectionActionModeCallback(new ActionMode.Callback() {
+                @Override
+                public boolean onCreateActionMode(ActionMode mode, Menu menu) {
+                    return false; // 阻断系统原生选择器弹出
+                }
+                @Override
+                public boolean onPrepareActionMode(ActionMode mode, Menu menu) {
+                    return false;
+                }
+                @Override
+                public boolean onActionItemClicked(ActionMode mode, MenuItem item) {
+                    return false;
+                }
+                @Override
+                public void onDestroyActionMode(ActionMode mode) {}
+            });
+
             // 挂载原生相册与文件桥接通道
             bridgeWebView.addJavascriptInterface(new WebAppInterface(), "AndroidBridge");
         }
@@ -430,47 +441,27 @@ public class MainActivity extends BridgeActivity {
 
 ---
 
-## 第三阶段：前端全盘代码与输入防删优化实施动作
+## 第三阶段：真机编译运行与双模打包
 
-### 步骤 9：前端所有输入框失焦保护与防清空处理
-在 `src/components/AuthPortalModal.tsx` 及 `src/components/PersonForms.tsx` 等全盘输入组件中：
-1. **防止转移输入框时英文丢失**：
-   在所有 `input` 的 `onBlur` 回调中，严格使用 `e.currentTarget.value` 强制确认当前真实 DOM 内容，确保任何输入法未按空格确认的英文字符在失焦瞬间直接固化保存到 React 状态中，绝不丢失：
-   ```tsx
-   onBlur={(e) => {
-     const rawVal = e.currentTarget.value.trim();
-     setAccount(rawVal);
-   }}
-   ```
-2. **防止英文被系统自动全选与删除**：
-   - 增加输入框 `autoComplete="off"`、`autoCorrect="off"`、`autoCapitalize="none"`、`spellCheck={false}`；
-   - 点击输入框时使用 `selectionStart = selectionEnd = value.length` 定位光标至末尾，绝不自动触发 `select()`。
-3. **优化全局 `useKeyboardStatus` 触发频次**：
-   - 为 `visualViewport.resize` 增加防抖判定，打字输入期间不反复触发布局重刷。
+### 步骤 9：生成自适应图标
+在 Android Studio 中右键 `app ➔ res`，选择 `New ➔ Image Asset`，Foreground 缩放至 75%，Background 设为 `#FAF8F5`，生成全套图标。
 
----
-
-## 第四阶段：真机编译运行与双模打包
-
-### 步骤 10：生成自适应图标
-在 Android Studio 中右键 `app ➔ res`，选择 **New ➔ Image Asset**，Foreground 缩放至 75%，Background 设为 `#FAF8F5`，生成全套图标。
-
-### 步骤 11：Debug 联调与 Release 正式签名双模式打包
-- **模式 A（Debug 联调）**：连接手机开启 USB 调试，点击 **Run 'app'** 直接安装；
+### 步骤 10：Debug 联调与 Release 正式签名双模式打包
+- **模式 A（Debug 联调）**：连接手机开启 USB 调试，点击 **Run 'app'** 直接安装。
 - **模式 B（Release 正式签名）**：
   ```bash
   keytool -genkey -v -keystore shinian.jks -keyalg RSA -keysize 2048 -validity 10000 -alias shinian
   ```
-  在 Android Studio 中点击 **Build ➔ Generate Signed Bundle / APK**，导入 `shinian.jks`，勾选 V1+V2 签名导出正式 APK。
+  在 Android Studio 中点击 `Build ➔ Generate Signed Bundle / APK`，导入 `shinian.jks`，勾选 V1+V2 签名导出正式 APK。
 
 ---
 
-## 第五阶段：真机最终验收清单
+## 第四阶段：真机最终验收清单
 
 | 验收场景 | 预期完美表现 |
 | :--- | :--- |
-| **冷启动与后台切回** | 启动与后台挂起 10 秒后切回，**全程米色无缝进入页面，绝不出现蓝色 Capacitor 标志** |
-| **输入英文字母转移焦点** | 账号或密码输入框输入英文后直接点其他输入框，**英文字符完全保留，绝不被清空或只剩数字** |
-| **选区水滴光标** | 长按选中文本，**光标下方完全透明贴合，绝无白色矩形方块，浮动菜单无白边** |
-| **高刷与动画流畅度** | 模态框与卡片滑动展开保持 **90Hz / 120Hz 满帧**，无任何白色或渐变撕裂色块 |
+| **文本选择与浮动操作栏** | 长按选中文本，安卓系统原生粗糙白块与白色操作菜单完全被拦截屏蔽，仅呈现软件内置东方琉璃美化选择条 |
+| **冷启动与后台切回** | 启动与后台挂起 10 秒后切回，全程米色无缝进入页面，绝不出现蓝色 Capacitor 标志 |
+| **输入英文字母转移焦点** | 账号或密码输入框输入英文后直接点其他输入框，英文字符完全保留，绝不被清空或只剩数字 |
+| **高刷与动画流畅度** | 模态框与卡片滑动展开保持 90Hz / 120Hz 满帧，无任何白色或渐变撕裂色块 |
 | **公共直存通道** | 卡片直达系统相册「拾年回忆」，全量备份 ZIP 直达系统「下载」与「压缩包」分类目录 |

@@ -709,7 +709,7 @@ html, body {
 /* 1. Global Touch Highlight & Outline Neutralization */
 *, *::before, *::after {
   -webkit-tap-highlight-color: transparent !important;
-  -webkit-touch-callout: default;
+  -webkit-touch-callout: none !important;
 }
 
 /* 2. Keyframes for Pure GPU Composite Scale & Opacity Animations */

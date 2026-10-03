@@ -523,17 +523,23 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
   }, [isOpen, isExitingWave, currentTheme]);
 
   // 1. 用户管理操作
-  const handleCreateUser = async (e: React.FormEvent) => {
+  const handleCreateUser = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    if (!newAccount.trim() || !newDisplayName.trim() || !newPassword) {
+    const fd = new FormData(e.currentTarget);
+    const acc = (((fd.get('account') as string) || newAccount).trim()).toLowerCase();
+    const dName = (((fd.get('displayName') as string) || newDisplayName).trim());
+    const pass = ((fd.get('password') as string) || newPassword).trim();
+    const mail = (((fd.get('email') as string) || newEmail).trim()).toLowerCase();
+
+    if (!acc || !dName || !pass) {
       showToast('请完整填写新用户信息');
       return;
     }
-    if (newEmail.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(newEmail.trim())) {
+    if (mail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(mail)) {
       showToast('请输入有效的电子邮箱格式');
       return;
     }
-    if (newPassword.length < 4) {
+    if (pass.length < 4) {
       showToast('密码至少需要 4 位');
       return;
     }
@@ -541,10 +547,10 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
       setIsCreatingUser(true);
       sound.playWaterDrop(880);
       const created = await adminCreateUser({
-        account: newAccount.trim().toLowerCase(),
-        displayName: newDisplayName.trim(),
-        email: newEmail.trim().toLowerCase() || undefined,
-        passwordPlain: newPassword,
+        account: acc,
+        displayName: dName,
+        email: mail || undefined,
+        passwordPlain: pass,
         role: newRole,
         licenseStatus: newUserLicenseStatus,
         photoURL: newAvatar || undefined
@@ -563,13 +569,10 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
       }
 
       setUsersList(prev => [created, ...prev.filter(u => u.uid !== created.uid)]);
-      setNewAccount('');
-      setNewEmail('');
-      setNewDisplayName('');
-      setNewPassword('');
       setNewAvatar('');
-      setNewUserLicenseStatus('trial');
-      setNewRole('user');
+      if (e.currentTarget) {
+        e.currentTarget.reset();
+      }
       sound.playZenBell();
       showToast(`已成功添加用户 ${created.displayName}`);
     } catch (err: any) {
@@ -1243,10 +1246,14 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                   <div>
                     <label className="text-[11px] opacity-70 block mb-1 font-serif">账号</label>
                     <input
+                      name="account"
                       type="text"
                       required
-                      value={newAccount}
-                      onChange={e => setNewAccount(e.target.value.toLowerCase().trim())}
+                      defaultValue=""
+                      autoComplete="off"
+                      autoCorrect="off"
+                      autoCapitalize="none"
+                      spellCheck={false}
                       placeholder="账号"
                       className="w-full px-3.5 py-2 rounded-xl text-xs font-mono border border-black/10 dark:border-white/10 bg-white/50 dark:bg-black/20 focus:outline-none"
                     />
@@ -1255,10 +1262,14 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                   <div>
                     <label className="text-[11px] opacity-70 block mb-1 font-serif">昵称</label>
                     <input
+                      name="displayName"
                       type="text"
                       required
-                      value={newDisplayName}
-                      onChange={e => setNewDisplayName(e.target.value)}
+                      defaultValue=""
+                      autoComplete="off"
+                      autoCorrect="off"
+                      autoCapitalize="none"
+                      spellCheck={false}
                       placeholder="昵称"
                       className="w-full px-3.5 py-2 rounded-xl text-xs font-serif border border-black/10 dark:border-white/10 bg-white/50 dark:bg-black/20 focus:outline-none"
                     />
@@ -1267,11 +1278,15 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                   <div>
                     <label className="text-[11px] opacity-70 block mb-1 font-serif">密码</label>
                     <input
+                      name="password"
                       type="password"
                       required
                       minLength={4}
-                      value={newPassword}
-                      onChange={e => setNewPassword(e.target.value)}
+                      defaultValue=""
+                      autoComplete="new-password"
+                      autoCorrect="off"
+                      autoCapitalize="none"
+                      spellCheck={false}
                       placeholder="至少 4 位"
                       className="w-full px-3.5 py-2 rounded-xl text-xs font-sans border border-black/10 dark:border-white/10 bg-white/50 dark:bg-black/20 focus:outline-none"
                     />
@@ -2197,7 +2212,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                 })}
               </div>
 
-              {/* 云端后台通信与全终端数据同步卡片 */}
+              {/* 云端后台通信接口卡片 */}
               <div
                 className="p-5 sm:p-6 rounded-[28px] border apple-liquid-glass space-y-4"
                 style={{
@@ -2208,85 +2223,79 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                   <div className="flex items-center gap-2">
                     <Globe size={16} style={{ color: currentTheme.primary }} />
                     <h3 className="text-sm font-serif font-bold text-[#2B332E] dark:text-[#FAF8F5]">
-                      云端后台通信与全终端数据同步
+                      云端通信与网关接口
                     </h3>
                   </div>
-                  <span className="text-[11px] font-serif text-[#6E7C75] dark:text-[#A7B4AD]">
-                    Web 网页端与安卓 APK 实时互通
-                  </span>
+                  {cloudTestResult ? (
+                    <span className={`text-[11px] font-mono px-2 py-0.5 rounded-full flex items-center gap-1 ${
+                      cloudTestResult.success 
+                        ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
+                        : 'bg-red-500/10 text-red-600 dark:text-red-400'
+                    }`}>
+                      <span className={`w-1.5 h-1.5 rounded-full ${cloudTestResult.success ? 'bg-emerald-500' : 'bg-red-500'}`} />
+                      {cloudTestResult.success ? `${cloudTestResult.latencyMs}ms` : '异常'}
+                    </span>
+                  ) : (
+                    <span className="text-[11px] font-serif opacity-50">移动端与后台通信</span>
+                  )}
                 </div>
 
                 <div className="space-y-3">
-                  <div className="space-y-1">
-                    <label className="text-xs font-serif font-medium opacity-80 block">
-                      云端服务器通信接口 (API Base URL)
-                    </label>
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-serif font-bold opacity-80">
+                        云端 API 地址
+                      </label>
+                      <button
+                        type="button"
+                        onClick={handleResetDefaultCloudHost}
+                        className="text-[11px] font-serif text-[#6E7C75] hover:text-[#2B332E] dark:hover:text-white underline cursor-pointer"
+                      >
+                        恢复默认官方地址
+                      </button>
+                    </div>
                     <input
                       type="url"
                       value={cloudApiHost}
                       onChange={e => setCloudApiHost(e.target.value)}
-                      placeholder="https://ais-dev-cq7pozdu24b5b7weqvtffs-80463223160.asia-northeast1.run.app"
+                      placeholder="https://ais-pre-cq7pozdu24b5b7weqvtffs-80463223160.asia-northeast1.run.app"
                       className="w-full px-3.5 py-2.5 rounded-xl text-xs font-mono apple-glass-input focus:outline-none"
                     />
-                    <p className="text-[11px] font-serif text-[#6E7C75] dark:text-[#A7B4AD]">
-                      安卓打包生成的 APK 将通过此统一地址实时存取云端数据（网关、商业授权、用户档案及配置）。
-                    </p>
                   </div>
 
-                  <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <button
-                        type="button"
-                        onClick={handleTestCloudConnection}
-                        disabled={isTestingCloud}
-                        className="px-3.5 py-2 rounded-xl text-xs font-serif font-semibold border flex items-center gap-1.5 transition-all cursor-pointer hover:bg-black/5 dark:hover:bg-white/5 active:scale-95 disabled:opacity-50"
-                        style={{ borderColor: `${currentTheme.primary}40`, color: currentTheme.primary }}
-                      >
-                        <Wifi size={13} className={isTestingCloud ? 'animate-pulse' : ''} />
-                        <span>{isTestingCloud ? '正在检测连通性...' : '测试云端通信'}</span>
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={handleForceSyncFromCloud}
-                        disabled={isSyncingFromCloud}
-                        className="px-3.5 py-2 rounded-xl text-xs font-serif font-semibold border flex items-center gap-1.5 transition-all cursor-pointer hover:bg-black/5 dark:hover:bg-white/5 active:scale-95 disabled:opacity-50"
-                        style={{ borderColor: `${currentTheme.primary}40`, color: currentTheme.primary }}
-                      >
-                        <RefreshCw size={13} className={isSyncingFromCloud ? 'animate-spin' : ''} />
-                        <span>{isSyncingFromCloud ? '正在拉取...' : '从云端全量拉取数据'}</span>
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={handleResetDefaultCloudHost}
-                        className="text-[11px] font-serif text-[#6E7C75] hover:text-[#2B332E] dark:hover:text-white underline cursor-pointer px-1"
-                      >
-                        重置为官方云端
-                      </button>
-                    </div>
+                  <div className="flex items-center justify-end gap-2 pt-1">
+                    <button
+                      type="button"
+                      onClick={handleTestCloudConnection}
+                      disabled={isTestingCloud}
+                      className="px-4 py-2 rounded-xl text-xs font-serif font-bold border flex items-center gap-1.5 transition-all cursor-pointer hover:bg-black/5 dark:hover:bg-white/5 active:scale-95 disabled:opacity-50"
+                      style={{ borderColor: `${currentTheme.primary}40`, color: currentTheme.primary }}
+                    >
+                      <Wifi size={13} className={isTestingCloud ? 'animate-pulse' : ''} />
+                      <span>{isTestingCloud ? '检测中...' : '测试通信'}</span>
+                    </button>
 
                     <button
                       type="button"
                       onClick={handleSaveCloudHost}
-                      className="px-4 py-2 rounded-xl text-white text-xs font-serif font-bold transition-all cursor-pointer active:scale-95 shadow-2xs"
+                      className="px-4 py-2 rounded-xl text-white text-xs font-serif font-bold transition-all cursor-pointer active:scale-95 shadow-2xs flex items-center gap-1.5"
                       style={{ backgroundColor: currentTheme.primary }}
                     >
-                      保存云端配置
+                      <CheckCircle2 size={13} />
+                      <span>保存配置</span>
                     </button>
                   </div>
 
                   {cloudTestResult && (
                     <div
-                      className={`p-3 rounded-2xl border text-xs font-serif flex items-center gap-2 ${
+                      className={`p-2.5 px-3.5 rounded-2xl border text-xs font-serif flex items-center gap-2 ${
                         cloudTestResult.success
                           ? 'bg-emerald-50/80 dark:bg-emerald-950/20 border-emerald-500/30 text-emerald-800 dark:text-emerald-300'
                           : 'bg-red-50/80 dark:bg-red-950/20 border-red-500/30 text-red-800 dark:text-red-300'
                       }`}
                     >
-                      {cloudTestResult.success ? <CheckCircle2 size={15} /> : <AlertTriangle size={15} />}
-                      <span>{cloudTestResult.message}</span>
-                      <span className="font-mono text-[10px] opacity-70 ml-auto truncate max-w-[200px]">{cloudTestResult.host}</span>
+                      {cloudTestResult.success ? <CheckCircle2 size={14} className="shrink-0" /> : <AlertTriangle size={14} className="shrink-0" />}
+                      <span className="truncate">{cloudTestResult.message}</span>
                     </div>
                   )}
                 </div>
