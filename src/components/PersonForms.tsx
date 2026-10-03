@@ -129,6 +129,11 @@ export const AddPersonModalForm: React.FC<AddPersonModalProps> = ({
               <input
                 value={name}
                 onChange={(e) => setName(e.target.value)}
+                onBlur={(e) => setName(e.currentTarget.value.trim())}
+                autoComplete="off"
+                autoCorrect="off"
+                autoCapitalize="none"
+                spellCheck={false}
                 required
                 placeholder="好友姓名或称谓..."
                 className="w-full text-center text-xl font-serif font-bold bg-transparent border-b-2 border-stone-200/90 dark:border-white/10 pb-1 text-[#2B332E] dark:text-[#FAF8F5] focus:outline-none placeholder-[#6E7C75]/50"
@@ -145,6 +150,11 @@ export const AddPersonModalForm: React.FC<AddPersonModalProps> = ({
                 required
                 value={relationship}
                 onChange={(e) => setRelationship(e.target.value)}
+                onBlur={(e) => setRelationship(e.currentTarget.value.trim())}
+                autoComplete="off"
+                autoCorrect="off"
+                autoCapitalize="none"
+                spellCheck={false}
                 placeholder="输入身份关系 (如: 挚友)"
                 className="w-36 sm:w-44 text-right text-xs bg-stone-50/90 dark:bg-black/20 p-2 rounded-xl border border-stone-200/80 dark:border-white/10 text-[#2B332E] dark:text-[#FAF8F5] focus:outline-none focus:border-[#5B7B6D] placeholder-[#6E7C75]/50 font-serif"
               />
@@ -398,6 +408,11 @@ export const EditPersonModalForm: React.FC<EditPersonModalProps> = ({
               <input
                 value={name}
                 onChange={(e) => setName(e.target.value)}
+                onBlur={(e) => setName(e.currentTarget.value.trim())}
+                autoComplete="off"
+                autoCorrect="off"
+                autoCapitalize="none"
+                spellCheck={false}
                 required
                 placeholder="好友姓名..."
                 className="w-full text-center text-xl font-serif font-bold bg-transparent border-b-2 border-stone-200/90 dark:border-white/10 pb-1 text-[#2B332E] dark:text-[#FAF8F5] focus:outline-none placeholder-[#6E7C75]/50"
@@ -414,6 +429,11 @@ export const EditPersonModalForm: React.FC<EditPersonModalProps> = ({
                 required
                 value={relationship}
                 onChange={(e) => setRelationship(e.target.value)}
+                onBlur={(e) => setRelationship(e.currentTarget.value.trim())}
+                autoComplete="off"
+                autoCorrect="off"
+                autoCapitalize="none"
+                spellCheck={false}
                 placeholder="输入身份关系 (如: 挚友)"
                 className="w-36 sm:w-44 text-right text-xs bg-stone-50/90 dark:bg-black/20 p-2 rounded-xl border border-stone-200/80 dark:border-white/10 text-[#2B332E] dark:text-[#FAF8F5] focus:outline-none focus:border-[#5B7B6D] placeholder-[#6E7C75]/50 font-serif"
               />

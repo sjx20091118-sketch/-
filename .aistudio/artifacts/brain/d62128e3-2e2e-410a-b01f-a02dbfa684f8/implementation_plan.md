@@ -1,14 +1,36 @@
 # 《拾年》最新全套安卓原生打包与功能落地实施指南（2026 最终终极融合版）
 
-本文档为《拾年》移动端落地的最终权威落地方案，融合了：
-1. **全景 GPU 硬件加速与纯合成层渲染**：所有模态框（Modal）与卡片（Card）全面基于 `scale` 与 `opacity` 变换，按需挂载 `will-change: transform, opacity`，在保持现有东方美术设计与色彩质感零降级的前提下，彻底杜绝动态高斯模糊导致的瓦片显存击穿、瞬间空白方块与渐变撕裂；
-2. **原生文本选择器透明无白块贴合**：重构 `styles.xml` 与选区 CSS，消除图标下方白色矩形底板，与东方水墨绿主题自然契合；
-3. **软键盘原生防抖与输入法秒级响应**：采用 `KeyboardResize.Native` 配合原生 `adjustResize`，软键盘弹起时不强制拉伸 `body`，彻底解决焦点切换文字消失与软键盘连续删除键延迟卡顿；
-4. **人物关系输入框纯净化**：彻底移除“知己、密友、同窗、自由、通畅”等所有快捷胶囊标签，仅保留纯净单行输入框；
-5. **90Hz / 120Hz / 144Hz 极限屏幕刷新率强制解锁**：覆盖 Android 10 至 Android 15，动态获取并锁定硬件最高帧率；
-6. **本地离线档案优先 + 云端统一中枢**：个人回忆数据本地秒开，用户鉴权、管理网关与在线通知走云端后端；
-7. **相册直存（Pictures/拾年回忆） + ZIP 压缩包公共下载分类直存通道**；
-8. **Debug 快速联调与 Release 正式签名打包双模式实操**。
+本文档为《拾年》移动端落地的最终权威落地方案，深度融合了历次方案的全部优点、Windows PowerShell 容错命令规范、以及针对真机实拍缺陷的彻底根治方案：
+1. **采用经典步骤一与 PowerShell 容错清理命令**：完美支持包含 `--main` 嵌套路径与 Windows PowerShell 的 `Remove-Item -ErrorAction SilentlyContinue`；
+2. **彻底根治后台挂起 10 秒返回应用时再次冒出蓝色 Capacitor 标志的问题**；
+3. **彻底根治输入框输入英文后转移到其他输入框时英文被清空、仅保留数字的问题**（失焦事件 DOM 强制提权同步与 IME 合成态保护）；
+4. **彻底消除文本选择水滴光标后方的巨大白色矩形方块与浮动操作栏白边割裂**；
+5. **全景 GPU 硬件加速与纯合成层渲染**：模态框与卡片全面基于 `scale` 与 `opacity` 变换，按需挂载 `will-change: transform, opacity`，保持现有东方美术设计与色彩质感零降级，彻底杜绝动态高斯模糊导致的瓦片显存击穿与白块/渐变撕裂；
+6. **软键盘原生防抖与输入法秒级响应**：`KeyboardResize.Native` 配合原生 `adjustResize`，软键盘弹起时不强制拉伸 `body`；
+7. **人物关系输入框纯净化**：彻底移除“知己、密友、同窗、自由、通畅”等所有快捷胶囊标签，仅保留纯净单行输入框；
+8. **90Hz / 120Hz / 144Hz 极限屏幕刷新率强制解锁**；
+9. **本地离线档案优先 + 云端统一中枢**；
+10. **相册直存（Pictures/拾年回忆） + ZIP 压缩包公共下载分类直存通道**；
+11. **Debug 快速联调与 Release 正式签名打包双模式实操**。
+
+---
+
+## 核心机理剖析与全盘优化策略
+
+### 1. 为什么转移到其他输入框时英文会被清空、只保留数字？
+- **根因深度透析**：
+  在 Android 系统上，用户使用输入法输入数字时，键盘直接向输入框提交已确认文本（Committed Text）；但当输入英文字母或拼音时，输入法处于“预输入合成态”（IME Composition）。
+  如果用户在未按空格/回车确认的情况下，直接点击另一个输入框（触发原输入框的 `blur` 失焦）：
+  1. Chromium/Blink 内核的原生机制在失去焦点时会尝试调用 `ImeCancelComposition()` 取消未完成的合成，导致输入框 DOM 中的英文临时字符被清空；
+  2. 若输入框的 React `value` 绑定未在 `blur` 瞬间读取 DOM 当前即时值（Raw Input Value），React 会用之前仅包含数字的 `state` 重新覆盖输入框，导致英文全部丢失！
+- **全盘根治行动**：
+  在所有输入框（登录注册、人物关系、昵称等）的 `onBlur` 事件中，强制直接捕获当前 DOM 节点的真实值 `e.currentTarget.value` 并立即同步至状态；同时增加 `autoComplete="off" autoCorrect="off" autoCapitalize="none" spellCheck={false}`，彻底阻断 Android IME 丢词与光标全选误杀。
+
+### 2. 为什么后台挂起 10 秒返回后会再次冒出蓝标？
+- **根因透析**：
+  原生工程的 `AppTheme.NoActionBarLaunch` 引用了 `<item name="android:background">@drawable/splash</item>`，而 Capacitor 默认创建的 `@drawable/splash` 就是蓝色的交叉图标。当应用后台挂起 10 秒后，Android 系统进入省电管理，切回时系统重新拉起了该启动主题背景，导致蓝标重现！
+- **全盘根治行动**：
+  在 `styles.xml` 中将 `AppTheme.NoActionBarLaunch` 的 `android:background` 与 `android:windowBackground` 强制统一设为米色 `#FAF8F5`，彻底删除对 `@drawable/splash` 蓝标的引用，并配置 Android 12+ 系统 `SplashScreen` 的动画图标为透明，从底层物理消除蓝标。
 
 ---
 
@@ -17,8 +39,8 @@
 ### 步骤 1：终端定位到项目根目录
 在 VS Code 中打开项目根目录，按快捷键 `Ctrl + ~` 唤起内置终端。确保当前路径下直接可以看到 `package.json`、`index.html` 和 `src` 文件夹。
 ```bash
-# 确认当前处于项目根目录
-ls -la
+# 若存在嵌套路径（如末尾为 --main），先进入对应子目录：
+cd --main
 ```
 
 ### 步骤 2：安装最新完整依赖并编译 Web 静态产物
@@ -26,7 +48,7 @@ ls -la
 # 1. 安装基础项目依赖
 npm install
 
-# 2. 安装 Capacitor 核心、Android 平台、返回键插件、键盘插件及原生语音插件
+# 2. 安装 Capacitor 核心、Android 平台、返回键插件、键盘插件及原生级联语音插件
 npm install @capacitor/core @capacitor/android @capacitor/app @capacitor/keyboard @capacitor-community/text-to-speech
 npm install -D @capacitor/cli
 
@@ -36,8 +58,8 @@ npm run build
 
 ### 步骤 3：初始化 Capacitor 并生成 Android 原生工程
 ```bash
-# 1. 容错清理可能存在的旧配置文件
-rm -f capacitor.config.ts
+# 1. 容错清理可能存在的旧配置文件（PowerShell 命令）
+Remove-Item -ErrorAction SilentlyContinue capacitor.config.ts
 
 # 2. 初始化应用基础信息并创建 android 原生工程
 npx cap init 拾年 com.shinian.app --web-dir dist
@@ -60,8 +82,6 @@ const config: CapacitorConfig = {
       launchShowDuration: 0,
       launchAutoHide: true,
       backgroundColor: '#FAF8F5',
-      androidSplashResourceName: 'splash',
-      androidScaleType: 'CENTER_CROP',
       showSpinner: false,
       splashFullScreen: true,
       splashImmersive: true,
@@ -98,7 +118,7 @@ npx cap sync android
 
 ## 第二阶段：Android Studio（原生全能融合配置）
 
-打开 Android Studio，点击菜单 **File ➔ Open...**，选中刚生成的 `android` 文件夹打开。
+打开 Android Studio，点击菜单 **File ➔ Open...**，选中刚才生成的 `android` 文件夹打开。
 
 ### 步骤 5：处理 JDK 兼容性（若提示 Incompatible Gradle JVM）
 若右下角弹出 `Incompatible Gradle JVM version` 报错：
@@ -106,7 +126,7 @@ npx cap sync android
 - 或在 **Settings ➔ Build, Execution, Deployment ➔ Build Tools ➔ Gradle** 中，将 **Gradle JDK** 切换为 **Embedded JDK (17 或 21)**，等待右下角 Gradle Sync 完成。
 
 ### 步骤 6：配置沉浸式主题与原生选择器无白块透明样式 `styles.xml`
-在左侧目录树展开：`app ➔ res ➔ values ➔ styles.xml`（或 `themes.xml`），全选替换为以下深度优化代码：
+展开目录：`app ➔ res ➔ values ➔ styles.xml`（以及若存在 `values-night/styles.xml`、`values-v31/styles.xml`），全选替换为以下深度优化代码：
 
 ```xml
 <?xml version="1.0" encoding="utf-8"?>
@@ -121,7 +141,7 @@ npx cap sync android
         <item name="windowActionBar">false</item>
         <item name="windowNoTitle">true</item>
 
-        <!-- 启动底色与全局米色背景保持一致，杜绝冷白闪屏 -->
+        <!-- 启动底色统一为东方米色，杜绝冷白闪屏 -->
         <item name="android:windowBackground">#FAF8F5</item>
 
         <!-- 开启真正的全沉浸透明状态栏与导航栏绘制 -->
@@ -133,8 +153,14 @@ npx cap sync android
         <item name="android:windowLightStatusBar">true</item>
         <item name="android:windowLightNavigationBar">true</item>
 
-        <!-- 彻底修复原生文本选择器白块问题：让 Floating Toolbar / ActionMode 背景全透明无矩形方块 -->
-        <item name="windowActionModeOverlay">true</item>
+        <!-- 【核心修复 1】彻底消除冷启动及 Android 12+ 强制居中出现的蓝色 Capacitor 图标 -->
+        <item name="android:windowSplashScreenBackground">#FAF8F5</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@android:color/transparent</item>
+        <item name="android:windowSplashScreenAnimationDuration">0</item>
+
+        <!-- 【核心修复 2】彻底消除图 2 文本选择水滴光标后方巨大白块与浮动操作栏白底 -->
+        <item name="android:popupBackground">@android:color/transparent</item>
+        <item name="android:windowActionModeOverlay">true</item>
         <item name="actionModeBackground">@android:color/transparent</item>
         <item name="actionModeSplitBackground">@android:color/transparent</item>
         <item name="android:actionModeBackground">@android:color/transparent</item>
@@ -142,13 +168,15 @@ npx cap sync android
         <item name="android:selectableItemBackground">?android:attr/selectableItemBackgroundBorderless</item>
     </style>
 
+    <!-- 【核心修复 3】消除后台挂起 10 秒切回再次冒出蓝标：绝不引用 @drawable/splash，直接锁定为米色背景 -->
     <style name="AppTheme.NoActionBarLaunch" parent="AppTheme.NoActionBar">
-        <item name="android:background">@drawable/splash</item>
+        <item name="android:background">#FAF8F5</item>
+        <item name="android:windowBackground">#FAF8F5</item>
     </style>
 </resources>
 ```
 
-### 步骤 7：配置清单文件 `AndroidManifest.xml`（大显存、硬件加速与全版本权限）
+### 步骤 7：配置清单文件 `AndroidManifest.xml`（权限、硬件加速与全版本权限）
 在左侧展开：`app ➔ manifests ➔ AndroidManifest.xml`，全选替换为以下完整代码：
 
 ```xml
@@ -402,48 +430,47 @@ public class MainActivity extends BridgeActivity {
 
 ---
 
-## 第三阶段：真机编译运行与导出 APK（双模式）
+## 第三阶段：前端全盘代码与输入防删优化实施动作
 
-### 步骤 9：生成全套高清分辨率图标
-1. 在 Android Studio 左侧目录树右键点击 `app ➔ res` 文件夹；
-2. 选择 **New ➔ Image Asset**；
-3. 在 **Foreground Layer** 选中图标素材，调整 Resize 滑块至 75% 左右，使主体落在安全虚线圆圈内；
-4. 在 **Background Layer** 选中 Color，填入东方米色 `#FAF8F5`；
-5. 点击 **Next ➔ Finish**，自动生成全套自适应图标。
-
-### 步骤 10：构建缓存清理与双模式打包
-
-#### 模式 A：Debug 极速联调模式（日常真机推送）
-1. 点击 Android Studio 顶部菜单：**Build ➔ Clean Project**；
-2. 点击 **Build ➔ Rebuild Project**；
-3. 用 USB 数据线将开启了「开发者选项 & USB 调试」的安卓手机连接电脑；
-4. 在顶部设备下拉框选中手机，点击绿色运行按钮 **Run 'app'**（快捷键 `Shift + F10`）直接推送到手机安装；
-5. 若需导出离线测试 APK 安装包，点击顶部菜单 **Build ➔ Build Bundle(s) / APK(s) ➔ Build APK(s)**，即可在 `app/build/outputs/apk/debug/app-debug.apk` 获取安装包。
-
-#### 模式 B：Release 正式签名打包模式（生产发布版本）
-1. **生成正式签名密钥库（Keystore）**：
-   在终端运行以下命令（首次执行，请妥善保管密码与密钥文件 `shinian.jks`）：
-   ```bash
-   keytool -genkey -v -keystore shinian.jks -keyalg RSA -keysize 2048 -validity 10000 -alias shinian
+### 步骤 9：前端所有输入框失焦保护与防清空处理
+在 `src/components/AuthPortalModal.tsx` 及 `src/components/PersonForms.tsx` 等全盘输入组件中：
+1. **防止转移输入框时英文丢失**：
+   在所有 `input` 的 `onBlur` 回调中，严格使用 `e.currentTarget.value` 强制确认当前真实 DOM 内容，确保任何输入法未按空格确认的英文字符在失焦瞬间直接固化保存到 React 状态中，绝不丢失：
+   ```tsx
+   onBlur={(e) => {
+     const rawVal = e.currentTarget.value.trim();
+     setAccount(rawVal);
+   }}
    ```
-2. **在 Android Studio 中图形化签名打包**：
-   - 点击顶部菜单 **Build ➔ Generate Signed Bundle / APK...**；
-   - 选择 **APK**，点击 **Next**；
-   - **Key store path** 选择刚生成的 `shinian.jks`；
-   - 输入密钥库密码（Key store password）与别名密码（Key password）；
-   - **Build Variants** 选择 **release**；
-   - 签名版本同时勾选 **V1 (Jar Signature)** 与 **V2 (Full APK Signature)**；
-   - 点击 **Finish**，编译完成后将在 `app/release/app-release.apk` 获取正式签名发布包。
+2. **防止英文被系统自动全选与删除**：
+   - 增加输入框 `autoComplete="off"`、`autoCorrect="off"`、`autoCapitalize="none"`、`spellCheck={false}`；
+   - 点击输入框时使用 `selectionStart = selectionEnd = value.length` 定位光标至末尾，绝不自动触发 `select()`。
+3. **优化全局 `useKeyboardStatus` 触发频次**：
+   - 为 `visualViewport.resize` 增加防抖判定，打字输入期间不反复触发布局重刷。
 
 ---
 
-## 第四阶段：真机全景核心功能验收清单
+## 第四阶段：真机编译运行与双模打包
 
-1. **90Hz / 120Hz 高刷新率极致丝滑**：页面滚动、大图抽屉进出与黑胶唱片旋转保持满帧，绝不出现空白方块或渐变撕裂色块。
-2. **输入框焦点与删除健秒级响应**：在添加人物、登录注册等所有输入框输入文字，切换到其他输入框文字稳定保留；点击软键盘删除键立刻响应无延迟。
-3. **原生文本选择器无白块贴合**：选中文本长按时，系统原生浮动菜单图标下底色完全透明，不产生突兀的白色矩形方块，与水墨绿选区高亮自然统一。
-4. **关系输入框纯净极简**：添加与编辑人物界面中无任何“知己、密友”等多余胶囊标签，纯净单行输入，输入即存。
-5. **ZIP 压缩包公共直存**：在「离线档案备份」中点击「全量打包导出 ZIP」，手机「文件管理 ➔ 压缩包」或「下载」分类中可直接看到 `.zip` 备份包。
-6. **回忆卡片工坊相册直存**：点击「保存卡片到手机相册」，直接无缝写入手机自带相册的「拾年回忆」相簿。
-7. **安卓三键导航栏防遮挡**：无论开启全屏手势还是传统三键导航，底部导航栏与黑胶唱片胶囊均自适应抬升避让。
-8. **23 级物理返回键层级退回**：大图灯箱、相册多选、修改口令、旧物编辑等所有弹窗均可通过手机物理返回键优雅逐层关闭。
+### 步骤 10：生成自适应图标
+在 Android Studio 中右键 `app ➔ res`，选择 **New ➔ Image Asset**，Foreground 缩放至 75%，Background 设为 `#FAF8F5`，生成全套图标。
+
+### 步骤 11：Debug 联调与 Release 正式签名双模式打包
+- **模式 A（Debug 联调）**：连接手机开启 USB 调试，点击 **Run 'app'** 直接安装；
+- **模式 B（Release 正式签名）**：
+  ```bash
+  keytool -genkey -v -keystore shinian.jks -keyalg RSA -keysize 2048 -validity 10000 -alias shinian
+  ```
+  在 Android Studio 中点击 **Build ➔ Generate Signed Bundle / APK**，导入 `shinian.jks`，勾选 V1+V2 签名导出正式 APK。
+
+---
+
+## 第五阶段：真机最终验收清单
+
+| 验收场景 | 预期完美表现 |
+| :--- | :--- |
+| **冷启动与后台切回** | 启动与后台挂起 10 秒后切回，**全程米色无缝进入页面，绝不出现蓝色 Capacitor 标志** |
+| **输入英文字母转移焦点** | 账号或密码输入框输入英文后直接点其他输入框，**英文字符完全保留，绝不被清空或只剩数字** |
+| **选区水滴光标** | 长按选中文本，**光标下方完全透明贴合，绝无白色矩形方块，浮动菜单无白边** |
+| **高刷与动画流畅度** | 模态框与卡片滑动展开保持 **90Hz / 120Hz 满帧**，无任何白色或渐变撕裂色块 |
+| **公共直存通道** | 卡片直达系统相册「拾年回忆」，全量备份 ZIP 直达系统「下载」与「压缩包」分类目录 |

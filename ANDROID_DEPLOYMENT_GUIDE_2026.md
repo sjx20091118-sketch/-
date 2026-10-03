@@ -131,8 +131,14 @@ npx cap sync android
         <item name="android:windowLightStatusBar">true</item>
         <item name="android:windowLightNavigationBar">true</item>
 
-        <!-- 彻底修复原生文本选择器白块问题：让 Floating Toolbar / ActionMode 背景全透明无方块 -->
-        <item name="windowActionModeOverlay">true</item>
+        <!-- 【核心修复 1】彻底消除冷启动及 Android 12+ 强制居中出现的蓝色 Capacitor 图标 -->
+        <item name="android:windowSplashScreenBackground">#FAF8F5</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@android:color/transparent</item>
+        <item name="android:windowSplashScreenAnimationDuration">0</item>
+
+        <!-- 【核心修复 2】彻底消除图 2 文本选择水滴光标后方巨大白块与浮动操作栏白底 -->
+        <item name="android:popupBackground">@android:color/transparent</item>
+        <item name="android:windowActionModeOverlay">true</item>
         <item name="actionModeBackground">@android:color/transparent</item>
         <item name="actionModeSplitBackground">@android:color/transparent</item>
         <item name="android:actionModeBackground">@android:color/transparent</item>
@@ -140,8 +146,10 @@ npx cap sync android
         <item name="android:selectableItemBackground">?android:attr/selectableItemBackgroundBorderless</item>
     </style>
 
+    <!-- 【核心修复 3】消除后台切回时再次冒出的蓝标：绝不引用 @drawable/splash，直接锁定为米色背景 -->
     <style name="AppTheme.NoActionBarLaunch" parent="AppTheme.NoActionBar">
-        <item name="android:background">@drawable/splash</item>
+        <item name="android:background">#FAF8F5</item>
+        <item name="android:windowBackground">#FAF8F5</item>
     </style>
 </resources>
 ```

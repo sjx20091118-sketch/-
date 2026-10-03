@@ -32,15 +32,22 @@ export function useKeyboardStatus(): KeyboardStatus {
       }).catch(() => {});
     }
 
-    // 2. Web Visual Viewport Resize Fallback
+    // 2. Web Visual Viewport Resize Fallback with Debounce to Prevent Re-render Storms While Typing
+    let resizeTimer: any = null;
     const onViewportResize = () => {
-      if (window.visualViewport) {
-        const heightDiff = window.innerHeight - window.visualViewport.height;
-        // If viewport height shrinks by more than 160px, a virtual keyboard is active
-        const isShrunk = heightDiff > 160;
-        setIsKeyboardVisible(isShrunk);
-        setKeyboardHeight(isShrunk ? heightDiff : 0);
-      }
+      if (resizeTimer) clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(() => {
+        if (window.visualViewport) {
+          const heightDiff = window.innerHeight - window.visualViewport.height;
+          // If viewport height shrinks by more than 160px, a virtual keyboard is active
+          const isShrunk = heightDiff > 160;
+          setIsKeyboardVisible(prev => (prev !== isShrunk ? isShrunk : prev));
+          setKeyboardHeight(prev => {
+            const nextHeight = isShrunk ? heightDiff : 0;
+            return Math.abs(prev - nextHeight) > 12 ? nextHeight : prev;
+          });
+        }
+      }, 80);
     };
 
     if (window.visualViewport) {
@@ -48,6 +55,7 @@ export function useKeyboardStatus(): KeyboardStatus {
     }
 
     return () => {
+      if (resizeTimer) clearTimeout(resizeTimer);
       if (showListenerHandle && typeof showListenerHandle.remove === 'function') {
         showListenerHandle.remove();
       }
