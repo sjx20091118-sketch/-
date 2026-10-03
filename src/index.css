@@ -163,6 +163,9 @@ button {
   background-position: 0 0, 3px 3px;
   mix-blend-mode: overlay;
   pointer-events: none;
+  contain: strict;
+  transform: translateZ(0);
+  -webkit-transform: translateZ(0);
 }
 
 .smooth-radial-glow {
@@ -171,19 +174,34 @@ button {
   transform: translate3d(0, 0, 0);
   -webkit-transform: translate3d(0, 0, 0);
   will-change: transform, opacity;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  contain: paint layout;
+}
+
+/* GPU Layer Isolation Utility for Android WebView */
+.gpu-layer-isolate {
+  transform: translateZ(0);
+  -webkit-transform: translateZ(0);
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  perspective: 1000px;
+  will-change: transform, opacity;
 }
 
 /* Native Android Touch Interaction Micro-feedbacks */
 .touch-active {
   transition: transform 0.12s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.12s cubic-bezier(0.4, 0, 0.2, 1);
+  transform: translateZ(0);
+  backface-visibility: hidden;
 }
 .touch-active:active {
-  transform: scale(0.96);
+  transform: scale(0.96) translateZ(0);
   opacity: 0.88;
 }
 
 .touch-active-subtle:active {
-  transform: scale(0.98);
+  transform: scale(0.98) translateZ(0);
   opacity: 0.92;
 }
 
@@ -353,6 +371,10 @@ button {
     0 2px 6px 0 rgba(0, 0, 0, 0.03),
     inset 0 1px 1.5px 0 rgba(255, 255, 255, 0.95),
     inset 0 -1px 1px 0 rgba(0, 0, 0, 0.02);
+  transform: translateZ(0);
+  -webkit-transform: translateZ(0);
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
   transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 }
 

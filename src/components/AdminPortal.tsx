@@ -784,11 +784,11 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
       <motion.div
         animate={
           isExitingWave
-            ? { opacity: 0, scale: 0.96, filter: 'blur(8px)' }
-            : { opacity: 1, scale: 1, filter: 'blur(0px)' }
+            ? { opacity: 0, scale: 0.96 }
+            : { opacity: 1, scale: 1 }
         }
-        transition={{ duration: 0.72, ease: [0.16, 1, 0.3, 1] }}
-        className={`fixed inset-0 z-[10000] flex flex-col overflow-hidden select-text ${isDarkMode ? 'dark-zen-theme dark' : ''}`}
+        transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
+        className={`fixed inset-0 z-[10000] flex flex-col overflow-hidden select-text gpu-layer-isolate ${isDarkMode ? 'dark-zen-theme dark' : ''}`}
         style={{
           backgroundColor: isDarkMode ? '#101412' : '#FAF8F5',
           color: isDarkMode ? '#FAF8F5' : '#223028'

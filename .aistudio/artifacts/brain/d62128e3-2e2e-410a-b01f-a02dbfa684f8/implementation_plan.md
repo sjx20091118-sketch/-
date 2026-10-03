@@ -1,109 +1,81 @@
-# 《拾年》全站视觉质感升级与买断系统深度重构方案
+# Android Mobile WebView Rendering & Performance Optimization Plan
 
-针对登录注册全屏沉浸穿透、文案雅致统一、买断未付款直接越权激活漏洞、买断弹窗文字冗余去商俗化，以及全站核心控件质感（苹果液态透明边框 + 底部晕染透色 + 东方宣纸质感微噪点）进行全方位打磨升级。
+A comprehensive technical upgrade for "拾年" (Shinian) on Android WebView/Capacitor to eliminate screen tearing, frame flickering, and image/layer dislocation during modal jumps and button taps, while 100% preserving the oriental aesthetic design and theme palette.
 
-## 用户决策确认 (User Review & Critical Decisions)
+## User Review & Critical Decisions
 
 > [!IMPORTANT]
-> 基于上一轮明确确认的方案偏好，本次重构将严格遵循以下设计决策实施：
-> - **买断尊享卡片形态**：采用**居中超大苹果胶囊浮层**，配合电影级背景深度高斯虚化（`backdrop-blur-2xl`）、液态透明边框与内部东方柔光晕染。
-> - **控件质感基调**：全站核心按钮与输入框统一采用**苹果液态透明边框 + 底部晕染透色 + 东方宣纸微噪点**，深度联动当前调色盘主题色与日夜光影。
-> - **防越权支付校验**：彻底剔除前台“一键直接模拟成功”的越权入口，用户点击“确认支付”时执行真实服务端状态校验；若未到账则友好提示，杜绝未付款白嫖。
+> The following technical strategies were confirmed through interactive clarification and will govern the performance refactoring:
+
+- **Confirmed Decision 1 (Layer Isolation)**: Enable GPU layer isolation and adaptive mobile glass rendering (`transform: translateZ(0)`, `will-change: transform`, `contain: paint layout`) for background glow filters and fixed overlays.
+- **Confirmed Decision 2 (Motion Optimization)**: Replace live CPU/GPU-intensive CSS `filter: blur(...)` keyframe animations in modals (`AuthPortalModal`, `MyProfileModal`, `CheckoutLicenseModal`, `OrientalScrollNoticeModal`, `VintageVideoPlayer`) with GPU-accelerated `opacity` and `transform: scale()` transitions.
+- **Confirmed Decision 3 (Touch Isolation)**: Isolate button click event handlers, active touch scale transforms, and sound engine triggers to prevent full component layout invalidation on mobile touch.
 
 ---
 
-## 1. 核心概述与问题定位 (Overview & Core Concept)
+## 1. Overview & Core Concept
 
-### 现有缺陷与痛点分析
-1. **登录门禁局部漏底 Bug**：`AuthPortalModal` 之前挂载在局部卡片容器内，大屏或弹性布局下导致主界面顶部导航外露，未能形成 100% 视口级的全景沉浸。
-2. **操作文案不统一**：邮箱验证登录按钮为“验证并开启画卷”，密码登录为“进入空间”，与《拾年》以“长卷”为核心的心流理念存在微小分歧。
-3. **买断未付款越权激活漏洞**：买断弹窗中的确认按钮在未完成支付时触发了模拟结算函数，使得普通用户无需付款即可解锁终身买断。
-4. **买断弹窗文字过度冗杂**：头部标题与底部扫码区域商业味过浓、文字说明堆砌，破坏了东方美学的留白与轻盈感。
-5. **控件质感需全站统一度**：输入框与按钮需要全面对标登录界面的高质感透明边框与透光晕染，实现整站艺术体验的一致性。
+- **Problem Addressed**: On Android mobile devices (WebView / Chromium renderer via Capacitor), switching tabs or tapping buttons inside modals like `AuthPortalModal` triggers severe graphic tearing, missing frames, and flickering. This occurs because live CSS `filter: blur()` effects, stacked `backdrop-blur-*` overlays, un-isolated fixed gradient layers, and un-throttled React re-renders force WebView GPU compositor buffer re-allocations on every frame.
+- **Target Experience**: Silky-smooth 60 FPS transitions, crisp instant button feedback, zero screen tearing, and flawless oriental paper-texture visual rendering on mobile devices ranging from entry-level Android smartphones to flagship devices.
+- **Key Value**: Retains 100% of the rich aesthetic visual identity (warm beige rice paper texture, ambient ink radial glows, dynamic glass capsules) while rendering with hardware-accelerated efficiency on mobile platforms.
 
 ---
 
-## 2. 界面与交互视觉设计 (User Experience & Visual Design)
+## 2. User Experience & Visual Design
 
-### A. 登录门禁全屏穿透与文案纯化
-- **React Portal 顶层挂载**：使用 `createPortal(..., document.body)` 将登录界面直接传送到文档根节点，彻底脱离 `#root-card` 的尺寸约束与堆叠上下文限制，确保四角与边缘 100% 贴合视口，杜绝漏底。
-- **纯化按钮文案**：
-  - 邮箱免密登录按钮：统一改为 **“进入长卷”**
-  - 账号密码登录按钮：统一改为 **“进入长卷”**
-  - 注册完成提交按钮：统一改为 **“进入长卷”**
-
-### B. 买断尊享卡片东方极简与去商俗化重构
-- **视觉风格**：居中超大苹果胶囊浮层（`rounded-[36px]`，高质感超细透明玻璃边框，内部透出双色晕染光影）。
-- **去冗余文案精简**：
-  - 头部去废话：保留核心雅致标题 **“拾年 · 岁华令”** 与副标题 **“解开岁月束缚 · 永久定格一生长卷”**，去除繁琐的广告式口号。
-  - 对比矩阵精简：6 项核心权益采用东方雅致的四字/六字凝练描述，剔除“商业”、“套餐”等俗气词汇。
-  - 支付方式精练：保留“微信支付”与“支付宝”纯净选项卡，二维码下方仅保留一行温润淡雅的提示 **“扫码完成自动开启”**。
-
-### C. 真实支付闭环与防越权修复
-- **防越权拦截逻辑**：
-  - 移除前端直接将用户授权状态改写为 `active` 的直接越权按钮；
-  - 扫码后由系统后台自动轮询（每 2.5 秒）服务端订单状态；
-  - 按钮文案设为 **“我已完成支付，查询激活”**，点击时触发服务端 `/api/pay/check-order/:orderId` 穿透核验。未收到款项时触发温和轻提示，只有真实完成付款或通过官方卡密核销才予开放权限。
-
-### D. 全站按钮与输入框质感升级（苹果透明胶囊 + 底部晕染透色）
-- **透明边框透光设计**：
-  - 边框采用 `border border-black/[0.08] dark:border-white/[0.12] hover:border-black/20 dark:hover:border-white/25`；
-  - 背景采用 `bg-black/[0.02] dark:bg-white/[0.04] backdrop-blur-md`；
-  - 底部叠加微柔渐变，让底层调色盘的 primary/accent 色彩温润透出。
-- **触觉与光影反馈**：
-  - 悬浮微升温，点击微收缩（`active:scale-[0.98]`）；
-  - 伴随水滴与印章音效反馈（`sound.playWaterDrop`）。
+- **Visual Identity & Theme Preservation**:
+  - *Aesthetic Direction*: Oriental digital meditation journal ("东方生命画卷 · 数字静修"), warm beige (#FAF8F5) light mode, deep forest charcoal (#111613) dark mode, cinnabar (#E88765) and bamboo green (#5B7B6D) accents.
+  - *Glassmorphism Adaptation*: Preserves frosted glass appearance (`apple-liquid-glass`) while isolating backdrop filters into hardware-accelerated CSS layers with fallback solid alpha colors for lower-power WebViews.
+- **Interactive Feedback & Touch Ergonomics**:
+  - Minimum touch target hitbox $\ge 44 \times 44\text{px}$ across all login/registration controls and tab switches.
+  - Sub-50ms touch micro-feedback (`transform: scale(0.97)`, `backface-visibility: hidden`) with non-blocking audio engine triggers.
+  - Seamless page reveals and tab transitions without layout jitter or scrollbar flashing.
 
 ---
 
-## 3. 关键产品决策与权衡 (Key Product Decisions)
+## 3. Key Product Decisions & Trade-Offs
 
-- **决策 1：React Portal 彻底杜绝漏底**
-  - *方案*：无论外层布局如何嵌套，认证门禁均挂载至 `document.body`。
-  - *优势*：适配所有屏幕分辨率，不会因外层父级的 `transform` 或 `overflow` 出现断层。
-- **决策 2：去商俗化 vs 明确引导**
-  - *方案*：保留清晰的微信/支付宝扫码卡片与卡密核销入口，但用极简东方留白替换大段解释性文字。
-  - *优势*：用户一眼能懂如何操作，同时完全保全《拾年》东方宁静的艺术基调。
-- **决策 3：前端严禁越权放行**
-  - *方案*：本地测试模式仅限管理员后台，前台用户界面一律依赖服务端核验。
-  - *优势*：彻底杜绝未付款误点即可解锁全部付费功能的商业漏洞。
+- **Decision 1: GPU Layer Isolation for Ambient Radial Glows**:
+  - *Chosen Approach*: Wrap fixed radial ink glows and dither overlays in hardware-isolated compositing layers (`transform: translate3d(0,0,0)`, `backface-visibility: hidden`, `contain: strict`).
+  - *Why*: Prevents Chromium WebView from rasterizing large background blurs on every button tap or input keystroke.
+- **Decision 2: Elimination of Live Filter Animations in Motion Components**:
+  - *Chosen Approach*: Modify `motion.div` animation targets in `AuthPortalModal`, `VintageVideoPlayer`, `AdminPortal`, etc., to animate pure `opacity`, `scale`, and `y` properties instead of `filter: 'blur(10px)' -> 'blur(0px)'`.
+  - *Why*: Live CSS blur filtering in JavaScript animation frame loops causes catastrophic offscreen GPU allocation overhead on Android WebViews.
+- **Decision 3: Non-Blocking Sound Engine & Event Batching**:
+  - *Chosen Approach*: Ensure `soundEngine.play('click')` is non-blocking and wrapped in `requestAnimationFrame` / silent try-catch blocks to prevent touch response latency.
 
 ---
 
-## 4. 技术架构与交互流程 (Technical Architecture & Flow)
+## 4. Technical Architecture & Data Strategy
 
 ```
-┌────────────────────────────────────────────────────────┐
-│                      Document Body                     │
-│  ┌──────────────────────────────────────────────────┐  │
-│  │     AuthPortalModal (createPortal 顶层挂载)        │  │
-│  │     - 100vw x 100vh 全景双色晕染 + 宣纸微噪点    │  │
-│  │     - 按钮文案纯化：“进入长卷”                     │  │
-│  └──────────────────────────────────────────────────┘  │
-│  ┌──────────────────────────────────────────────────┐  │
-│  │    CheckoutLicenseModal (居中超大苹果胶囊浮层)    │  │
-│  │     - 电影级高斯背景虚化 (backdrop-blur-2xl)       │  │
-│  │     - 去冗余极简文案 + 东方对比矩阵              │  │
-│  │     - 防越权闭环: 严谨轮询 /api/pay/check-order   │  │
-│  │     - 官方卡密免签极速兑换                        │  │
-│  └──────────────────────────────────────────────────┘  │
-│  ┌──────────────────────────────────────────────────┐  │
-│  │    全站控件质感规范 (Input & Button Modern Glass)│  │
-│  │     - 苹果透明液态胶囊边框 + 底部透出晕染色      │  │
-│  │     - 深度适配主题调色盘 (HealingTheme tokens)   │  │
-│  └──────────────────────────────────────────────────┘  │
-└────────────────────────────────────────────────────────┘
+┌────────────────────────────────────────────────────────────────────────┐
+│                   ANDROID WEBVIEW / CAPACITOR FRAME                     │
+├────────────────────────────────────────────────────────────────────────┤
+│ 1. GPU Compositor Layer Isolation                                       │
+│    ├── .ambient-glow-dither  ──► translateZ(0) + contain: paint       │
+│    ├── .smooth-radial-glow   ──► translate3d(0,0,0) + isolate layer    │
+│    └── .apple-liquid-glass   ──► webkit-backdrop-filter hardware acceleration
+│                                                                        │
+│ 2. Optimized Motion Components                                         │
+│    ├── AuthPortalModal      ──► Animate { opacity, scale, y } (No blur)│
+│    ├── MyProfileModal       ──► Hardware-accelerated modal backdrop    │
+│    └── VintageVideoPlayer   ──► Clean GPU transform transitions        │
+│                                                                        │
+│ 3. Isolated Touch & Sound Layer                                        │
+│    ├── Button Handlers      ──► Isolated state + non-blocking audio  │
+│    └── Input Controls       ──► Touch targets >= 44px + GPU scale    │
+└────────────────────────────────────────────────────────────────────────┘
 ```
 
+### Key Refactoring Areas:
+1. `src/index.css`: Add GPU compositor isolation utility rules (`transform-gpu`, `backface-visibility: hidden`, `-webkit-font-smoothing`, hardware-isolated backdrop blur utilities).
+2. `src/components/AuthPortalModal.tsx`:
+   - Replace live `filter: blur(...)` motion animation states with clean GPU `opacity` and `scale` transitions.
+   - Optimize background radial glow layers with `will-change: transform` and layer containment.
+3. `src/components/MyProfileModal.tsx`, `VintageVideoPlayer.tsx`, `CheckoutLicenseModal.tsx`, `OrientalScrollNoticeModal.tsx`:
+   - Purge live `filter: blur(...)` animation properties from motion variants.
+   - Ensure hardware isolation on fixed backdrop overlays.
+4. `src/utils/soundEngine.ts`: Ensure sound effects execute asynchronously without locking the UI main thread on touch events.
+
 ---
-
-## 5. 实施步骤规划 (Implementation Steps)
-
-1. **改造 `AuthPortalModal`**：引入 `createPortal(..., document.body)` 确保真全屏；将登录与注册按钮文案统一为“进入长卷”；
-2. **重构 `CheckoutLicenseModal`**：
-   - 精简头部与底部冗余文案；
-   - 彻底修复未付款点击直接完成激活的 Bug，替换为真实订单状态核验与轻提示；
-   - 提升居中胶囊浮层的透明边框、背景透光与东方留白质感；
-3. **升级全站输入框与按钮样式**：
-   - 统一定制透光透明边框样式类（`apple-glass-input`、`apple-glass-btn`），打磨全站核心表单与按钮；
-4. **编译与验证**：执行 `lint_applet` 与 `compile_applet`，全流程测试登录、未买断拦截与真实卡密/支付校验。

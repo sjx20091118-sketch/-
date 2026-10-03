@@ -6600,10 +6600,9 @@ function SplashScreen({ theme, onDismiss }: SplashScreenProps) {
       exit={{
         opacity: 0,
         scale: 1.03,
-        filter: 'blur(8px)',
-        transition: { duration: 0.5, ease: [0.16, 1, 0.3, 1] }
+        transition: { duration: 0.4, ease: [0.16, 1, 0.3, 1] }
       }}
-      style={{ willChange: 'opacity, transform, filter', backgroundColor: theme.canvas }}
+      style={{ willChange: 'opacity, transform', backgroundColor: theme.canvas }}
       className="fixed inset-0 z-[9999] w-screen h-screen flex flex-col items-center justify-center p-6 overflow-hidden select-none cursor-pointer transform-gpu"
       onClick={() => {
         sound.playHapticClick(900);

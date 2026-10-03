@@ -341,11 +341,11 @@ export const AuthPortalModal: React.FC<AuthPortalModalProps> = ({
           initial={{ opacity: 0, y: 16 }}
           animate={
             isSuccessExiting
-              ? { scale: 0.95, opacity: 0, y: -16, filter: 'blur(10px)' }
-              : { scale: 1, opacity: 1, y: 0, filter: 'blur(0px)' }
+              ? { scale: 0.95, opacity: 0, y: -16 }
+              : { scale: 1, opacity: 1, y: 0 }
           }
           transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
-          className="w-full space-y-7"
+          className="w-full space-y-7 gpu-layer-isolate"
         >
           {/* 切换选项卡：登录与注册 */}
           <div className="flex justify-center">

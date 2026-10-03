@@ -478,12 +478,12 @@ export const MyProfileModal: React.FC<MyProfileModalProps> = ({
           initial={{ scale: 0.94, opacity: 0, y: 16 }}
           animate={
             isExitingWave
-              ? { scale: 0.94, opacity: 0, y: -10, filter: 'blur(8px)' }
-              : { scale: 1, opacity: 1, y: 0, filter: 'blur(0px)' }
+              ? { scale: 0.94, opacity: 0, y: -10 }
+              : { scale: 1, opacity: 1, y: 0 }
           }
-          exit={{ scale: 0.94, opacity: 0, y: -10, filter: 'blur(8px)' }}
-          transition={{ duration: 0.45, ease: [0.16, 1, 0.3, 1] }}
-          className="relative w-full max-w-md max-h-[85vh] rounded-[32px] overflow-hidden shadow-2xl z-10 border border-white/60 dark:border-white/15 apple-liquid-glass flex flex-col my-auto"
+          exit={{ scale: 0.94, opacity: 0, y: -10 }}
+          transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
+          className="relative w-full max-w-md max-h-[85vh] rounded-[32px] overflow-hidden shadow-2xl z-10 border border-white/60 dark:border-white/15 apple-liquid-glass flex flex-col my-auto gpu-layer-isolate"
           style={{
             backgroundColor: isDarkMode ? 'rgba(18, 24, 21, 0.95)' : 'rgba(255, 253, 249, 0.97)',
             color: isDarkMode ? '#FAF8F5' : '#223028'

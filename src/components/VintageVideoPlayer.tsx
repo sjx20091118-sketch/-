@@ -414,12 +414,12 @@ export const VintageVideoPlayer: React.FC<VintageVideoPlayerProps> = ({
                 initial={{ opacity: 0, scale: 0.95, y: 10 }}
                 animate={
                   isExitingWave
-                    ? { opacity: 0, scale: 0.94, y: -10, filter: 'blur(8px)' }
-                    : { opacity: 1, scale: 1, y: 0, filter: 'blur(0px)' }
+                    ? { opacity: 0, scale: 0.94, y: -10 }
+                    : { opacity: 1, scale: 1, y: 0 }
                 }
-                exit={{ opacity: 0, scale: 0.94, y: -10, filter: 'blur(8px)' }}
-                transition={{ duration: 0.65, ease: [0.16, 1, 0.3, 1] }}
-                className="relative z-10 w-full max-w-3xl max-h-[94dvh] bg-[#121614] rounded-3xl border border-white/15 shadow-2xl flex flex-col overflow-hidden font-sans"
+                exit={{ opacity: 0, scale: 0.94, y: -10 }}
+                transition={{ duration: 0.45, ease: [0.16, 1, 0.3, 1] }}
+                className="relative z-10 w-full max-w-3xl max-h-[94dvh] bg-[#121614] rounded-3xl border border-white/15 shadow-2xl flex flex-col overflow-hidden font-sans gpu-layer-isolate"
               >
                 {/* 顶栏控制（苹果极简磨砂液态玻璃） */}
                 <div className="p-3 sm:px-5 sm:py-3.5 bg-black/50 backdrop-blur-md border-b border-white/10 flex items-center justify-between shrink-0">

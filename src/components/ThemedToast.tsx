@@ -43,9 +43,9 @@ export const ThemedToast: React.FC<ThemedToastProps> = ({ toast, theme, isDarkMo
     <AnimatePresence>
       <div className="fixed top-12 sm:top-14 left-1/2 -translate-x-1/2 z-[100] pointer-events-none px-4 max-w-[92vw] sm:max-w-md w-auto">
         <motion.div
-          initial={{ opacity: 0, y: -16, scale: 0.95, filter: 'blur(4px)' }}
-          animate={{ opacity: 1, y: 0, scale: 1, filter: 'blur(0px)' }}
-          exit={{ opacity: 0, y: -10, scale: 0.96, filter: 'blur(2px)' }}
+          initial={{ opacity: 0, y: -16, scale: 0.95 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          exit={{ opacity: 0, y: -10, scale: 0.96 }}
           transition={{
             type: 'spring',
             stiffness: 420,
