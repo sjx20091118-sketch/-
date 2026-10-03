@@ -78,6 +78,46 @@ export interface BackHandlerState {
   isYearPickerOpen: boolean;
   closeYearPicker: () => void;
 
+  // 灵台 · 后台管理控制中枢
+  isAdminPortalOpen?: boolean;
+  closeAdminPortal?: () => void;
+
+  // 终身买断与兑换激活收银台
+  isCheckoutModalOpen?: boolean;
+  closeCheckoutModal?: () => void;
+
+  // 东方微印长卷公告公文
+  isScrollNoticeOpen?: boolean;
+  closeScrollNotice?: () => void;
+
+  // 版本热更新公告
+  isUpdateModalOpen?: boolean;
+  closeUpdateModal?: () => void;
+
+  // 个人中心与账号履历
+  isMyProfileOpen?: boolean;
+  closeMyProfile?: () => void;
+
+  // 回忆卡片工坊
+  isCardStudioOpen?: boolean;
+  closeCardStudio?: () => void;
+
+  // 复古胶片视频放映机
+  isVintageVideoPlayerOpen?: boolean;
+  closeVintageVideoPlayer?: () => void;
+
+  // 诗意卷首语长卷
+  isPoeticPrologueOpen?: boolean;
+  closePoeticPrologue?: () => void;
+
+  // 分组选择目标弹窗
+  formGroupPickerTarget?: any;
+  closeFormGroupPicker?: () => void;
+
+  // 登录认证门禁（已登录状态侧栏打开时允许返回关闭）
+  isAuthPortalOpen?: boolean;
+  closeAuthPortal?: () => void;
+
   activeTab: string;
   setActiveTab: (tab: any) => void;
 
@@ -202,15 +242,69 @@ export function useAndroidBackHandler(state: BackHandlerState) {
       return true;
     }
 
-    // 6. 印记编辑弹窗
-    if (s.editingImpression) {
-      s.closeEditingImpression();
+    // 0.1. 分组选取抽屉
+    if (s.formGroupPickerTarget && s.closeFormGroupPicker) {
+      s.closeFormGroupPicker();
       return true;
     }
 
     // ==========================================
-    // Level 3: 三级子功能面板与专属子卡片弹窗 (Priority 80)
+    // Level 3: 三级全屏面板与独立业务卡片弹窗 (Priority 80)
     // ==========================================
+
+    // 6.1. 复古胶片放映机
+    if (s.isVintageVideoPlayerOpen && s.closeVintageVideoPlayer) {
+      s.closeVintageVideoPlayer();
+      return true;
+    }
+
+    // 6.2. 回忆卡片工坊
+    if (s.isCardStudioOpen && s.closeCardStudio) {
+      s.closeCardStudio();
+      return true;
+    }
+
+    // 6.3. 灵台 · 后台管理控制中枢
+    if (s.isAdminPortalOpen && s.closeAdminPortal) {
+      s.closeAdminPortal();
+      return true;
+    }
+
+    // 6.4. 终身买断收银台与兑换激活
+    if (s.isCheckoutModalOpen && s.closeCheckoutModal) {
+      s.closeCheckoutModal();
+      return true;
+    }
+
+    // 6.5. 东方微印长卷公文公告
+    if (s.isScrollNoticeOpen && s.closeScrollNotice) {
+      s.closeScrollNotice();
+      return true;
+    }
+
+    // 6.6. 版本热更新公告
+    if (s.isUpdateModalOpen && s.closeUpdateModal) {
+      s.closeUpdateModal();
+      return true;
+    }
+
+    // 6.7. 个人中心与账号履历
+    if (s.isMyProfileOpen && s.closeMyProfile) {
+      s.closeMyProfile();
+      return true;
+    }
+
+    // 6.8. 诗意卷首语长卷
+    if (s.isPoeticPrologueOpen && s.closePoeticPrologue) {
+      s.closePoeticPrologue();
+      return true;
+    }
+
+    // 6.9. 认证门禁（仅当已登录用户从抽屉打开时允许返回关闭）
+    if (s.isAuthPortalOpen && s.closeAuthPortal) {
+      s.closeAuthPortal();
+      return true;
+    }
 
     // 7. 旧物大卡片详情 (无论是从拾物阁还是从人物信物陈列柜打开，返回仅关闭信物详情，保留人物卡片)
     if (s.selectedArtifact) {

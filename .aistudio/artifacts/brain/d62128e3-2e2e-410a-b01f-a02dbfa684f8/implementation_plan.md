@@ -1,81 +1,77 @@
-# Android Mobile WebView Rendering & Performance Optimization Plan
+# Android Native Packaging Adaptation & Feature Integration Plan (2026 Final)
 
-A comprehensive technical upgrade for "拾年" (Shinian) on Android WebView/Capacitor to eliminate screen tearing, frame flickering, and image/layer dislocation during modal jumps and button taps, while 100% preserving the oriental aesthetic design and theme palette.
+A comprehensive frontend adaptation plan for "拾年" (Shinian) aligning with the latest Android Studio & Capacitor native deployment guide, expanding the physical back-button navigation hierarchy to cover all newly added secondary cards and modals, and dynamically securing the bottom navigation dock and vinyl music capsule against three-button navigation bars.
 
 ## User Review & Critical Decisions
 
 > [!IMPORTANT]
-> The following technical strategies were confirmed through interactive clarification and will govern the performance refactoring:
+> The following technical directions were confirmed by the user and will govern the adaptation:
 
-- **Confirmed Decision 1 (Layer Isolation)**: Enable GPU layer isolation and adaptive mobile glass rendering (`transform: translateZ(0)`, `will-change: transform`, `contain: paint layout`) for background glow filters and fixed overlays.
-- **Confirmed Decision 2 (Motion Optimization)**: Replace live CPU/GPU-intensive CSS `filter: blur(...)` keyframe animations in modals (`AuthPortalModal`, `MyProfileModal`, `CheckoutLicenseModal`, `OrientalScrollNoticeModal`, `VintageVideoPlayer`) with GPU-accelerated `opacity` and `transform: scale()` transitions.
-- **Confirmed Decision 3 (Touch Isolation)**: Isolate button click event handlers, active touch scale transforms, and sound engine triggers to prevent full component layout invalidation on mobile touch.
-
----
-
-## 1. Overview & Core Concept
-
-- **Problem Addressed**: On Android mobile devices (WebView / Chromium renderer via Capacitor), switching tabs or tapping buttons inside modals like `AuthPortalModal` triggers severe graphic tearing, missing frames, and flickering. This occurs because live CSS `filter: blur()` effects, stacked `backdrop-blur-*` overlays, un-isolated fixed gradient layers, and un-throttled React re-renders force WebView GPU compositor buffer re-allocations on every frame.
-- **Target Experience**: Silky-smooth 60 FPS transitions, crisp instant button feedback, zero screen tearing, and flawless oriental paper-texture visual rendering on mobile devices ranging from entry-level Android smartphones to flagship devices.
-- **Key Value**: Retains 100% of the rich aesthetic visual identity (warm beige rice paper texture, ambient ink radial glows, dynamic glass capsules) while rendering with hardware-accelerated efficiency on mobile platforms.
+- **Confirmed Decision 1 (Step-by-Step Back Navigation)**: Expand the physical back-button handler (`useAndroidBackHandler`) into a 30+ level hierarchical stack so that newly added modals—including Admin Portal (灵台后台), Checkout & License Activation (收银台), Vintage Video Player (复古胶片放映机), Memoir Card Studio (卡片工坊), Oriental Notice Scroll (长卷公告), Profile Modal (个人中心), Poetic Prologue (卷首语), and Group Selectors—close gracefully step-by-step without popping straight to the home screen or exiting the app.
+- **Confirmed Decision 2 (Dynamic Safe-Area Anti-Occlusion)**: Upgrade the bottom navigation dock and vinyl music player positioning with `max(var(--safe-area-bottom, 0px), env(safe-area-inset-bottom, 0px))` so that the native Android three-button navigation bar (48dp height) or gesture home pill never covers any buttons or controls.
+- **Confirmed Decision 3 (Action Roadmap for Developer)**: Provide a clear, actionable checklist of the steps required on the developer's side in VS Code and Android Studio (Capacitor sync, styles.xml, AndroidManifest.xml, MainActivity.java).
 
 ---
 
-## 2. User Experience & Visual Design
+## 1. Overview & Frontend Adaptation Scope
 
-- **Visual Identity & Theme Preservation**:
-  - *Aesthetic Direction*: Oriental digital meditation journal ("东方生命画卷 · 数字静修"), warm beige (#FAF8F5) light mode, deep forest charcoal (#111613) dark mode, cinnabar (#E88765) and bamboo green (#5B7B6D) accents.
-  - *Glassmorphism Adaptation*: Preserves frosted glass appearance (`apple-liquid-glass`) while isolating backdrop filters into hardware-accelerated CSS layers with fallback solid alpha colors for lower-power WebViews.
-- **Interactive Feedback & Touch Ergonomics**:
-  - Minimum touch target hitbox $\ge 44 \times 44\text{px}$ across all login/registration controls and tab switches.
-  - Sub-50ms touch micro-feedback (`transform: scale(0.97)`, `backface-visibility: hidden`) with non-blocking audio engine triggers.
-  - Seamless page reveals and tab transitions without layout jitter or scrollbar flashing.
-
----
-
-## 3. Key Product Decisions & Trade-Offs
-
-- **Decision 1: GPU Layer Isolation for Ambient Radial Glows**:
-  - *Chosen Approach*: Wrap fixed radial ink glows and dither overlays in hardware-isolated compositing layers (`transform: translate3d(0,0,0)`, `backface-visibility: hidden`, `contain: strict`).
-  - *Why*: Prevents Chromium WebView from rasterizing large background blurs on every button tap or input keystroke.
-- **Decision 2: Elimination of Live Filter Animations in Motion Components**:
-  - *Chosen Approach*: Modify `motion.div` animation targets in `AuthPortalModal`, `VintageVideoPlayer`, `AdminPortal`, etc., to animate pure `opacity`, `scale`, and `y` properties instead of `filter: 'blur(10px)' -> 'blur(0px)'`.
-  - *Why*: Live CSS blur filtering in JavaScript animation frame loops causes catastrophic offscreen GPU allocation overhead on Android WebViews.
-- **Decision 3: Non-Blocking Sound Engine & Event Batching**:
-  - *Chosen Approach*: Ensure `soundEngine.play('click')` is non-blocking and wrapped in `requestAnimationFrame` / silent try-catch blocks to prevent touch response latency.
+- **Bridge Verification**: `AndroidBridge.saveImageToGallery` and `AndroidBridge.saveZipToDownloads` are already integrated in `MemoirCardStudioModal.tsx` and `zipBackup.ts` with base64 sanitization and MediaStore compatibility.
+- **Physical Back Button Stack Expansion**:
+  - Incorporate all recently introduced views and modals into `useAndroidBackHandler.ts` and `App.tsx`:
+    - Level 4: `selectedArtifactImagePreview`, `isShareModalOpen`, `formGroupPickerTarget`, `datePickerOpen`, `confirmDialog`, `sealingRitualData`, `editingImpression`.
+    - Level 3: `isVintageVideoPlayerOpen`, `isCardStudioOpen`, `isAdminPortalOpen`, `isCheckoutModalOpen`, `isScrollNoticeOpen`, `isUpdateModalOpen`, `isMyProfileOpen`, `isFirstLoginPrologue`, `isPoeticPrologueOpen`, `selectedArtifact`, `selectedLetter`, `isEditingPerson`, `movingPerson`, `isAddingGroup`, `isChangingPin`, `importPreview`, `editingStory`, `editingArtifact`, `activeModal`, `readerStory`, `isAuthPortalOpen`.
+    - Level 2: `selectedPerson` (close details, keep person list).
+    - Level 1: `activeTab !== 'home'` -> return to home tab; double-click within 2s to exit app with toast prompt.
+- **Three-Button Navigation Bar Lift & Insets**:
+  - `src/App.tsx`: `#dynamic-bottom-nav` dynamic bottom offset `bottom-[calc(8px+max(var(--safe-area-bottom,0px),env(safe-area-inset-bottom,0px)))]`.
+  - `src/components/VinylMusicPlayer.tsx`: Bottom capsule offset `bottom-[calc(4.5rem+max(var(--safe-area-bottom,0px),env(safe-area-inset-bottom,0px)))]`.
+  - `src/components/AdminPortal.tsx`: Bottom bar offset adaptation.
 
 ---
 
-## 4. Technical Architecture & Data Strategy
+## 2. Technical Architecture & Integration Diagram
 
 ```
 ┌────────────────────────────────────────────────────────────────────────┐
-│                   ANDROID WEBVIEW / CAPACITOR FRAME                     │
+│                   ANDROID NATIVE (MainActivity.java)                   │
 ├────────────────────────────────────────────────────────────────────────┤
-│ 1. GPU Compositor Layer Isolation                                       │
-│    ├── .ambient-glow-dither  ──► translateZ(0) + contain: paint       │
-│    ├── .smooth-radial-glow   ──► translate3d(0,0,0) + isolate layer    │
-│    └── .apple-liquid-glass   ──► webkit-backdrop-filter hardware acceleration
+│ 1. Insets Forwarding:                                                  │
+│    WindowInsetsListener ──► injects --safe-area-top & --safe-area-bottom│
+│ 2. Native JSBridge Injection:                                          │
+│    AndroidBridge.saveImageToGallery(base64, filename) ──► Pictures/    │
+│    AndroidBridge.saveZipToDownloads(base64, filename) ──► Downloads/   │
+└───────────────────────────────────┬────────────────────────────────────┘
+                                    │ Web Interface Bridge
+┌───────────────────────────────────▼────────────────────────────────────┐
+│                    REACT FRONTEND (Vite / Capacitor)                   │
+├────────────────────────────────────────────────────────────────────────┤
+│ 1. Hardware Back Interceptor (useAndroidBackHandler.ts)                 │
+│    ├── Level 4: Lightbox / Form Group Pickers / Date Picker           │
+│    ├── Level 3: Admin Portal / Video Player / Card Studio / Checkout   │
+│    │            Notice Scroll / Profile Modal / Prologue / Editors     │
+│    ├── Level 2: Person Detail Dossier                                  │
+│    └── Level 1: Active Tab -> Home Tab -> 2s Double-Tap Exit App      │
 │                                                                        │
-│ 2. Optimized Motion Components                                         │
-│    ├── AuthPortalModal      ──► Animate { opacity, scale, y } (No blur)│
-│    ├── MyProfileModal       ──► Hardware-accelerated modal backdrop    │
-│    └── VintageVideoPlayer   ──► Clean GPU transform transitions        │
-│                                                                        │
-│ 3. Isolated Touch & Sound Layer                                        │
-│    ├── Button Handlers      ──► Isolated state + non-blocking audio  │
-│    └── Input Controls       ──► Touch targets >= 44px + GPU scale    │
+│ 2. Anti-Occlusion Layout Math (src/App.tsx & VinylMusicPlayer.tsx)     │
+│    └── calc(8px + max(var(--safe-area-bottom,0px), env(...)))          │
 └────────────────────────────────────────────────────────────────────────┘
 ```
 
-### Key Refactoring Areas:
-1. `src/index.css`: Add GPU compositor isolation utility rules (`transform-gpu`, `backface-visibility: hidden`, `-webkit-font-smoothing`, hardware-isolated backdrop blur utilities).
-2. `src/components/AuthPortalModal.tsx`:
-   - Replace live `filter: blur(...)` motion animation states with clean GPU `opacity` and `scale` transitions.
-   - Optimize background radial glow layers with `will-change: transform` and layer containment.
-3. `src/components/MyProfileModal.tsx`, `VintageVideoPlayer.tsx`, `CheckoutLicenseModal.tsx`, `OrientalScrollNoticeModal.tsx`:
-   - Purge live `filter: blur(...)` animation properties from motion variants.
-   - Ensure hardware isolation on fixed backdrop overlays.
-4. `src/utils/soundEngine.ts`: Ensure sound effects execute asynchronously without locking the UI main thread on touch events.
+---
+
+## 3. Detailed Execution Plan
+
+### A. Frontend Changes (Automated by AI Engine):
+1. **`src/hooks/useAndroidBackHandler.ts`**:
+   - Add state types and handlers for: `isAdminPortalOpen`, `closeAdminPortal`, `isCheckoutModalOpen`, `closeCheckoutModal`, `isScrollNoticeOpen`, `closeScrollNotice`, `isUpdateModalOpen`, `closeUpdateModal`, `isMyProfileOpen`, `closeMyProfile`, `isCardStudioOpen`, `closeCardStudio`, `isVintageVideoPlayerOpen`, `closeVintageVideoPlayer`, `isPoeticPrologueOpen`, `closePoeticPrologue`, `formGroupPickerTarget`, `closeFormGroupPicker`, `isAuthPortalOpen`, `closeAuthPortal`.
+   - Update `handleBackEvent` priority sequence so that the topmost modal closes cleanly on physical back press.
+2. **`src/App.tsx`**:
+   - Pass all modal states and close handlers into `useAndroidBackHandler`.
+   - Ensure `#dynamic-bottom-nav` uses `max(var(--safe-area-bottom,0px), env(safe-area-inset-bottom,0px))` for robust three-button bar avoidance.
+3. **`src/components/VinylMusicPlayer.tsx`**:
+   - Ensure bottom capsule uses `max(var(--safe-area-bottom,0px), env(safe-area-inset-bottom,0px))`.
+
+### B. Developer Action Roadmap (For User in Android Studio & VS Code):
+- Step-by-step copy-paste checklist for the user covering `npx cap sync android`, `styles.xml`, `AndroidManifest.xml`, and `MainActivity.java` with zero ambiguity.
 
 ---

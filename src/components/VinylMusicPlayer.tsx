@@ -39,6 +39,7 @@ import {
   saveHistory
 } from '../services/musicService';
 import { buildApiUrl } from '../services/apiConfig';
+import { useBackHandler } from '../hooks/useAndroidBackHandler';
 
 const DEFAULT_FALLBACK_COVER = 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=500&auto=format&fit=crop&q=80';
 
@@ -78,6 +79,10 @@ export const VinylMusicPlayer: React.FC<VinylMusicPlayerProps> = ({ onShowToast 
   const [customUrl, setCustomUrl] = useState('');
   const [customTitle, setCustomTitle] = useState('');
   const [showCustomModal, setShowCustomModal] = useState(false);
+
+  // 物理返回键拦截：优先逐层退出自定义歌曲浮层与黑胶唱片大舱
+  useBackHandler('vinyl-music-custom-modal', 88, showCustomModal, () => setShowCustomModal(false));
+  useBackHandler('vinyl-music-player-modal', 82, isOpen, () => setIsOpen(false));
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -415,7 +420,7 @@ export const VinylMusicPlayer: React.FC<VinylMusicPlayerProps> = ({ onShowToast 
       />
 
       {/* ================= 页面右下角优雅悬浮黑胶胶囊 (The Ambient Vinyl Capsule) ================= */}
-      <div className="fixed bottom-[calc(4.5rem+env(safe-area-inset-bottom,0px))] right-3.5 sm:bottom-5 sm:right-5 z-40 flex items-center">
+      <div className="fixed bottom-[calc(4.5rem+max(var(--safe-area-bottom,0px),env(safe-area-inset-bottom,0px)))] right-3.5 sm:bottom-5 sm:right-5 z-40 flex items-center">
         <motion.div
           initial={{ scale: 0.8, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}

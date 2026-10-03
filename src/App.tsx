@@ -530,6 +530,11 @@ export default function App() {
   }, [currentDomesticUser, licenseRefreshKey]);
 
   const checkForNoticesAndUpdates = useCallback(async () => {
+    // 门禁保护：未登录或正在登录认证中，坚决不弹出任何系统广播或版本公告
+    const user = getLocalDomesticUser();
+    if (!user) {
+      return;
+    }
     try {
       const [notices, latestVer] = await Promise.all([
         getPublishedNotices().catch(() => []),
@@ -564,14 +569,16 @@ export default function App() {
     }
   }, []);
 
-  // Initialize Firebase connection and check for cloud updates & notices after startup animation (1.2s)
+  // Initialize Firebase connection and check for cloud updates & notices after user login (1.5s)
   useEffect(() => {
     testConnection().catch(() => {});
-    const timer = setTimeout(() => {
-      checkForNoticesAndUpdates();
-    }, 1200);
-    return () => clearTimeout(timer);
-  }, [checkForNoticesAndUpdates]);
+    if (currentDomesticUser && !isAuthPortalOpen && !showSplash) {
+      const timer = setTimeout(() => {
+        checkForNoticesAndUpdates();
+      }, 1500);
+      return () => clearTimeout(timer);
+    }
+  }, [checkForNoticesAndUpdates, currentDomesticUser, isAuthPortalOpen, showSplash]);
 
   // Sync admin status when domestic user changes
   useEffect(() => {
@@ -1093,6 +1100,34 @@ export default function App() {
 
     isYearPickerOpen,
     closeYearPicker: () => setIsYearPickerOpen(false),
+
+    // 新增二级卡片与全屏模态窗物理返回拦截支持
+    isAdminPortalOpen,
+    closeAdminPortal: () => setIsAdminPortalOpen(false),
+
+    isCheckoutModalOpen,
+    closeCheckoutModal: () => setIsCheckoutModalOpen(false),
+
+    isScrollNoticeOpen,
+    closeScrollNotice: () => setIsScrollNoticeOpen(false),
+
+    isUpdateModalOpen,
+    closeUpdateModal: () => setIsUpdateModalOpen(false),
+
+    isMyProfileOpen: isMyProfileModalOpen,
+    closeMyProfile: () => setIsMyProfileModalOpen(false),
+
+    isPoeticPrologueOpen: isPrologueOpen || isFirstLoginPrologue,
+    closePoeticPrologue: () => {
+      setIsPrologueOpen(false);
+      setIsFirstLoginPrologue(false);
+    },
+
+    formGroupPickerTarget,
+    closeFormGroupPicker: () => setFormGroupPickerTarget(null),
+
+    isAuthPortalOpen: currentDomesticUser ? isAuthPortalOpen : false,
+    closeAuthPortal: () => setIsAuthPortalOpen(false),
 
     activeTab,
     setActiveTab,
@@ -1865,7 +1900,9 @@ export default function App() {
         </div>
 
         {/* Apple Dynamic Unified Floating Aura Island Top Navigation */}
-        <div className="absolute top-[max(var(--safe-area-top,16px),env(safe-area-inset-top,16px),1rem)] left-3.5 right-3.5 sm:left-4 sm:right-4 z-30 pointer-events-none select-none flex items-center justify-center">
+        {currentDomesticUser && (
+          <>
+            <div className="absolute top-[max(var(--safe-area-top,16px),env(safe-area-inset-top,16px),1rem)] left-3.5 right-3.5 sm:left-4 sm:right-4 z-30 pointer-events-none select-none flex items-center justify-center">
           <motion.div
             initial={{ y: -10, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
@@ -6286,7 +6323,7 @@ export default function App() {
         )}
 
         {/* Apple Dynamic Liquid Glass Floating Capsule Dock - 自适应安卓三键导航栏与全面屏安全区黄金贴合 (8px-10px) */}
-        <div className="absolute bottom-[calc(8px+env(safe-area-inset-bottom,0px))] sm:bottom-3.5 left-3 right-3 sm:left-4 sm:right-4 z-30 pointer-events-none select-none">
+        <div className="absolute bottom-[calc(8px+max(var(--safe-area-bottom,0px),env(safe-area-inset-bottom,0px)))] sm:bottom-3.5 left-3 right-3 sm:left-4 sm:right-4 z-30 pointer-events-none select-none">
           <nav 
             id="dynamic-bottom-nav" 
             className="apple-liquid-glass pointer-events-auto relative rounded-full px-2 py-1.5 flex justify-around items-center shadow-lg"
@@ -6400,6 +6437,8 @@ export default function App() {
             />
           )}
         </AnimatePresence>
+          </>
+        )}
 
         {/* iOS Styled Splash Screen Entrance Animation */}
         <AnimatePresence>

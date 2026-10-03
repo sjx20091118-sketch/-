@@ -350,10 +350,10 @@ export const AuthPortalModal: React.FC<AuthPortalModalProps> = ({
           {/* 切换选项卡：登录与注册 */}
           <div className="flex justify-center">
             <div
-              className="p-1 rounded-full border flex items-center gap-1 apple-liquid-glass"
+              className="p-1 rounded-full border flex items-center gap-1 apple-liquid-glass shadow-xs"
               style={{
-                borderColor: isDarkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)',
-                backgroundColor: isDarkMode ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)'
+                borderColor: isDarkMode ? 'rgba(255,255,255,0.14)' : 'rgba(0,0,0,0.08)',
+                backgroundColor: isDarkMode ? 'rgba(22, 30, 26, 0.72)' : 'rgba(255, 255, 255, 0.78)'
               }}
             >
               <button

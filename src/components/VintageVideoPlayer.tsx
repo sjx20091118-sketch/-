@@ -6,6 +6,7 @@ import { formatVideoDuration } from '../utils/mediaStorage';
 import { resolveMediaUrl, isIndexedDbMedia } from '../services/indexedDbMedia';
 import { WaterInkVideoScrubber } from './WaterInkVideoScrubber';
 import { sound } from '../utils/soundEngine';
+import { useBackHandler } from '../hooks/useAndroidBackHandler';
 
 interface VintageVideoPlayerProps {
   src: string;
@@ -215,6 +216,9 @@ export const VintageVideoPlayer: React.FC<VintageVideoPlayerProps> = ({
       setIsFullscreenModalOpen(false);
     }, 720);
   };
+
+  // 物理返回键优雅退出视频全屏放映
+  useBackHandler('vintage-video-fullscreen', 90, isFullscreenModalOpen, closeFullscreen);
 
   // Canvas fluid wave exit background animation
   useEffect(() => {
