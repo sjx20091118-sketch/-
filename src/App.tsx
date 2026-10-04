@@ -6198,6 +6198,8 @@ export default function App() {
 
         {/* 常驻灵动黑胶唱机（全网任意搜歌播放 + 复古复调大唱盘） */}
         <VinylMusicPlayer
+          theme={currentTheme}
+          isDarkMode={isDarkMode}
           onShowToast={(msg) => showToast(msg)}
         />
 

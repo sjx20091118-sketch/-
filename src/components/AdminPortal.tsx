@@ -856,17 +856,33 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
             : { opacity: 1, scale: 1 }
         }
         transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
-        className={`fixed inset-0 z-[10000] flex flex-col overflow-hidden select-text gpu-layer-isolate ${isDarkMode ? 'dark-zen-theme dark' : ''}`}
+        className={`fixed inset-0 z-[10000] flex flex-col overflow-hidden select-text paper-texture ${isDarkMode ? 'dark-zen-theme dark' : ''}`}
         style={{
-          backgroundColor: isDarkMode ? '#101412' : '#FAF8F5',
-          color: isDarkMode ? '#FAF8F5' : '#223028'
+          backgroundColor: currentTheme.canvas,
+          color: isDarkMode ? '#FAF8F5' : '#223028',
+          willChange: 'transform, opacity',
+          transform: 'translateZ(0)'
         }}
       >
-        {/* 背景 Canvas：用于支持令用户惊艳的流体水墨海浪消融退出动画 */}
-        <canvas
-          ref={canvasRef}
-          className="absolute inset-0 w-full h-full pointer-events-none z-0"
-        />
+        {/* 100% 复刻主页东方雅致环境光晕：纯 CSS GPU 硬件合成层加速，零 JS 开销，极限流畅 */}
+        <div className="absolute inset-0 pointer-events-none overflow-hidden z-0">
+          <div
+            className={`absolute -top-28 -left-28 w-[28rem] h-[28rem] rounded-full smooth-radial-glow transition-all duration-700 ${
+              isDarkMode ? 'opacity-25' : 'opacity-30'
+            }`}
+            style={{
+              background: `radial-gradient(circle at 50% 50%, ${currentTheme.primary} 0%, ${currentTheme.primary}80 30%, ${currentTheme.primary}20 65%, transparent 100%)`
+            }}
+          />
+          <div
+            className={`absolute -bottom-28 -right-28 w-[28rem] h-[28rem] rounded-full smooth-radial-glow transition-all duration-700 ${
+              isDarkMode ? 'opacity-20' : 'opacity-25'
+            }`}
+            style={{
+              background: `radial-gradient(circle at 50% 50%, ${currentTheme.accent || currentTheme.primary} 0%, ${currentTheme.accent || currentTheme.primary}80 30%, ${currentTheme.accent || currentTheme.primary}20 65%, transparent 100%)`
+            }}
+          />
+        </div>
 
         {/* ================= 1. 深度对齐主界面：顶部悬浮导航动态岛胶囊 ================= */}
         <div className="absolute top-[max(var(--safe-area-top,16px),env(safe-area-inset-top,16px),1rem)] left-3.5 right-3.5 sm:left-4 sm:right-4 z-30 pointer-events-none select-none flex items-center justify-center">
@@ -1704,7 +1720,6 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                               <div className="min-w-0">
                                 <div className="text-xs font-serif font-bold flex items-center gap-2 truncate">
                                   <span>{u.displayName || '未命名'}</span>
-                                  <span className="text-[9px] font-mono opacity-40 font-normal">#{u.userNumber}</span>
                                   
                                   {/* 买断状态胶囊徽章 */}
                                   {isBuyout ? (

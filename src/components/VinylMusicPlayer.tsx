@@ -41,17 +41,25 @@ import {
 import { buildApiUrl } from '../services/apiConfig';
 import { useBackHandler } from '../hooks/useAndroidBackHandler';
 
+import { HealingTheme } from '../types';
+
 const DEFAULT_FALLBACK_COVER = 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=500&auto=format&fit=crop&q=80';
 
 export const CURATED_TIME_SONGS: SongItem[] = CURATED_DUAL_ENGINE_SONGS;
 
 interface VinylMusicPlayerProps {
   onShowToast?: (msg: string) => void;
+  theme?: HealingTheme;
+  isDarkMode?: boolean;
 }
 
 type PlaylistSubTab = 'queue' | 'favorites' | 'history';
 
-export const VinylMusicPlayer: React.FC<VinylMusicPlayerProps> = ({ onShowToast }) => {
+export const VinylMusicPlayer: React.FC<VinylMusicPlayerProps> = ({ onShowToast, theme, isDarkMode = false }) => {
+  const primaryColor = theme?.primary || '#5B7B6D';
+  const primaryDark = theme?.primaryDark || '#3E564B';
+  const accentColor = theme?.accent || '#E88765';
+
   const [isOpen, setIsOpen] = useState(false);
   const [viewMode, setViewMode] = useState<'player' | 'search' | 'playlist'>('player');
   const [playlistSubTab, setPlaylistSubTab] = useState<PlaylistSubTab | null>(null);
@@ -71,6 +79,12 @@ export const VinylMusicPlayer: React.FC<VinylMusicPlayerProps> = ({ onShowToast 
   const [volume, setVolume] = useState(0.75);
   const [isMuted, setIsMuted] = useState(false);
   const [loopMode, setLoopMode] = useState<'all' | 'one' | 'shuffle'>('all');
+
+  // Smooth Scrubber Drag State
+  const [isSeeking, setIsSeeking] = useState(false);
+  const [seekTime, setSeekTime] = useState(0);
+  const isSeekingRef = useRef(false);
+  const progressBarRef = useRef<HTMLDivElement | null>(null);
 
   // Search state
   const [searchQuery, setSearchQuery] = useState('');
@@ -127,7 +141,11 @@ export const VinylMusicPlayer: React.FC<VinylMusicPlayerProps> = ({ onShowToast 
     audio.preload = 'auto';
     audioRef.current = audio;
 
-    const handleTimeUpdate = () => setCurrentTime(audio.currentTime);
+    const handleTimeUpdate = () => {
+      if (!isSeekingRef.current && audio) {
+        setCurrentTime(audio.currentTime);
+      }
+    };
     const handleLoadedMetadata = () => setDuration(audio.duration || 0);
     const handleEnded = () => handleNext();
     const handlePlay = () => setIsPlaying(true);
@@ -255,11 +273,70 @@ export const VinylMusicPlayer: React.FC<VinylMusicPlayerProps> = ({ onShowToast 
     playTrack(playlist[prevIndex], true);
   };
 
-  const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleSeekStart = (val?: number) => {
+    isSeekingRef.current = true;
+    setIsSeeking(true);
+    if (typeof val === 'number') {
+      setSeekTime(val);
+    } else {
+      setSeekTime(currentTime);
+    }
+  };
+
+  const handleSeekChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = parseFloat(e.target.value);
-    setCurrentTime(val);
-    if (audioRef.current) {
-      audioRef.current.currentTime = val;
+    setSeekTime(val);
+  };
+
+  const handleSeekCommit = (targetVal?: number) => {
+    const finalVal = typeof targetVal === 'number' ? targetVal : seekTime;
+    if (audioRef.current && Number.isFinite(finalVal)) {
+      audioRef.current.currentTime = Math.max(0, Math.min(duration || 0, finalVal));
+    }
+    setCurrentTime(finalVal);
+    isSeekingRef.current = false;
+    setIsSeeking(false);
+  };
+
+  const handleProgressPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!progressBarRef.current || duration <= 0) return;
+    const rect = progressBarRef.current.getBoundingClientRect();
+    const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+    const targetVal = ratio * duration;
+    
+    isSeekingRef.current = true;
+    setIsSeeking(true);
+    setSeekTime(targetVal);
+
+    try {
+      (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    } catch {
+      // fallback
+    }
+  };
+
+  const handleProgressPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!isSeekingRef.current || !progressBarRef.current || duration <= 0) return;
+    const rect = progressBarRef.current.getBoundingClientRect();
+    const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+    const targetVal = ratio * duration;
+    setSeekTime(targetVal);
+  };
+
+  const handleProgressPointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!isSeekingRef.current) return;
+    if (progressBarRef.current && duration > 0) {
+      const rect = progressBarRef.current.getBoundingClientRect();
+      const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+      const targetVal = ratio * duration;
+      handleSeekCommit(targetVal);
+    } else {
+      handleSeekCommit();
+    }
+    try {
+      (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+    } catch {
+      // ignore
     }
   };
 
@@ -655,21 +732,88 @@ export const VinylMusicPlayer: React.FC<VinylMusicPlayerProps> = ({ onShowToast 
                       </p>
                     </div>
 
-                    {/* 进度控制滑块 */}
-                    <div className="w-full max-w-sm space-y-1 px-2 my-1">
-                      <input
-                        type="range"
-                        min={0}
-                        max={duration || 100}
-                        value={currentTime}
-                        onChange={handleSeek}
-                        className="w-full h-1.5 bg-[#5B7B6D]/20 rounded-lg appearance-none cursor-pointer accent-[#5B7B6D]"
-                      />
-                      <div className="flex justify-between text-[10px] sm:text-[11px] text-[#6E7C75] font-mono tabular-nums">
-                        <span>{formatTime(currentTime)}</span>
-                        <span>{formatTime(duration)}</span>
-                      </div>
-                    </div>
+                    {/* 深度适配主题调色板的水墨朱砂双层微光滑块 */}
+                    {(() => {
+                      const displayTime = isSeeking ? seekTime : currentTime;
+                      const progressRatio = duration > 0 ? Math.max(0, Math.min(100, (displayTime / duration) * 100)) : 0;
+                      return (
+                        <div className="w-full max-w-sm space-y-1 px-2 my-1 select-none">
+                          <div
+                            ref={progressBarRef}
+                            onPointerDown={handleProgressPointerDown}
+                            onPointerMove={handleProgressPointerMove}
+                            onPointerUp={handleProgressPointerUp}
+                            onPointerCancel={handleProgressPointerUp}
+                            className="relative w-full flex items-center group py-2 cursor-pointer touch-none"
+                          >
+                            {/* 底层进度条背景轨道 */}
+                            <div
+                              className="w-full h-1.5 rounded-full overflow-hidden transition-colors relative"
+                              style={{
+                                backgroundColor: isDarkMode ? 'rgba(255,255,255,0.12)' : `${primaryColor}24`
+                              }}
+                            >
+                              {/* 渐变已播放高亮条 */}
+                              <div
+                                className={`h-full rounded-full ${isSeeking ? '' : 'transition-[width] duration-75'}`}
+                                style={{
+                                  width: `${progressRatio}%`,
+                                  background: `linear-gradient(to right, ${primaryColor}, ${accentColor})`
+                                }}
+                              />
+                            </div>
+
+                            {/* 真实原生滑块（双重兼容保证） */}
+                            <input
+                              type="range"
+                              min={0}
+                              max={duration || 100}
+                              step={0.1}
+                              value={displayTime}
+                              onMouseDown={() => handleSeekStart(displayTime)}
+                              onTouchStart={() => handleSeekStart(displayTime)}
+                              onChange={handleSeekChange}
+                              onMouseUp={(e) => handleSeekCommit(parseFloat((e.target as HTMLInputElement).value))}
+                              onTouchEnd={(e) => handleSeekCommit(parseFloat((e.target as HTMLInputElement).value))}
+                              className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-20 pointer-events-none"
+                              style={{ touchAction: 'none' }}
+                            />
+
+                            {/* 东方水墨朱砂双层微光小圆标 (Slider Thumb Knob) */}
+                            <div
+                              className={`absolute pointer-events-none transition-transform duration-75 ease-out ${
+                                isSeeking ? 'scale-135' : 'group-hover:scale-125 group-active:scale-135'
+                              }`}
+                              style={{
+                                left: `calc(${progressRatio}% - 7px)`,
+                                top: '50%',
+                                transform: 'translateY(-50%)'
+                              }}
+                            >
+                              {/* 外层主题微光光晕 */}
+                              <div
+                                className="w-3.5 h-3.5 rounded-full flex items-center justify-center shadow-[0_2px_8px_rgba(0,0,0,0.3)] border border-white/90 dark:border-white/70"
+                                style={{
+                                  backgroundColor: primaryColor,
+                                  boxShadow: `0 0 10px ${accentColor}88, 0 2px 6px rgba(0,0,0,0.25)`
+                                }}
+                              >
+                                {/* 内层朱砂/暖色微光核心 */}
+                                <div
+                                  className="w-1.5 h-1.5 rounded-full"
+                                  style={{ backgroundColor: isDarkMode ? '#FAF8F5' : '#FFFFFF' }}
+                                />
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="flex justify-between text-[10px] sm:text-[11px] font-mono tabular-nums opacity-75">
+                            <span style={{ color: isDarkMode ? '#C2CDC7' : '#526058' }}>{formatTime(displayTime)}</span>
+                            <span style={{ color: isDarkMode ? '#C2CDC7' : '#526058' }}>{formatTime(duration)}</span>
+                          </div>
+                        </div>
+                      );
+                    })()}
 
                     {/* 播放控制按钮群 (垂直居中舒展，向上提拉保持安全留白，消除空出一大片) */}
                     <div className="flex items-center justify-center gap-5 sm:gap-7 pb-2 sm:pb-3">

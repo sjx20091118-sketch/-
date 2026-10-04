@@ -213,6 +213,35 @@ export async function registerDomesticUser(
     }
   }
 
+  // 检查本地与服务端是否有重复账号
+  try {
+    const rawAll = localStorage.getItem('shinian_all_users_cache');
+    if (rawAll) {
+      const list: DomesticUser[] = JSON.parse(rawAll);
+      const duplicate = list.find(u => (u.account || '').toLowerCase() === cleanAccount);
+      if (duplicate) {
+        throw new Error(`账号「${cleanAccount}」已被注册，请直接登录或更换账号`);
+      }
+    }
+  } catch (err: any) {
+    if (err.message && err.message.includes('已被注册')) throw err;
+  }
+
+  try {
+    const res = await fetch(buildApiUrl('/api/admin/users'));
+    if (res.ok) {
+      const resJson = await res.json();
+      if (Array.isArray(resJson.users)) {
+        const duplicate = resJson.users.find((u: any) => (u.account || '').toLowerCase() === cleanAccount);
+        if (duplicate) {
+          throw new Error(`账号「${cleanAccount}」已被注册，请直接登录或更换账号`);
+        }
+      }
+    }
+  } catch (err: any) {
+    if (err.message && err.message.includes('已被注册')) throw err;
+  }
+
   // Get and increment sequential user number atomically
   let assignedNumberStr = '00002';
   if (isAuthor) {
@@ -544,11 +573,31 @@ export async function deleteDomesticUserBackup(backupId: string): Promise<void> 
   }
 }
 
+function createTimeoutSignal(ms = 4000): AbortSignal | undefined {
+  if (typeof AbortSignal !== 'undefined' && typeof (AbortSignal as any).timeout === 'function') {
+    try {
+      return (AbortSignal as any).timeout(ms);
+    } catch {}
+  }
+  if (typeof AbortController !== 'undefined') {
+    try {
+      const controller = new AbortController();
+      setTimeout(() => {
+        try {
+          controller.abort();
+        } catch {}
+      }, ms);
+      return controller.signal;
+    } catch {}
+  }
+  return undefined;
+}
+
 // App Version Management (Domestic Direct Gateway + Firestore Sync)
 export async function getLatestAppVersion(): Promise<CloudAppVersion | null> {
   // 1. 优先通过国内直连 API 网关获取（国内免翻墙秒级直达）
   try {
-    const res = await fetch(buildApiUrl('/api/versions/latest'), { signal: AbortSignal.timeout(4000) });
+    const res = await fetch(buildApiUrl('/api/versions/latest'), { signal: createTimeoutSignal(4000) });
     if (res.ok) {
       const data = await res.json();
       if (data.version) {
@@ -577,7 +626,7 @@ export async function listAllAppVersions(): Promise<CloudAppVersion[]> {
 
   // 1. 从国内直连 API 网关读取
   try {
-    const res = await fetch(buildApiUrl('/api/versions'), { signal: AbortSignal.timeout(4000) });
+    const res = await fetch(buildApiUrl('/api/versions'), { signal: createTimeoutSignal(4000) });
     if (res.ok) {
       const data = await res.json();
       if (Array.isArray(data.versions)) {
@@ -689,7 +738,7 @@ export async function getPublishedNotices(): Promise<CloudSystemNotice[]> {
 
   // 1. 优先通过国内直连 API 网关拉取公告（国内免翻墙直达）
   try {
-    const res = await fetch(buildApiUrl('/api/notices'), { signal: AbortSignal.timeout(4000) });
+    const res = await fetch(buildApiUrl('/api/notices'), { signal: createTimeoutSignal(4000) });
     if (res.ok) {
       const data = await res.json();
       if (Array.isArray(data.notices)) {
@@ -735,7 +784,7 @@ export async function listAllSystemNotices(): Promise<CloudSystemNotice[]> {
 
   // 1. 从国内直连 API 网关拉取全部公告
   try {
-    const res = await fetch(buildApiUrl('/api/notices'), { signal: AbortSignal.timeout(4000) });
+    const res = await fetch(buildApiUrl('/api/notices'), { signal: createTimeoutSignal(4000) });
     if (res.ok) {
       const data = await res.json();
       if (Array.isArray(data.notices)) {

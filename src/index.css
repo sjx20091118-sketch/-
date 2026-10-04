@@ -851,4 +851,83 @@ body.capacitor-native .backdrop-blur-3xl {
   }
 }
 
+/* 7. Oriental Custom Text Selection & Android Native Action Bar Interception */
+::selection {
+  background-color: rgba(var(--primary-rgb, 91, 123, 109), 0.28) !important;
+  color: inherit !important;
+}
+
+::-moz-selection {
+  background-color: rgba(var(--primary-rgb, 91, 123, 109), 0.28) !important;
+  color: inherit !important;
+}
+
+/* Intercept Android WebView native copy bubble and prevent default blue selection handle leaks */
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* 8. Full-Software Pure GPU Composite Layer & List Virtualization Engine
+   - 60fps/120fps Full-Frame Smoothness
+   - Content-Visibility Automatic Virtualization
+   - Zero Layout Thrashing & GPU Tile Optimization */
+
+/* Smooth Inertia Scrolling & Touch Bounds */
+.custom-scrollbar,
+.custom-scroll,
+.overflow-y-auto,
+.overflow-x-auto,
+main,
+[class*="overflow-y-auto"],
+[class*="overflow-x-auto"] {
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
+  scroll-behavior: smooth;
+  transform: translateZ(0);
+  -webkit-transform: translateZ(0);
+}
+
+/* Automatic Virtual Rendering for Long Lists (Timeline, People, Memories, Admin Tables) */
+.timeline-item,
+.timeline-card,
+.memory-item,
+.person-card-item,
+.user-list-item,
+.license-code-row,
+.story-item,
+.notice-row {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 120px;
+  contain: content;
+  transform: translate3d(0, 0, 0);
+  -webkit-transform: translate3d(0, 0, 0);
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+
+/* Hardware Accelerated Image Rendering with Contrast Optimization */
+img,
+canvas,
+svg {
+  image-rendering: -webkit-optimize-contrast;
+  transform: translateZ(0);
+  -webkit-transform: translateZ(0);
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+
+/* Vinyl Player & Ambient Animated Widgets GPU Isolation */
+.vinyl-record-disc,
+.animate-spin-slow,
+.music-playing-indicator,
+.smooth-radial-glow,
+.ambient-glow-dither {
+  transform: translate3d(0, 0, 0);
+  -webkit-transform: translate3d(0, 0, 0);
+  will-change: transform, opacity;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+
+
 
