@@ -54,6 +54,7 @@ import {
   saveSmtpConfig,
   testSmtpConnection,
   SmtpConfig,
+  SmtpDiagnosticResult,
   listAllLicenseCodes,
   generateBatchLicenseCodes,
   deleteLicenseCode,
@@ -217,20 +218,24 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
   const [isSavingSmtp, setIsSavingSmtp] = useState(false);
   const [testEmailAddress, setTestEmailAddress] = useState('');
   const [isSendingTestEmail, setIsSendingTestEmail] = useState(false);
-  const [smtpDiagnosticResult, setSmtpDiagnosticResult] = useState<{
-    success: boolean;
-    message: string;
-    diagnostic?: string;
-    elapsed?: number;
-  } | null>(null);
+  const [smtpDiagnosticResult, setSmtpDiagnosticResult] = useState<SmtpDiagnosticResult | null>(null);
 
   const handleSaveSmtp = (e: React.FormEvent) => {
     e.preventDefault();
     setIsSavingSmtp(true);
     sound.playWaterDrop(880);
+    const cleanHost = (smtpConfig.host || '').replace(/[\s\u200B-\u200D\uFEFF\u00A0\u3000\r\n\t]+/g, '');
+    let cleanUser = (smtpConfig.user || '').replace(/[\s\u200B-\u200D\uFEFF\u00A0\u3000\r\n\t]+/g, '');
+    if (/^\d+$/.test(cleanUser)) {
+      cleanUser = `${cleanUser}@qq.com`;
+    }
+    const cleanPass = (smtpConfig.pass || '').replace(/[\s\u200B-\u200D\uFEFF\u00A0\u3000\r\n\t]+/g, '');
     const updated: SmtpConfig = {
       ...smtpConfig,
-      isConfigured: !!(smtpConfig.host && smtpConfig.user && smtpConfig.pass)
+      host: cleanHost,
+      user: cleanUser,
+      pass: cleanPass,
+      isConfigured: !!(cleanHost && cleanUser && cleanPass)
     };
     saveSmtpConfig(updated);
     setSmtpConfig(updated);
@@ -240,11 +245,18 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
   };
 
   const handleSendTestEmail = async () => {
-    if (!smtpConfig.host.trim() || !smtpConfig.user.trim() || !smtpConfig.pass.trim()) {
+    const cleanHost = (smtpConfig.host || '').replace(/[\s\u200B-\u200D\uFEFF\u00A0\u3000\r\n\t]+/g, '');
+    let cleanUser = (smtpConfig.user || '').replace(/[\s\u200B-\u200D\uFEFF\u00A0\u3000\r\n\t]+/g, '');
+    if (/^\d+$/.test(cleanUser)) {
+      cleanUser = `${cleanUser}@qq.com`;
+    }
+    const cleanPass = (smtpConfig.pass || '').replace(/[\s\u200B-\u200D\uFEFF\u00A0\u3000\r\n\t]+/g, '');
+
+    if (!cleanHost || !cleanUser || !cleanPass) {
       showToast('请先完整填写 SMTP 主机地址、发信账号与授权码');
       return;
     }
-    const target = testEmailAddress.trim() || smtpConfig.user.trim();
+    const target = testEmailAddress.replace(/[\s\u200B-\u200D\uFEFF\u00A0\u3000\r\n\t]+/g, '') || cleanUser;
     if (!target || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(target)) {
       showToast('请输入有效的测试接收邮箱');
       return;
@@ -254,19 +266,28 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
     sound.playWaterDrop(920);
 
     try {
-      const res = await testSmtpConnection(smtpConfig, target);
-      sound.playZenBell();
-      setSmtpDiagnosticResult({
-        success: true,
-        message: res.message,
-        elapsed: res.elapsed
-      });
-      showToast(res.message);
+      const res = await testSmtpConnection(
+        {
+          ...smtpConfig,
+          host: cleanHost,
+          user: cleanUser,
+          pass: cleanPass
+        },
+        target
+      );
+      setSmtpDiagnosticResult(res);
+      if (res.success) {
+        sound.playZenBell();
+        showToast(res.message);
+      } else {
+        sound.playHapticClick(600);
+        showToast('SMTP 发信测试未通过，请查看下方诊断排查提示');
+      }
     } catch (err: any) {
       sound.playHapticClick(600);
       setSmtpDiagnosticResult({
         success: false,
-        message: err.message || 'SMTP 测试发信失败',
+        message: err.message || 'SMTP 测试发信异常',
         diagnostic: err.message
       });
       showToast('SMTP 发信测试未通过，请查看下方诊断排查提示');
@@ -1103,18 +1124,82 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                   {/* 实时诊断反馈控制台 */}
                   {smtpDiagnosticResult && (
                     <div
-                      className={`p-3.5 rounded-2xl border text-xs font-serif leading-relaxed ${
+                      className={`p-4 rounded-2xl border text-xs font-serif leading-relaxed transition-all shadow-xs ${
                         smtpDiagnosticResult.success
-                          ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
-                          : 'border-red-500/30 bg-red-500/10 text-red-700 dark:text-red-300'
+                          ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-800 dark:text-emerald-200'
+                          : smtpDiagnosticResult.category === 'AUTH_FAILED'
+                          ? 'border-rose-500/30 bg-rose-500/10 text-rose-800 dark:text-rose-200'
+                          : smtpDiagnosticResult.category === 'SENDER_MISMATCH'
+                          ? 'border-amber-500/30 bg-amber-500/10 text-amber-800 dark:text-amber-200'
+                          : 'border-red-500/30 bg-red-500/10 text-red-800 dark:text-red-200'
                       }`}
                     >
-                      <div className="font-bold flex items-center gap-1.5 mb-1">
-                        {smtpDiagnosticResult.success ? '✓ 发信诊断：联调测试通过' : '✕ 发信诊断：网络握手或授权异常'}
+                      {/* 标题栏与耗时标签 */}
+                      <div className="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-black/5 dark:border-white/10 mb-2.5">
+                        <div className="font-bold flex items-center gap-1.5 text-[13px]">
+                          <span>
+                            {smtpDiagnosticResult.success
+                              ? '✓ 发信诊断：联调测试通过'
+                              : smtpDiagnosticResult.categoryTitle || '✕ 发信诊断：网络握手或授权异常'}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-1.5 text-[11px] font-mono opacity-80">
+                          {smtpDiagnosticResult.elapsed && (
+                            <span className="px-2 py-0.5 rounded-md bg-black/5 dark:bg-white/10">
+                              耗时 {smtpDiagnosticResult.elapsed}ms
+                            </span>
+                          )}
+                          <span className="px-2 py-0.5 rounded-md bg-black/5 dark:bg-white/10">
+                            端口 {smtpConfig.port}
+                          </span>
+                        </div>
                       </div>
-                      <div className="whitespace-pre-wrap opacity-90">
-                        {smtpDiagnosticResult.diagnostic || smtpDiagnosticResult.message}
-                      </div>
+
+                      {/* 成功信息 */}
+                      {smtpDiagnosticResult.success && (
+                        <div className="space-y-1.5 opacity-90">
+                          <p>{smtpDiagnosticResult.message}</p>
+                          {smtpDiagnosticResult.previewCode && (
+                            <p className="font-mono text-[11px]">
+                              测试验证码：<strong>{smtpDiagnosticResult.previewCode}</strong>
+                            </p>
+                          )}
+                        </div>
+                      )}
+
+                      {/* 失败时的排查指引与向导步骤 */}
+                      {!smtpDiagnosticResult.success && (
+                        <div className="space-y-2">
+                          <p className="font-semibold">{smtpDiagnosticResult.message}</p>
+
+                          {smtpDiagnosticResult.guideSteps && smtpDiagnosticResult.guideSteps.length > 0 && (
+                            <div className="space-y-1.5 pt-1">
+                              <div className="font-bold text-[11px] opacity-75">排查向导：</div>
+                              {smtpDiagnosticResult.guideSteps.map((step, idx) => (
+                                <div
+                                  key={idx}
+                                  className="flex items-start gap-2 p-2 rounded-xl bg-white/40 dark:bg-black/20 text-[11px] leading-relaxed"
+                                >
+                                  <span className="w-4 h-4 rounded-full flex items-center justify-center shrink-0 bg-black/10 dark:bg-white/10 font-bold font-mono text-[10px]">
+                                    {idx + 1}
+                                  </span>
+                                  <span>{step}</span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+
+                          {/* 服务端原始底层返回明细 */}
+                          {smtpDiagnosticResult.rawResponse && (
+                            <div className="pt-1.5">
+                              <div className="text-[10px] opacity-60 font-mono mb-0.5">服务端底层原始响应：</div>
+                              <div className="p-2 rounded-lg bg-black/5 dark:bg-black/40 font-mono text-[10px] break-all select-all opacity-80">
+                                {smtpDiagnosticResult.rawResponse}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
                   )}
 

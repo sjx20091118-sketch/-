@@ -919,36 +919,72 @@ export function getSmtpConfig(): SmtpConfig {
 }
 
 export function saveSmtpConfig(config: SmtpConfig): void {
-  localStorage.setItem(SMTP_CONFIG_KEY, JSON.stringify(config));
+  const cleanConfig: SmtpConfig = {
+    ...config,
+    host: String(config.host || '').replace(/[\s\u200B-\u200D\uFEFF\u00A0\u3000\r\n\t]+/g, ''),
+    user: String(config.user || '').replace(/[\s\u200B-\u200D\uFEFF\u00A0\u3000\r\n\t]+/g, ''),
+    pass: String(config.pass || '').replace(/[\s\u200B-\u200D\uFEFF\u00A0\u3000\r\n\t]+/g, ''),
+    isConfigured: !!(config.host && config.user && config.pass)
+  };
+  localStorage.setItem(SMTP_CONFIG_KEY, JSON.stringify(cleanConfig));
   // 同步通知服务端持久化保存
   fetch(buildApiUrl('/api/admin/save-smtp'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(config)
+    body: JSON.stringify(cleanConfig)
   }).catch(() => {});
+}
+
+export interface SmtpDiagnosticResult {
+  success: boolean;
+  message: string;
+  category?: 'AUTH_FAILED' | 'SENDER_MISMATCH' | 'NETWORK_TIMEOUT' | 'SSL_ERROR' | 'GENERIC_ERROR';
+  categoryTitle?: string;
+  responseCode?: number | null;
+  rawResponse?: string;
+  guideSteps?: string[];
+  diagnostic?: string;
+  messageId?: string;
+  previewCode?: string;
+  elapsed?: number;
 }
 
 export async function testSmtpConnection(
   config: SmtpConfig,
   toEmail?: string
-): Promise<{ success: boolean; message: string; messageId?: string; previewCode?: string; diagnostic?: string; elapsed?: number }> {
+): Promise<SmtpDiagnosticResult> {
+  const cleanHost = String(config.host || '').replace(/[\s\u200B-\u200D\uFEFF\u00A0\u3000\r\n\t]+/g, '');
+  let cleanUser = String(config.user || '').replace(/[\s\u200B-\u200D\uFEFF\u00A0\u3000\r\n\t]+/g, '');
+  if (/^\d+$/.test(cleanUser)) {
+    cleanUser = `${cleanUser}@qq.com`;
+  }
+  const cleanPass = String(config.pass || '').replace(/[\s\u200B-\u200D\uFEFF\u00A0\u3000\r\n\t]+/g, '');
+  const cleanToEmail = String(toEmail || cleanUser).replace(/[\s\u200B-\u200D\uFEFF\u00A0\u3000\r\n\t]+/g, '');
+
   const response = await fetch(buildApiUrl('/api/admin/test-smtp'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      host: config.host,
+      host: cleanHost,
       port: config.port,
-      user: config.user,
-      pass: config.pass,
-      toEmail: toEmail || config.user
+      user: cleanUser,
+      pass: cleanPass,
+      toEmail: cleanToEmail
     })
   });
 
   const resJson = await response.json();
   if (!response.ok) {
-    const errorMsg = resJson.error || 'SMTP 测试发信失败';
-    const diag = resJson.diagnostic ? `\n\n${resJson.diagnostic}` : '';
-    throw new Error(`${errorMsg}${diag}`);
+    return {
+      success: false,
+      message: resJson.error || 'SMTP 测试发信失败',
+      category: resJson.category,
+      categoryTitle: resJson.categoryTitle,
+      responseCode: resJson.responseCode,
+      rawResponse: resJson.rawResponse,
+      guideSteps: resJson.guideSteps,
+      diagnostic: resJson.diagnostic
+    };
   }
   return resJson;
 }

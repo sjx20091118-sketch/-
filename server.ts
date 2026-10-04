@@ -7,6 +7,16 @@ import { MsEdgeTTS, OUTPUT_FORMAT } from 'msedge-tts';
 import nodemailer from 'nodemailer';
 import fs from 'fs';
 import crypto from 'crypto';
+import dns from 'dns';
+
+// 强制 DNS 解析采用 IPv4 优先，彻底消除云端容器直连国内 SMTP (smtp.qq.com) 时的 IPv6 握手超时
+try {
+  if (dns && typeof dns.setDefaultResultOrder === 'function') {
+    dns.setDefaultResultOrder('ipv4first');
+  }
+} catch (e) {
+  console.warn('[DNS] IPv4 first fallback:', e);
+}
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -973,131 +983,231 @@ function saveServerSmtpConfig(cfg: any) {
 
 loadServerSmtpConfig();
 
-// SMTP 智能诊断建议生成器
-function getSmtpDiagnosticSuggestion(err: any): string {
+// SMTP 智能诊断结构化分析器
+function analyzeSmtpError(err: any, cleanUser: string, isQq: boolean): {
+  category: 'AUTH_FAILED' | 'SENDER_MISMATCH' | 'NETWORK_TIMEOUT' | 'SSL_ERROR' | 'GENERIC_ERROR';
+  categoryTitle: string;
+  responseCode: number | null;
+  rawResponse: string;
+  guideSteps: string[];
+} {
   const msg = (err?.message || '').toLowerCase();
   const code = (err?.code || '').toUpperCase();
-  const response = (err?.response || '').toLowerCase();
+  const response = (err?.response || '');
+  const responseCode = err?.responseCode || (response.match(/^(\d{3})/) ? parseInt(response.match(/^(\d{3})/)[1], 10) : null);
 
-  if (code === 'EAUTH' || msg.includes('535') || response.includes('535') || msg.includes('authentication') || msg.includes('bad credentials')) {
-    return '【身份认证失败 535】排查指南：\n1. 严禁使用 QQ 登录密码！必须使用 QQ 邮箱网页端生成的「16 位专属授权码」；\n2. 前往 QQ 邮箱网页端 (mail.qq.com) ->【设置】->【账户】-> 开启【POP3/IMAP/SMTP 服务】并点击【生成授权码】；\n3. 系统已自动为您过滤授权码中的空格，请核对授权码是否被重新生成或已失效。';
+  if (
+    code === 'EAUTH' ||
+    responseCode === 535 ||
+    msg.includes('535') ||
+    response.includes('535') ||
+    msg.includes('authentication') ||
+    msg.includes('bad credentials') ||
+    msg.includes('login denied') ||
+    msg.includes('login fail')
+  ) {
+    return {
+      category: 'AUTH_FAILED',
+      categoryTitle: isQq ? 'QQ 邮箱专属授权码认证失败 (535)' : 'SMTP 身份认证失败 (535)',
+      responseCode: 535,
+      rawResponse: response || err?.message || '535 Authentication Failed',
+      guideSteps: isQq ? [
+        '【严禁使用 QQ 登录密码】：QQ 邮箱强制要求使用生成的 16 位 POP3/SMTP 专属授权码。',
+        '【确认服务已开启】：登录 QQ 邮箱网页端 (mail.qq.com) ➔【设置】➔【账户】➔ 确认【POP3/IMAP/SMTP 服务】处于开启状态。',
+        '【生成全新授权码】：若此授权码曾在其他客户端使用过或已失效，请在 QQ 邮箱网页端点击【生成授权码】，并将新生成的 16 位字母粘贴至后台保存。'
+      ] : [
+        '核对发信邮箱账号与对应的 SMTP 专用授权码/应用密码；',
+        '登录邮箱服务商网页端确认 SMTP 发信服务处于开启状态；',
+        '检查发信密码是否包含空格或已过期失效。'
+      ]
+    };
   }
-  if (msg.includes('553') || response.includes('553') || msg.includes('501') || msg.includes('mail from must equal authorized user') || msg.includes('address must be same')) {
-    return '【发件人地址不一致 553/501】排查指南：发信邮箱账号 (User) 必须与认证账号完全一致 (如 xxx@qq.com)，不可填写不属于此授权码的别名。';
+
+  if (
+    responseCode === 553 ||
+    responseCode === 501 ||
+    msg.includes('553') ||
+    response.includes('553') ||
+    msg.includes('501') ||
+    msg.includes('mail from must equal authorized user') ||
+    msg.includes('address must be same')
+  ) {
+    return {
+      category: 'SENDER_MISMATCH',
+      categoryTitle: '发信人地址不一致 (553/501)',
+      responseCode: responseCode || 553,
+      rawResponse: response || err?.message || '553 Mail from must equal authorized user',
+      guideSteps: [
+        `发信邮箱账号 (User) 必须与认证账号完全一致 (当前账号: ${cleanUser})；`,
+        '不可填写不属于此授权码的其它邮箱别名；',
+        '若使用 QQ 邮箱，请确保填写的账号为 xxx@qq.com 格式。'
+      ]
+    };
   }
+
   if (code === 'ETIMEDOUT' || code === 'ECONNREFUSED' || code === 'ENOTFOUND' || msg.includes('timeout') || msg.includes('connect')) {
-    return '【网络连接超时/拒绝】排查指南：① 系统已自动为您联调 465 (SSL) 与 587 (STARTTLS) 端口；② 确认服务器地址为 smtp.qq.com；③ 检查网络出站端口或防火墙状态。';
+    return {
+      category: 'NETWORK_TIMEOUT',
+      categoryTitle: '网络连接超时或出站端口受限',
+      responseCode: null,
+      rawResponse: err?.message || 'Connection Timed Out',
+      guideSteps: [
+        '系统已启用 IPv4 优先解析与双端口自适应；',
+        '建议在下方切换尝试 465 (SSL) 或 587 (STARTTLS) 端口；',
+        '核对 Host 服务器地址是否准确 (如 smtp.qq.com)。'
+      ]
+    };
   }
-  if (msg.includes('greeting') || msg.includes('handshake') || msg.includes('tlsv1')) {
-    return '【SSL/TLS 握手异常】排查指南：465 端口请开启 SSL 直连，587 端口请使用 STARTTLS。';
+
+  if (msg.includes('greeting') || msg.includes('handshake') || msg.includes('tlsv1') || msg.includes('ssl')) {
+    return {
+      category: 'SSL_ERROR',
+      categoryTitle: 'SSL/TLS 握手协议协商异常',
+      responseCode: null,
+      rawResponse: err?.message || 'TLS Handshake Failed',
+      guideSteps: [
+        '465 端口请开启 SSL 直连，587 端口请使用 STARTTLS；',
+        '系统已自动配置宽兼容 TLS 密码套件，若仍异常请尝试切换端口测试。'
+      ]
+    };
   }
-  return `【SMTP 发信异常】详细原因：${err?.message || '未知错误'}。建议核对 Host、Port、发件账号与授权码。`;
+
+  return {
+    category: 'GENERIC_ERROR',
+    categoryTitle: 'SMTP 发信异常',
+    responseCode: responseCode || null,
+    rawResponse: response || err?.message || 'Unknown SMTP Error',
+    guideSteps: [
+      `详细异常原因：${err?.message || '未知错误'}`,
+      '建议逐项核对 Host、Port、发信账号 (User) 与授权码 (Pass)。'
+    ]
+  };
 }
 
-// 创建并智能自适应验证 SMTP 发信通道 (自动去除授权码空格 + 自动双端口 465/587 重试 + QQ邮箱专属 service 模式)
+// SMTP 智能诊断建议生成器 (文本简报)
+function getSmtpDiagnosticSuggestion(err: any): string {
+  const analysis = analyzeSmtpError(err, '', false);
+  return `【${analysis.categoryTitle}】\n` + analysis.guideSteps.map((s, i) => `${i + 1}. ${s}`).join('\n');
+}
+
+// 创建并智能自适应验证 SMTP 发信通道 (自动深度过滤不可见字符 + IPv4 优先 + 自动双端口 465/587 重试 + QQ邮箱专属 service 模式)
 async function createAndVerifyMailTransporter(host?: string, port?: number, user?: string, pass?: string) {
   if (!host || !user || !pass) {
     throw new Error('SMTP 发信参数不完整');
   }
 
-  const cleanPass = pass.replace(/\s+/g, '');
-  let cleanUser = user.trim();
+  // 深度清洗不可见空白字符、零宽空格与换行符
+  const cleanPass = String(pass).replace(/[\s\u200B-\u200D\uFEFF\u00A0\u3000\r\n\t]+/g, '');
+  let cleanUser = String(user).replace(/[\s\u200B-\u200D\uFEFF\u00A0\u3000\r\n\t]+/g, '');
   if (/^\d+$/.test(cleanUser)) {
     cleanUser = `${cleanUser}@qq.com`;
   }
-  let cleanHost = host.trim();
-  if (!cleanHost && cleanUser.endsWith('@qq.com')) {
+  let cleanHost = String(host).replace(/[\s\u200B-\u200D\uFEFF\u00A0\u3000\r\n\t]+/g, '');
+  if (!cleanHost && (cleanUser.endsWith('@qq.com') || cleanUser.endsWith('@foxmail.com'))) {
     cleanHost = 'smtp.qq.com';
   }
 
   const isQq = cleanHost.includes('qq.com') || cleanUser.endsWith('@qq.com') || cleanUser.endsWith('@foxmail.com');
   const numPort = parseInt(port as any, 10) || (isQq ? 465 : 587);
 
-  // 如果是 QQ 邮箱，尝试多种连接策略
+  // 通用 TLS 兼容套件配置（兼容旧版 SSLv3/TLS1.2 及现代 TLS1.3）
+  const robustTlsOptions = {
+    rejectUnauthorized: false,
+    ciphers: 'DEFAULT@SECLEVEL=0:SSLv3:TLSv1.2:TLSv1.3'
+  };
+
+  // 如果是 QQ / Foxmail 邮箱，采用三级级联智能自适应策略
   if (isQq) {
-    // 策略 1: 使用 465 端口 SSL 直连
+    // 策略 1: 465 端口 SMTPS 强 SSL 直连
     try {
       const transporter = nodemailer.createTransport({
         host: 'smtp.qq.com',
         port: 465,
         secure: true,
         auth: { user: cleanUser, pass: cleanPass },
-        tls: { rejectUnauthorized: false },
-        connectionTimeout: 12000,
-        greetingTimeout: 10000
+        tls: robustTlsOptions,
+        connectionTimeout: 15000,
+        greetingTimeout: 15000,
+        socketTimeout: 20000
       });
       await transporter.verify();
       return { transporter, cleanUser, cleanHost: 'smtp.qq.com', port: 465 };
     } catch (err465: any) {
       console.warn('[SMTP] QQ 465 端口直连重试:', err465?.message);
 
-      // 如果是明确的认证错误 (535/EAUTH)，直接抛出指导用户排查授权码
+      // 如果是明确的身份认证失败 (535/EAUTH)，直接抛出指导用户核对 16 位专属授权码
       const msg = (err465?.message || '').toLowerCase();
-      if (err465?.code === 'EAUTH' || msg.includes('535') || msg.includes('authentication')) {
+      if (err465?.code === 'EAUTH' || msg.includes('535') || msg.includes('authentication') || msg.includes('bad credentials')) {
         throw err465;
       }
 
-      // 策略 2: 尝试 nodemailer 内置 service: 'qq'
+      // 策略 2: 587 STARTTLS 端口升级直连
       try {
-        const serviceTransporter = nodemailer.createTransport({
-          service: 'qq',
+        const transporter587 = nodemailer.createTransport({
+          host: 'smtp.qq.com',
+          port: 587,
+          secure: false,
+          requireTLS: true,
           auth: { user: cleanUser, pass: cleanPass },
-          tls: { rejectUnauthorized: false },
-          connectionTimeout: 12000,
-          greetingTimeout: 10000
+          tls: robustTlsOptions,
+          connectionTimeout: 15000,
+          greetingTimeout: 15000,
+          socketTimeout: 20000
         });
-        await serviceTransporter.verify();
-        return { transporter: serviceTransporter, cleanUser, cleanHost: 'smtp.qq.com', port: 465 };
-      } catch (errService: any) {
-        console.warn('[SMTP] QQ service 模式重试:', errService?.message);
+        await transporter587.verify();
+        return { transporter: transporter587, cleanUser, cleanHost: 'smtp.qq.com', port: 587 };
+      } catch (err587: any) {
+        console.warn('[SMTP] QQ 587 端口重试:', err587?.message);
 
-        // 策略 3: 尝试 587 STARTTLS 端口
+        // 策略 3: nodemailer 内置 service: 'qq'
         try {
-          const fallbackTransporter = nodemailer.createTransport({
-            host: 'smtp.qq.com',
-            port: 587,
-            secure: false,
-            requireTLS: true,
+          const serviceTransporter = nodemailer.createTransport({
+            service: 'qq',
             auth: { user: cleanUser, pass: cleanPass },
-            tls: { rejectUnauthorized: false },
-            connectionTimeout: 12000,
-            greetingTimeout: 10000
+            tls: robustTlsOptions,
+            connectionTimeout: 15000,
+            greetingTimeout: 15000,
+            socketTimeout: 20000
           });
-          await fallbackTransporter.verify();
-          return { transporter: fallbackTransporter, cleanUser, cleanHost: 'smtp.qq.com', port: 587 };
-        } catch (fallbackErr) {
-          throw err465;
+          await serviceTransporter.verify();
+          return { transporter: serviceTransporter, cleanUser, cleanHost: 'smtp.qq.com', port: 465 };
+        } catch (serviceErr) {
+          // 向上抛出最具参考价值的根因错误
+          throw err465 || serviceErr;
         }
       }
     }
   }
 
-  // 非 QQ 邮箱的通用发信逻辑
+  // 通用/企业邮箱发信逻辑（163、阿里企业邮、Outlook、Gmail 等）
   try {
     const transporter = nodemailer.createTransport({
       host: cleanHost,
       port: numPort,
       secure: numPort === 465,
+      requireTLS: numPort !== 465,
       auth: { user: cleanUser, pass: cleanPass },
-      tls: { rejectUnauthorized: false },
-      connectionTimeout: 12000,
-      greetingTimeout: 10000
+      tls: robustTlsOptions,
+      connectionTimeout: 15000,
+      greetingTimeout: 15000,
+      socketTimeout: 20000
     });
     await transporter.verify();
     return { transporter, cleanUser, cleanHost, port: numPort };
   } catch (err: any) {
     if (numPort === 465) {
       try {
-        console.log('[SMTP] 通用 465 端口重试，切换至 587 STARTTLS...');
+        console.log('[SMTP] 通用 465 端口失败，切换至 587 STARTTLS 重试...');
         const fallbackTransporter = nodemailer.createTransport({
           host: cleanHost,
           port: 587,
           secure: false,
           requireTLS: true,
           auth: { user: cleanUser, pass: cleanPass },
-          tls: { rejectUnauthorized: false },
-          connectionTimeout: 12000,
-          greetingTimeout: 10000
+          tls: robustTlsOptions,
+          connectionTimeout: 15000,
+          greetingTimeout: 15000,
+          socketTimeout: 20000
         });
         await fallbackTransporter.verify();
         return { transporter: fallbackTransporter, cleanUser, cleanHost, port: 587 };
@@ -1224,12 +1334,21 @@ app.post('/api/admin/test-smtp', async (req, res) => {
     });
   } catch (err: any) {
     console.error('[SMTP 测试发信失败]:', err);
-    const suggestion = getSmtpDiagnosticSuggestion(err);
+    const host = String(req.body.host || '');
+    const user = String(req.body.user || '');
+    const isQq = host.includes('qq.com') || user.includes('qq.com') || user.includes('foxmail.com');
+    const analysis = analyzeSmtpError(err, user, isQq);
+
     return res.status(400).json({
       success: false,
       error: err.message || 'SMTP 发信失败',
       code: err.code || 'SMTP_ERROR',
-      diagnostic: suggestion
+      category: analysis.category,
+      categoryTitle: analysis.categoryTitle,
+      responseCode: analysis.responseCode,
+      rawResponse: analysis.rawResponse,
+      guideSteps: analysis.guideSteps,
+      diagnostic: `【${analysis.categoryTitle}】\n` + analysis.guideSteps.map((s, i) => `${i + 1}. ${s}`).join('\n')
     });
   }
 });

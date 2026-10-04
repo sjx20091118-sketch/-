@@ -197,22 +197,34 @@ export const CustomTextSelectionBar: React.FC<CustomTextSelectionBarProps> = ({
     }
   }, []);
 
+  const selectionStateRef = useRef<SelectionState | null>(null);
+  useEffect(() => {
+    selectionStateRef.current = selectionState;
+  }, [selectionState]);
+
+  const clearSelectionImmediate = useCallback(() => {
+    if (selectionStateRef.current !== null) {
+      setSelectionState(null);
+    }
+  }, []);
+
   useEffect(() => {
     let timeoutId: any = null;
+
     const handleSelectionChange = () => {
       clearTimeout(timeoutId);
-      timeoutId = setTimeout(updateSelection, 40);
+      timeoutId = setTimeout(updateSelection, 60);
     };
 
     const handlePointerUp = () => {
       isInteractingWithBarRef.current = false;
       clearTimeout(timeoutId);
-      timeoutId = setTimeout(updateSelection, 50);
+      timeoutId = setTimeout(updateSelection, 60);
     };
 
     const handleScroll = (e: Event) => {
       if (barRef.current && !barRef.current.contains(e.target as Node)) {
-        setSelectionState(null);
+        clearSelectionImmediate();
       }
     };
 
@@ -221,16 +233,33 @@ export const CustomTextSelectionBar: React.FC<CustomTextSelectionBarProps> = ({
         return;
       }
       isInteractingWithBarRef.current = false;
-      setTimeout(updateSelection, 80);
+      clearSelectionImmediate();
     };
 
     const handleGlobalPointerRelease = () => {
       isInteractingWithBarRef.current = false;
     };
 
+    // 核心防光标跳尾拦截：一旦检测到任何按键输入或输入法打字，零延迟同步销毁选区浮层，绝对不干扰原生光标插入点
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // 忽略纯修饰键
+      if (['Shift', 'Control', 'Alt', 'Meta'].includes(e.key)) return;
+      clearTimeout(timeoutId);
+      clearSelectionImmediate();
+    };
+
+    const handleCompositionStart = () => {
+      clearTimeout(timeoutId);
+      clearSelectionImmediate();
+    };
+
+    const handleBeforeInput = () => {
+      clearTimeout(timeoutId);
+      clearSelectionImmediate();
+    };
+
     document.addEventListener('selectionchange', handleSelectionChange);
     document.addEventListener('select', handleSelectionChange, true);
-    document.addEventListener('keyup', handleSelectionChange, true);
     document.addEventListener('focusin', handleSelectionChange, true);
     document.addEventListener('mouseup', handlePointerUp, true);
     document.addEventListener('touchend', handlePointerUp, true);
@@ -238,12 +267,15 @@ export const CustomTextSelectionBar: React.FC<CustomTextSelectionBarProps> = ({
     window.addEventListener('touchend', handleGlobalPointerRelease, true);
     window.addEventListener('scroll', handleScroll, { capture: true, passive: true });
     document.addEventListener('mousedown', handleMouseDownOutside, true);
+    document.addEventListener('touchstart', handleMouseDownOutside, { capture: true, passive: true });
+    document.addEventListener('keydown', handleKeyDown, true);
+    document.addEventListener('compositionstart', handleCompositionStart, true);
+    document.addEventListener('beforeinput', handleBeforeInput, true);
 
     return () => {
       clearTimeout(timeoutId);
       document.removeEventListener('selectionchange', handleSelectionChange);
       document.removeEventListener('select', handleSelectionChange, true);
-      document.removeEventListener('keyup', handleSelectionChange, true);
       document.removeEventListener('focusin', handleSelectionChange, true);
       document.removeEventListener('mouseup', handlePointerUp, true);
       document.removeEventListener('touchend', handlePointerUp, true);
@@ -251,8 +283,12 @@ export const CustomTextSelectionBar: React.FC<CustomTextSelectionBarProps> = ({
       window.removeEventListener('touchend', handleGlobalPointerRelease, true);
       window.removeEventListener('scroll', handleScroll, { capture: true });
       document.removeEventListener('mousedown', handleMouseDownOutside, true);
+      document.removeEventListener('touchstart', handleMouseDownOutside, true);
+      document.removeEventListener('keydown', handleKeyDown, true);
+      document.removeEventListener('compositionstart', handleCompositionStart, true);
+      document.removeEventListener('beforeinput', handleBeforeInput, true);
     };
-  }, [updateSelection]);
+  }, [updateSelection, clearSelectionImmediate]);
 
   // 复制 (Copy)
   const handleCopy = async () => {
