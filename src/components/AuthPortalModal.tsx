@@ -56,8 +56,8 @@ export const AuthPortalModal: React.FC<AuthPortalModalProps> = ({
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
-  // 验证码登录专属状态
-  const [loginMethod, setLoginMethod] = useState<'code' | 'password'>('code');
+  // 验证码与账号密码登录专属状态（默认首选账号密码登录）
+  const [loginMethod, setLoginMethod] = useState<'password' | 'code'>('password');
   const [loginCountdown, setLoginCountdown] = useState(0);
   const [isSendingLoginOtp, setIsSendingLoginOtp] = useState(false);
   const [isSendingRegisterOtp, setIsSendingRegisterOtp] = useState(false);
@@ -322,11 +322,11 @@ export const AuthPortalModal: React.FC<AuthPortalModalProps> = ({
       <div 
         className="relative z-10 min-h-full w-full flex flex-col justify-between px-6 sm:px-10 pb-16 box-border bg-transparent"
         style={{
-          paddingTop: 'calc(var(--safe-area-top, env(safe-area-inset-top, 0px)) + 1.25rem)'
+          paddingTop: 'calc(var(--safe-area-top, env(safe-area-inset-top, 0px)) + 2.25rem)'
         }}
       >
-        {/* 顶部极简品牌标志与氛围 */}
-        <header className="relative z-10 w-full max-w-4xl mx-auto flex items-center justify-between pt-1 sm:pt-2 shrink-0">
+        {/* 顶部极简品牌标志与氛围 (增加与状态栏的舒适黄金留白) */}
+        <header className="relative z-10 w-full max-w-4xl mx-auto flex items-center justify-between pt-2 sm:pt-4 shrink-0">
         <div className="flex items-center gap-3">
           <div
             className="w-3 h-3 rounded-full animate-pulse shadow-xs"
@@ -422,24 +422,8 @@ export const AuthPortalModal: React.FC<AuthPortalModalProps> = ({
                 onSubmit={handleLogin}
                 className="space-y-4"
               >
-                {/* 登录方式子选项卡 */}
+                {/* 登录方式子选项卡：1. 账号密码登录 (居左且默认) 2. 邮箱验证码登录 (居右) */}
                 <div className="flex items-center justify-center p-1 rounded-2xl bg-black/[0.03] dark:bg-white/[0.04] border border-black/5 dark:border-white/8 gap-1">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      sound.playWaterDrop(820);
-                      setLoginMethod('code');
-                    }}
-                    className={`flex-1 py-1.5 px-3 rounded-xl text-xs font-serif font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
-                      loginMethod === 'code'
-                        ? 'bg-white dark:bg-white/15 text-[#2B332E] dark:text-[#FAF8F5] shadow-xs'
-                        : 'opacity-60 hover:opacity-100'
-                    }`}
-                  >
-                    <Mail size={13} style={{ color: currentTheme.primary }} />
-                    <span>邮箱验证码登录</span>
-                  </button>
-
                   <button
                     type="button"
                     onClick={() => {
@@ -454,6 +438,22 @@ export const AuthPortalModal: React.FC<AuthPortalModalProps> = ({
                   >
                     <KeyRound size={13} style={{ color: currentTheme.primary }} />
                     <span>账号密码登录</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      sound.playWaterDrop(820);
+                      setLoginMethod('code');
+                    }}
+                    className={`flex-1 py-1.5 px-3 rounded-xl text-xs font-serif font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                      loginMethod === 'code'
+                        ? 'bg-white dark:bg-white/15 text-[#2B332E] dark:text-[#FAF8F5] shadow-xs'
+                        : 'opacity-60 hover:opacity-100'
+                    }`}
+                  >
+                    <Mail size={13} style={{ color: currentTheme.primary }} />
+                    <span>邮箱验证码登录</span>
                   </button>
                 </div>
 

@@ -511,7 +511,7 @@ export const MyProfileModal: React.FC<MyProfileModalProps> = ({
           transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
           className="relative min-h-screen w-full flex flex-col z-10 transform-gpu"
           style={{
-            backgroundColor: isDarkMode ? '#121815' : '#FAF8F5',
+            backgroundColor: isDarkMode ? '#101513' : '#FAF8F5',
             color: isDarkMode ? '#FAF8F5' : '#223028',
             willChange: 'opacity, transform'
           }}
@@ -538,24 +538,24 @@ export const MyProfileModal: React.FC<MyProfileModalProps> = ({
               className="absolute inset-0"
               style={{
                 background: isDarkMode
-                  ? 'linear-gradient(to bottom, rgba(18,24,21,0.5) 0%, rgba(18,24,21,0.78) 45%, rgba(18,24,21,0.95) 100%)'
+                  ? 'linear-gradient(to bottom, rgba(14,19,16,0.6) 0%, rgba(14,19,16,0.85) 45%, rgba(14,19,16,0.98) 100%)'
                   : 'linear-gradient(to bottom, rgba(250,248,245,0.45) 0%, rgba(250,248,245,0.75) 45%, rgba(250,248,245,0.95) 100%)'
               }}
             />
             {/* 顶部中央东方水墨泼彩主氛围晕染 */}
             <div
-              className="absolute -top-20 left-1/2 -translate-x-1/2 w-[520px] h-[360px] rounded-full blur-3xl pointer-events-none opacity-40"
+              className="absolute -top-20 left-1/2 -translate-x-1/2 w-[520px] h-[360px] rounded-full blur-3xl pointer-events-none opacity-40 dark:opacity-30"
               style={{ backgroundColor: currentTheme.primary }}
             />
             {/* 侧下方辅助弥散光晕 */}
             <div
-              className="absolute bottom-10 right-10 w-80 h-80 rounded-full blur-3xl pointer-events-none opacity-25"
+              className="absolute bottom-10 right-10 w-80 h-80 rounded-full blur-3xl pointer-events-none opacity-25 dark:opacity-20"
               style={{ backgroundColor: currentTheme.accent }}
             />
           </div>
 
-          {/* 左上角精致悬浮返回按钮 (单向返回，保留返回，绝对无右上角关闭按钮) */}
-          <div className="absolute top-4 sm:top-6 left-4 sm:left-6 z-30">
+          {/* 左上角精致悬浮返回按钮 (自适应移动端状态栏与打孔屏安全区 Safe Area) */}
+          <div className="absolute top-[calc(env(safe-area-inset-top,0px)+1rem)] sm:top-6 left-4 sm:left-6 z-30">
             <button
               type="button"
               onClick={handleCloseWithEffect}
@@ -574,8 +574,8 @@ export const MyProfileModal: React.FC<MyProfileModalProps> = ({
             transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
             className="w-full flex-1 flex flex-col z-10 transform-gpu"
           >
-            {/* 1. 顶部身份展示区 (无任何生硬单色圆框，纯粹水墨晕染与无缝衔接) */}
-            <div className="relative pt-12 sm:pt-16 pb-4 px-6 shrink-0 flex flex-col items-center justify-center text-center select-none z-10">
+            {/* 1. 顶部身份展示区 (自适应 Safe Area 顶部间距，无任何生硬单色圆框，纯粹水墨晕染与无缝衔接) */}
+            <div className="relative pt-[calc(env(safe-area-inset-top,0px)+3.75rem)] sm:pt-16 pb-4 px-6 shrink-0 flex flex-col items-center justify-center text-center select-none z-10">
               {/* 居中悬浮纯净无界大头像 (96px) 与背后多层柔光呼吸泼彩晕染 */}
               <div
                 className="relative z-10 group cursor-pointer mt-1"
@@ -584,7 +584,7 @@ export const MyProfileModal: React.FC<MyProfileModalProps> = ({
               >
                 {/* 外层大范围水墨泼彩弥散色晕 (Splatter Bloom Glow) */}
                 <div
-                  className="absolute -inset-6 rounded-full blur-2xl opacity-75 group-hover:opacity-100 transition-opacity duration-500 animate-pulse pointer-events-none"
+                  className="absolute -inset-6 rounded-full blur-2xl opacity-75 dark:opacity-65 group-hover:opacity-100 transition-opacity duration-500 animate-pulse pointer-events-none"
                   style={{
                     background: `radial-gradient(circle, ${currentTheme.primary} 20%, ${currentTheme.accent} 60%, transparent 85%)`
                   }}
@@ -592,7 +592,7 @@ export const MyProfileModal: React.FC<MyProfileModalProps> = ({
 
                 {/* 次层多重柔光呼吸光晕 (Multi-layer Ambient Soft Halo) */}
                 <div
-                  className="absolute -inset-2 rounded-full blur-xl opacity-85 pointer-events-none"
+                  className="absolute -inset-2 rounded-full blur-xl opacity-85 dark:opacity-75 pointer-events-none"
                   style={{
                     background: `radial-gradient(circle, ${currentTheme.accent} 20%, ${currentTheme.primary} 70%, transparent 90%)`
                   }}
@@ -668,7 +668,7 @@ export const MyProfileModal: React.FC<MyProfileModalProps> = ({
           </div>
 
           {/* 2. 下方全透明极简表单区 (无缝融汇于水墨背景，无任何横线与纯白割裂) */}
-          <div className="w-full max-w-2xl mx-auto px-4 sm:px-6 pt-2 pb-12 space-y-6 z-10 relative">
+          <div className="w-full max-w-2xl mx-auto px-4 sm:px-6 pt-2 pb-[calc(env(safe-area-inset-bottom,0px)+3rem)] space-y-6 z-10 relative">
             {/* 分组 1: 修改昵称 */}
             <form onSubmit={handleUpdateName} className="space-y-2">
               <label className="text-xs font-serif font-bold tracking-wider flex items-center gap-1.5 opacity-80">
@@ -680,10 +680,10 @@ export const MyProfileModal: React.FC<MyProfileModalProps> = ({
                 className="relative flex items-center rounded-2xl border transition-all duration-300 backdrop-blur-md focus-within:ring-2"
                 style={{
                   background: isDarkMode
-                    ? 'linear-gradient(135deg, rgba(255,255,255,0.06) 0%, rgba(255,255,255,0.02) 100%)'
-                    : 'linear-gradient(135deg, rgba(255,255,255,0.75) 0%, rgba(255,255,255,0.35) 100%)',
-                  borderColor: isDarkMode ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.08)',
-                  boxShadow: isDarkMode ? '0 4px 20px rgba(0,0,0,0.2)' : '0 4px 20px rgba(0,0,0,0.03)'
+                    ? 'linear-gradient(135deg, rgba(24, 33, 29, 0.85) 0%, rgba(16, 23, 20, 0.85) 100%)'
+                    : 'linear-gradient(135deg, rgba(255,255,255,0.85) 0%, rgba(255,255,255,0.45) 100%)',
+                  borderColor: isDarkMode ? 'rgba(255,255,255,0.14)' : 'rgba(0,0,0,0.08)',
+                  boxShadow: isDarkMode ? '0 4px 20px rgba(0,0,0,0.3)' : '0 4px 20px rgba(0,0,0,0.03)'
                 }}
               >
                 <input
@@ -696,7 +696,7 @@ export const MyProfileModal: React.FC<MyProfileModalProps> = ({
                   spellCheck={false}
                   placeholder="输入新昵称"
                   required
-                  className="w-full min-h-[48px] pl-4 pr-28 bg-transparent text-xs sm:text-sm font-serif outline-none"
+                  className="w-full min-h-[48px] pl-4 pr-28 bg-transparent text-xs sm:text-sm font-serif outline-none text-neutral-900 dark:text-neutral-100 placeholder:text-neutral-400 dark:placeholder:text-neutral-500"
                 />
                 <div className="absolute right-1.5 top-1/2 -translate-y-1/2">
                   <button
@@ -704,9 +704,11 @@ export const MyProfileModal: React.FC<MyProfileModalProps> = ({
                     disabled={isSavingName}
                     className="px-4 py-2 rounded-xl text-white text-xs font-serif font-bold transition-all duration-200 cursor-pointer disabled:opacity-40 hover:brightness-110 active:scale-95 flex items-center gap-1 shadow-sm"
                     style={{
-                      backgroundColor: currentTheme.primary,
+                      background: isDarkMode
+                        ? `linear-gradient(135deg, ${currentTheme.primary}, ${currentTheme.accent || currentTheme.primary})`
+                        : currentTheme.primary,
                       color: '#FFFFFF',
-                      boxShadow: `0 3px 12px ${currentTheme.primary}40`
+                      boxShadow: isDarkMode ? `0 3px 14px ${currentTheme.primary}50` : `0 3px 12px ${currentTheme.primary}40`
                     }}
                   >
                     <span>{isSavingName ? '保存中' : '保存昵称'}</span>
@@ -747,8 +749,8 @@ export const MyProfileModal: React.FC<MyProfileModalProps> = ({
                     background: isDarkMode
                       ? 'linear-gradient(135deg, rgba(255,255,255,0.06) 0%, rgba(255,255,255,0.02) 100%)'
                       : 'linear-gradient(135deg, rgba(255,255,255,0.75) 0%, rgba(255,255,255,0.35) 100%)',
-                    borderColor: isDarkMode ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.08)',
-                    boxShadow: isDarkMode ? '0 4px 20px rgba(0,0,0,0.2)' : '0 4px 20px rgba(0,0,0,0.03)'
+                    borderColor: isDarkMode ? 'rgba(255,255,255,0.14)' : 'rgba(0,0,0,0.08)',
+                    boxShadow: isDarkMode ? '0 4px 20px rgba(0,0,0,0.3)' : '0 4px 20px rgba(0,0,0,0.03)'
                   }}
                 >
                   <div className="min-w-0 flex-1">
@@ -769,9 +771,11 @@ export const MyProfileModal: React.FC<MyProfileModalProps> = ({
                       }}
                       className="px-4 py-2 rounded-xl text-white text-xs font-serif font-bold transition-all duration-200 cursor-pointer hover:brightness-110 active:scale-95 shadow-sm"
                       style={{
-                        backgroundColor: currentTheme.primary,
+                        background: isDarkMode
+                          ? `linear-gradient(135deg, ${currentTheme.primary}, ${currentTheme.accent || currentTheme.primary})`
+                          : currentTheme.primary,
                         color: '#FFFFFF',
-                        boxShadow: `0 3px 12px ${currentTheme.primary}40`
+                        boxShadow: isDarkMode ? `0 3px 14px ${currentTheme.primary}50` : `0 3px 12px ${currentTheme.primary}40`
                       }}
                     >
                       换绑
@@ -786,7 +790,7 @@ export const MyProfileModal: React.FC<MyProfileModalProps> = ({
                       }}
                       className="px-4 py-2 rounded-xl text-xs font-serif font-bold border border-red-500/30 text-red-500/90 hover:text-white hover:bg-red-500 transition-all duration-200 cursor-pointer active:scale-95 shadow-xs backdrop-blur-md"
                       style={{
-                        backgroundColor: isDarkMode ? 'rgba(239,68,68,0.1)' : 'rgba(239,68,68,0.06)'
+                        backgroundColor: isDarkMode ? 'rgba(239,68,68,0.12)' : 'rgba(239,68,68,0.06)'
                       }}
                     >
                       解绑
@@ -803,8 +807,8 @@ export const MyProfileModal: React.FC<MyProfileModalProps> = ({
                     background: isDarkMode
                       ? 'linear-gradient(135deg, rgba(255,255,255,0.06) 0%, rgba(255,255,255,0.02) 100%)'
                       : 'linear-gradient(135deg, rgba(255,255,255,0.75) 0%, rgba(255,255,255,0.35) 100%)',
-                    borderColor: isDarkMode ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.08)',
-                    boxShadow: isDarkMode ? '0 4px 20px rgba(0,0,0,0.2)' : '0 4px 20px rgba(0,0,0,0.03)'
+                    borderColor: isDarkMode ? 'rgba(255,255,255,0.14)' : 'rgba(0,0,0,0.08)',
+                    boxShadow: isDarkMode ? '0 4px 20px rgba(0,0,0,0.3)' : '0 4px 20px rgba(0,0,0,0.03)'
                   }}
                 >
                   {/* 邮箱输入框 */}
@@ -812,7 +816,7 @@ export const MyProfileModal: React.FC<MyProfileModalProps> = ({
                     className="relative flex items-center rounded-2xl border transition-all duration-300 backdrop-blur-md focus-within:ring-2"
                     style={{
                       background: isDarkMode
-                        ? 'linear-gradient(135deg, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0.01) 100%)'
+                        ? 'linear-gradient(135deg, rgba(24, 33, 29, 0.85) 0%, rgba(16, 23, 20, 0.85) 100%)'
                         : 'linear-gradient(135deg, rgba(255,255,255,0.85) 0%, rgba(255,255,255,0.45) 100%)',
                       borderColor: isDarkMode ? 'rgba(255,255,255,0.14)' : 'rgba(0,0,0,0.1)'
                     }}
@@ -826,7 +830,7 @@ export const MyProfileModal: React.FC<MyProfileModalProps> = ({
                       autoCapitalize="none"
                       spellCheck={false}
                       placeholder="输入电子邮箱地址"
-                      className="w-full min-h-[48px] pl-4 pr-32 bg-transparent text-xs sm:text-sm font-sans outline-none"
+                      className="w-full min-h-[48px] pl-4 pr-32 bg-transparent text-xs sm:text-sm font-sans outline-none text-neutral-900 dark:text-neutral-100 placeholder:text-neutral-400 dark:placeholder:text-neutral-500"
                     />
                     <div className="absolute right-1.5 top-1/2 -translate-y-1/2">
                       <button
@@ -835,9 +839,11 @@ export const MyProfileModal: React.FC<MyProfileModalProps> = ({
                         onClick={handleSendBindOtp}
                         className="px-3.5 py-2 rounded-xl text-white text-xs font-serif font-bold transition-all duration-200 cursor-pointer disabled:opacity-40 hover:brightness-110 active:scale-95 shadow-sm"
                         style={{
-                          backgroundColor: currentTheme.primary,
+                          background: isDarkMode
+                            ? `linear-gradient(135deg, ${currentTheme.primary}, ${currentTheme.accent || currentTheme.primary})`
+                            : currentTheme.primary,
                           color: '#FFFFFF',
-                          boxShadow: `0 3px 12px ${currentTheme.primary}40`
+                          boxShadow: isDarkMode ? `0 3px 14px ${currentTheme.primary}50` : `0 3px 12px ${currentTheme.primary}40`
                         }}
                       >
                         {isSendingBindOtp ? '发送中...' : bindCountdown > 0 ? `${bindCountdown}s` : '获取验证码'}
@@ -859,10 +865,10 @@ export const MyProfileModal: React.FC<MyProfileModalProps> = ({
                           autoCapitalize="none"
                           spellCheck={false}
                           placeholder="输入 6 位验证码"
-                          className="sm:col-span-3 min-h-[48px] px-3.5 rounded-2xl border text-xs font-mono tracking-widest outline-none transition-all text-center font-bold backdrop-blur-md"
+                          className="sm:col-span-3 min-h-[48px] px-3.5 rounded-2xl border text-xs font-mono tracking-widest outline-none transition-all text-center font-bold backdrop-blur-md text-neutral-900 dark:text-neutral-100 placeholder:text-neutral-400 dark:placeholder:text-neutral-500"
                           style={{
                             background: isDarkMode
-                              ? 'linear-gradient(135deg, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0.01) 100%)'
+                              ? 'linear-gradient(135deg, rgba(24, 33, 29, 0.85) 0%, rgba(16, 23, 20, 0.85) 100%)'
                               : 'linear-gradient(135deg, rgba(255,255,255,0.85) 0%, rgba(255,255,255,0.45) 100%)',
                             borderColor: isDarkMode ? 'rgba(255,255,255,0.14)' : 'rgba(0,0,0,0.1)'
                           }}
@@ -873,9 +879,11 @@ export const MyProfileModal: React.FC<MyProfileModalProps> = ({
                           onClick={() => handleConfirmBind()}
                           className="sm:col-span-2 min-h-[48px] px-3 rounded-2xl text-xs font-serif font-bold text-white transition-all duration-200 shadow-sm flex items-center justify-center cursor-pointer disabled:opacity-40 hover:brightness-110 active:scale-95"
                           style={{
-                            backgroundColor: currentTheme.primary,
+                            background: isDarkMode
+                              ? `linear-gradient(135deg, ${currentTheme.primary}, ${currentTheme.accent || currentTheme.primary})`
+                              : currentTheme.primary,
                             color: '#FFFFFF',
-                            boxShadow: `0 3px 12px ${currentTheme.primary}40`
+                            boxShadow: isDarkMode ? `0 3px 14px ${currentTheme.primary}50` : `0 3px 12px ${currentTheme.primary}40`
                           }}
                         >
                           {isSavingEmail ? '校验中...' : currentUser.email ? '确认换绑' : '确认绑定'}
@@ -894,9 +902,9 @@ export const MyProfileModal: React.FC<MyProfileModalProps> = ({
                 <div
                   className="space-y-3 p-4 sm:p-5 rounded-2xl border backdrop-blur-md transition-all duration-300"
                   style={{
-                    backgroundColor: isDarkMode ? 'rgba(239, 68, 68, 0.05)' : 'rgba(239, 68, 68, 0.03)',
-                    borderColor: isDarkMode ? 'rgba(239, 68, 68, 0.25)' : 'rgba(239, 68, 68, 0.18)',
-                    boxShadow: '0 4px 20px rgba(239, 68, 68, 0.06)'
+                    backgroundColor: isDarkMode ? 'rgba(239, 68, 68, 0.08)' : 'rgba(239, 68, 68, 0.03)',
+                    borderColor: isDarkMode ? 'rgba(239, 68, 68, 0.3)' : 'rgba(239, 68, 68, 0.18)',
+                    boxShadow: '0 4px 20px rgba(239, 68, 68, 0.08)'
                   }}
                 >
                   <div className="flex items-center justify-between">
@@ -932,10 +940,10 @@ export const MyProfileModal: React.FC<MyProfileModalProps> = ({
                       autoCapitalize="none"
                       spellCheck={false}
                       placeholder="输入 6 位解绑码"
-                      className="sm:col-span-3 min-h-[48px] px-3.5 rounded-2xl border text-xs font-mono tracking-widest outline-none transition-all text-center font-bold backdrop-blur-md"
+                      className="sm:col-span-3 min-h-[48px] px-3.5 rounded-2xl border text-xs font-mono tracking-widest outline-none transition-all text-center font-bold backdrop-blur-md text-neutral-900 dark:text-neutral-100 placeholder:text-neutral-400 dark:placeholder:text-neutral-500"
                       style={{
                         background: isDarkMode
-                          ? 'linear-gradient(135deg, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0.01) 100%)'
+                          ? 'linear-gradient(135deg, rgba(24, 33, 29, 0.85) 0%, rgba(16, 23, 20, 0.85) 100%)'
                           : 'linear-gradient(135deg, rgba(255,255,255,0.85) 0%, rgba(255,255,255,0.45) 100%)',
                         borderColor: isDarkMode ? 'rgba(255,255,255,0.14)' : 'rgba(0,0,0,0.1)'
                       }}
@@ -946,9 +954,11 @@ export const MyProfileModal: React.FC<MyProfileModalProps> = ({
                       onClick={handleSendUnbindOtp}
                       className="sm:col-span-2 min-h-[48px] px-3 rounded-2xl text-xs font-serif font-bold text-white transition-all duration-200 shadow-sm flex items-center justify-center cursor-pointer disabled:opacity-40 hover:brightness-110 active:scale-95"
                       style={{
-                        backgroundColor: currentTheme.primary,
+                        background: isDarkMode
+                          ? `linear-gradient(135deg, ${currentTheme.primary}, ${currentTheme.accent || currentTheme.primary})`
+                          : currentTheme.primary,
                         color: '#FFFFFF',
-                        boxShadow: `0 3px 12px ${currentTheme.primary}40`
+                        boxShadow: isDarkMode ? `0 3px 14px ${currentTheme.primary}50` : `0 3px 12px ${currentTheme.primary}40`
                       }}
                     >
                       {isSendingUnbindOtp ? '发送中...' : unbindCountdown > 0 ? `${unbindCountdown}s 重发` : '获取验证码'}
@@ -987,10 +997,10 @@ export const MyProfileModal: React.FC<MyProfileModalProps> = ({
                   className="flex items-center rounded-2xl border px-4 min-h-[48px] transition-all duration-300 backdrop-blur-md focus-within:ring-2"
                   style={{
                     background: isDarkMode
-                      ? 'linear-gradient(135deg, rgba(255,255,255,0.06) 0%, rgba(255,255,255,0.02) 100%)'
+                      ? 'linear-gradient(135deg, rgba(24, 33, 29, 0.85) 0%, rgba(16, 23, 20, 0.85) 100%)'
                       : 'linear-gradient(135deg, rgba(255,255,255,0.75) 0%, rgba(255,255,255,0.35) 100%)',
-                    borderColor: isDarkMode ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.08)',
-                    boxShadow: isDarkMode ? '0 4px 20px rgba(0,0,0,0.2)' : '0 4px 20px rgba(0,0,0,0.03)'
+                    borderColor: isDarkMode ? 'rgba(255,255,255,0.14)' : 'rgba(0,0,0,0.08)',
+                    boxShadow: isDarkMode ? '0 4px 20px rgba(0,0,0,0.3)' : '0 4px 20px rgba(0,0,0,0.03)'
                   }}
                 >
                   <input
@@ -1004,7 +1014,7 @@ export const MyProfileModal: React.FC<MyProfileModalProps> = ({
                     placeholder="输入新密码 (至少 4 位)"
                     required
                     minLength={4}
-                    className="flex-1 bg-transparent text-xs sm:text-sm font-sans outline-none"
+                    className="flex-1 bg-transparent text-xs sm:text-sm font-sans outline-none text-neutral-900 dark:text-neutral-100 placeholder:text-neutral-400 dark:placeholder:text-neutral-500"
                   />
                   <button
                     type="button"
@@ -1019,10 +1029,10 @@ export const MyProfileModal: React.FC<MyProfileModalProps> = ({
                   className="flex items-center rounded-2xl border px-4 min-h-[48px] transition-all duration-300 backdrop-blur-md focus-within:ring-2"
                   style={{
                     background: isDarkMode
-                      ? 'linear-gradient(135deg, rgba(255,255,255,0.06) 0%, rgba(255,255,255,0.02) 100%)'
+                      ? 'linear-gradient(135deg, rgba(24, 33, 29, 0.85) 0%, rgba(16, 23, 20, 0.85) 100%)'
                       : 'linear-gradient(135deg, rgba(255,255,255,0.75) 0%, rgba(255,255,255,0.35) 100%)',
-                    borderColor: isDarkMode ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.08)',
-                    boxShadow: isDarkMode ? '0 4px 20px rgba(0,0,0,0.2)' : '0 4px 20px rgba(0,0,0,0.03)'
+                    borderColor: isDarkMode ? 'rgba(255,255,255,0.14)' : 'rgba(0,0,0,0.08)',
+                    boxShadow: isDarkMode ? '0 4px 20px rgba(0,0,0,0.3)' : '0 4px 20px rgba(0,0,0,0.03)'
                   }}
                 >
                   <input
@@ -1036,7 +1046,7 @@ export const MyProfileModal: React.FC<MyProfileModalProps> = ({
                     placeholder="再次确认新密码"
                     required
                     minLength={4}
-                    className="flex-1 bg-transparent text-xs sm:text-sm font-sans outline-none"
+                    className="flex-1 bg-transparent text-xs sm:text-sm font-sans outline-none text-neutral-900 dark:text-neutral-100 placeholder:text-neutral-400 dark:placeholder:text-neutral-500"
                   />
                   <button
                     type="button"
@@ -1053,9 +1063,11 @@ export const MyProfileModal: React.FC<MyProfileModalProps> = ({
                     disabled={isSavingPass}
                     className="w-full min-h-[48px] rounded-2xl text-white text-xs font-serif font-bold transition-all duration-200 cursor-pointer disabled:opacity-40 hover:brightness-110 active:scale-95 shadow-md flex items-center justify-center"
                     style={{
-                      backgroundColor: currentTheme.primary,
+                      background: isDarkMode
+                        ? `linear-gradient(135deg, ${currentTheme.primary}, ${currentTheme.accent || currentTheme.primary})`
+                        : currentTheme.primary,
                       color: '#FFFFFF',
-                      boxShadow: `0 4px 14px ${currentTheme.primary}45`
+                      boxShadow: isDarkMode ? `0 4px 16px ${currentTheme.primary}50` : `0 4px 14px ${currentTheme.primary}45`
                     }}
                   >
                     {isSavingPass ? '保存中...' : '保存密码'}
@@ -1088,7 +1100,7 @@ export const MyProfileModal: React.FC<MyProfileModalProps> = ({
                 }}
                 className="py-3.5 px-5 rounded-2xl border border-red-500/30 text-red-600/90 dark:text-red-400 font-serif text-xs font-bold flex items-center justify-center gap-1.5 transition-all duration-200 cursor-pointer active:scale-95 backdrop-blur-md shadow-xs"
                 style={{
-                  backgroundColor: isDarkMode ? 'rgba(239, 68, 68, 0.08)' : 'rgba(239, 68, 68, 0.04)'
+                  backgroundColor: isDarkMode ? 'rgba(239, 68, 68, 0.1)' : 'rgba(239, 68, 68, 0.04)'
                 }}
                 title="注销此账号及解绑邮箱"
               >

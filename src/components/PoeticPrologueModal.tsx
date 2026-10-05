@@ -636,7 +636,7 @@ export const PoeticPrologueModal: React.FC<PoeticPrologueModalProps> = ({
         }}
         exit={{ opacity: 0 }}
         transition={{ duration: 0.9, ease: [0.16, 1, 0.3, 1] }}
-        className={`fixed inset-0 z-[10000] w-screen h-screen flex flex-col justify-between items-center px-4 pt-4 sm:pt-7 pb-6 sm:pb-8 select-none overflow-hidden transition-colors duration-500 ${
+        className={`fixed inset-0 z-[10000] w-screen h-screen flex flex-col justify-between items-center px-4 pt-[calc(env(safe-area-inset-top,0px)+1rem)] sm:pt-7 pb-[calc(env(safe-area-inset-bottom,0px)+1.5rem)] select-none overflow-hidden transition-colors duration-500 ${
           isDarkMode ? 'text-white' : 'text-[#213028]'
         }`}
       >
