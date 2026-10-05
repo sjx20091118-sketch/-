@@ -8,7 +8,8 @@ import {
   Volume2,
   Trash2,
   Share2,
-  Quote
+  Quote,
+  Edit3
 } from 'lucide-react';
 import { TimelineItem } from '../types';
 import { isVideoMedia } from '../utils/mediaStorage';
@@ -23,6 +24,7 @@ interface ChronoGalleryTimelineProps {
   onOpenAdd: () => void;
   onPlayTts: (text: string) => void;
   onDelete: (item: TimelineItem) => void;
+  onEdit?: (item: TimelineItem) => void;
   onOpenYearPicker: () => void;
   onShare: (item: TimelineItem) => void;
   isDarkMode?: boolean;
@@ -63,6 +65,7 @@ export const ChronoGalleryTimeline: React.FC<ChronoGalleryTimelineProps> = ({
   onOpenAdd,
   onPlayTts,
   onDelete,
+  onEdit,
   onOpenYearPicker,
   onShare,
   isDarkMode = false
@@ -325,6 +328,21 @@ export const ChronoGalleryTimeline: React.FC<ChronoGalleryTimelineProps> = ({
                               >
                                 <Volume2 className="w-3.5 h-3.5" />
                               </button>
+
+                              {onEdit && (
+                                <button
+                                  type="button"
+                                  onClick={() => onEdit(item)}
+                                  title="编辑此瞬间"
+                                  className={`p-1.5 rounded-xl transition-colors active:scale-90 ${
+                                    isDarkMode
+                                      ? 'text-[#A0B0A7]/70 hover:text-[#FAF8F5] hover:bg-white/10'
+                                      : 'text-[#6E7C75]/60 hover:text-[#5B7B6D] hover:bg-[#FAF8F5]'
+                                  }`}
+                                >
+                                  <Edit3 className="w-3.5 h-3.5" />
+                                </button>
+                              )}
 
                               <button
                                 type="button"

@@ -159,54 +159,143 @@ function splitTextIntoSentences(text: string): string[] {
   return chunks.filter(c => c.length > 0);
 }
 
+function base64ToBlobUrl(base64: string, mimeType = 'audio/mp3'): { blobUrl: string; cleanup: () => void } {
+  try {
+    const binary = atob(base64);
+    const len = binary.length;
+    const bytes = new Uint8Array(len);
+    for (let i = 0; i < len; i++) {
+      bytes[i] = binary.charCodeAt(i);
+    }
+    const blob = new Blob([bytes.buffer], { type: mimeType });
+    const blobUrl = URL.createObjectURL(blob);
+    return {
+      blobUrl,
+      cleanup: () => {
+        try {
+          URL.revokeObjectURL(blobUrl);
+        } catch {}
+      }
+    };
+  } catch (e) {
+    return {
+      blobUrl: `data:${mimeType};base64,${base64}`,
+      cleanup: () => {}
+    };
+  }
+}
+
 /**
- * 方案 A：通过内置高保真神经多情感语音服务合成音频
+ * 方案 A：通过内置高保真神经多情感语音服务合成音频（原生二进制 Blob 解码，秒解 Android WebView 沙盒限制）
  */
 async function playNeuralTTS(
   text: string,
   voice: EasternVoiceOption,
   callbacks?: SpeechPlayCallbacks
 ): Promise<boolean> {
-  try {
-    const response = await fetch(buildApiUrl('/api/ai/tts'), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        text,
-        voice: voice.neuralVoice
-      })
-    });
+  const candidateUrls: string[] = [];
+  const primaryUrl = buildApiUrl('/api/ai/tts');
+  candidateUrls.push(primaryUrl);
 
-    if (!response.ok) return false;
-
-    const data = await response.json();
-    if (!data.audioBase64) return false;
-
-    return new Promise((resolve) => {
-      const audioUrl = `data:audio/mp3;base64,${data.audioBase64}`;
-      const audio = new Audio(audioUrl);
-      activeStreamAudio = audio;
-
-      audio.oncanplay = () => {
-        callbacks?.onStart?.(voice.name, '情感语音');
-        audio.play().catch(() => resolve(false));
-      };
-
-      audio.onended = () => {
-        callbacks?.onEnd?.();
-        isCurrentlySpeaking = false;
-        resolve(true);
-      };
-
-      audio.onerror = () => {
-        resolve(false);
-      };
-
-      audio.load();
-    });
-  } catch (err) {
-    return false;
+  // 移动端独立安装包环境下的自适应连通探测
+  if (typeof window !== 'undefined') {
+    const customHost = localStorage.getItem('shinian_api_server_url');
+    if (customHost && customHost.trim()) {
+      const customUrl = `${customHost.trim().replace(/\/+$/, '')}/api/ai/tts`;
+      if (!candidateUrls.includes(customUrl)) {
+        candidateUrls.unshift(customUrl); // 优先尝试用户明确配置的地址
+      }
+    }
+    if (!candidateUrls.includes('/api/ai/tts')) {
+      candidateUrls.push('/api/ai/tts');
+    }
+    if (window.location.origin && window.location.origin.startsWith('http')) {
+      const originUrl = `${window.location.origin}/api/ai/tts`;
+      if (!candidateUrls.includes(originUrl)) {
+        candidateUrls.push(originUrl);
+      }
+    }
+    const cloudUrl = 'https://ais-pre-cq7pozdu24b5b7weqvtffs-80463223160.asia-northeast1.run.app/api/ai/tts';
+    if (!candidateUrls.includes(cloudUrl)) {
+      candidateUrls.push(cloudUrl);
+    }
   }
+
+  let audioBase64 = '';
+  for (const url of candidateUrls) {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 6000);
+
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          text,
+          voice: voice.neuralVoice
+        }),
+        signal: controller.signal
+      });
+
+      clearTimeout(timeoutId);
+      if (response.ok) {
+        const data = await response.json();
+        if (data.audioBase64) {
+          audioBase64 = data.audioBase64;
+          break;
+        } else if (data.audioContent) {
+          audioBase64 = data.audioContent;
+          break;
+        }
+      }
+    } catch {
+      // 容错继续下一个候选通道
+    }
+  }
+
+  if (!audioBase64) return false;
+
+  return new Promise((resolve) => {
+    const { blobUrl, cleanup } = base64ToBlobUrl(audioBase64, 'audio/mp3');
+    const audio = new Audio();
+    activeStreamAudio = audio;
+    audio.src = blobUrl;
+    audio.preload = 'auto';
+
+    let didStart = false;
+    const safetyTimeout = setTimeout(() => {
+      if (!didStart) {
+        cleanup();
+        resolve(false);
+      }
+    }, 6000);
+
+    audio.oncanplay = () => {
+      didStart = true;
+      clearTimeout(safetyTimeout);
+      callbacks?.onStart?.(voice.name, '模型情感音色');
+      audio.play().catch(() => {
+        cleanup();
+        resolve(false);
+      });
+    };
+
+    audio.onended = () => {
+      clearTimeout(safetyTimeout);
+      cleanup();
+      callbacks?.onEnd?.();
+      isCurrentlySpeaking = false;
+      resolve(true);
+    };
+
+    audio.onerror = () => {
+      clearTimeout(safetyTimeout);
+      cleanup();
+      resolve(false);
+    };
+
+    audio.load();
+  });
 }
 
 /**

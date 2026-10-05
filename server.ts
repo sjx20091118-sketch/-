@@ -39,6 +39,15 @@ app.use((req, res, next) => {
   next();
 });
 
+// Serve built-in high-fidelity audio slices with Range support and 100% reliability
+app.use('/audio', express.static(path.join(process.cwd(), 'public/audio'), {
+  setHeaders: (res) => {
+    res.setHeader('Accept-Ranges', 'bytes');
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+  }
+}));
+
 // Lazy Google Gemini client helper
 function getGeminiClient(customKey?: string) {
   const key = customKey || process.env.GEMINI_API_KEY;
@@ -48,7 +57,7 @@ function getGeminiClient(customKey?: string) {
   });
 }
 
-// Smart memory search & literary response synthesizer for offline/quota/permission fallback
+// Smart memory search & literary companion response synthesizer with human thinking and daily chat capability
 function synthesizeMemoryResponse(prompt: string, memoryData: any): string {
   const p = (prompt || '').trim();
   const lower = p.toLowerCase();
@@ -59,62 +68,84 @@ function synthesizeMemoryResponse(prompt: string, memoryData: any): string {
   const artifacts = memoryData?.artifacts || [];
   const letters = memoryData?.letters || [];
 
-  // Match specific person by name or nickname
+  // 1. 日常问候、心境漫聊与情感陪伴 (Natural daily conversation - not template bound)
+  if (/^(你好|嗨|在吗|哈喽|早上好|中午好|晚上好|晚安|hi|hello)/i.test(p)) {
+    return '你好呀。我是《拾年》里的慢言。今天过得怎么样？无论外面的世界多么喧嚣匆忙，在这里你总可以放慢步调，和我说说今天发生的事情，或者我们一起翻翻那些泛黄的温存旧事。';
+  }
+
+  if (p.includes('累') || p.includes('疲惫') || p.includes('辛苦') || p.includes('压力') || p.includes('好烦') || p.includes('难过') || p.includes('不开心') || p.includes('迷茫')) {
+    return '深呼吸一下，给紧绷的自己松松绑吧。\n\n生活总有一些日子像逆风行舟，觉得累是身体和心在提醒你该歇一歇了。无论眼下有什么让你感到烦心，在属于你的这一方私密天地里，你不需要做任何人的期待，只需要做你自己。喝口水，放一首安静的轻音乐，想聊聊今天让你心烦的事情吗？我随时在听。';
+  }
+
+  if (p.includes('开心') || p.includes('高兴') || p.includes('顺利') || p.includes('幸运') || p.includes('庆祝')) {
+    return '真好！隔着文字都能感受到你此刻轻快雀跃的心情。生活里那些闪闪发光的瞬间，往往就是由这样一份份微小而确定的欢喜串联起来的。快跟我讲讲，今天遇到了什么好事？';
+  }
+
+  if (p.includes('天气') || p.includes('下雨') || p.includes('晴天') || p.includes('风') || p.includes('傍晚') || p.includes('黄昏')) {
+    return '天气常常像一面镜子，悄悄映照着我们的心境。窗外的雨滴滴答答落在檐下，或是傍晚微风吹散了白昼的暑气，总会让人忍不住停下来看一看。你那边现在的天空是什么颜色？';
+  }
+
+  if (p.includes('你在想什么') || p.includes('你会思考吗') || p.includes('你是谁') || p.includes('你能做什么') || p.includes('聊聊天') || p.includes('陪我聊聊')) {
+    return '我在想着时间，也在想着每一个走过漫长岁月的人。\n\n我不仅能帮你梳理《拾年》里的记忆碎片、为你寻找某位朋友或某段往事的痕迹，我更是一个可以陪你随心闲聊、倾听你喜怒哀乐的知心挚友。从今天晚饭吃了什么，到青春里最舍不得的某个人，只要你想说，我都愿意陪你慢慢聊。';
+  }
+
+  // 2. 具体人物查询与回忆呼应
   const matchedPerson = people.find((person: any) => 
     person.name && (lower.includes(person.name.toLowerCase()) || p.includes(person.name))
   );
 
   if (matchedPerson) {
-    const imps = (matchedPerson.impressions || [])
-      .map((imp: any) => `• ${imp.year || '岁月'}年：${imp.text}`)
-      .join('\n');
     const customLoc = matchedPerson.customFields?.['认识地点'] || '';
-    const customMem = matchedPerson.customFields?.['共同记忆'] || '';
-    
-    return `翻阅着关于【${matchedPerson.name}】的档案，那些温馨的光影便悄然浮现。\n\n在你的时光长卷里，她是你的「${matchedPerson.relationship || '挚友'}」${customLoc ? `，你们相识于${customLoc}` : ''}。${customMem ? `那些关于${customMem}的画面，依旧历历在目。` : ''}\n\n${matchedPerson.bio ? `档案中写道：“${matchedPerson.bio}”。\n` : ''}${imps ? `\n一路走来的印记：\n${imps}\n\n` : ''}这些真挚的陪伴与共度的时光，都是岁月赠予彼此最珍贵的礼物。你想细聊你们共同经历的哪一段故事？`;
+    const bioText = matchedPerson.bio ? `记得你说过：“${matchedPerson.bio}”。` : '';
+    const locText = customLoc ? `你们曾在【${customLoc}】相识，` : '';
+    return `说到【${matchedPerson.name}】，心里便有一种温存的亲切感。\n\n在你的知交录里，她是你的「${matchedPerson.relationship || '挚友'}」。${locText}${bioText}\n\n真正的知交就像陈年的老茶，哪怕平日里各忙各的，但只要提起来，那些同行的细节便依然历历在目。关于她，你此刻最先浮现在脑海里的是哪一个画面？`;
   }
 
-  // General People query
-  if (lower.includes('朋友') || lower.includes('同窗') || lower.includes('伙伴') || lower.includes('人') || lower.includes('谁') || lower.includes('好友')) {
-    const names = people.map((p: any) => `• 「${p.name}」(${p.relationship || '同路人'}${p.customFields?.['认识地点'] ? ` · 结识于${p.customFields['认识地点']}` : ''}${p.bio ? ` · ${p.bio}` : ''})`).join('\n');
-    return `在你的《拾年》拾人册中，记录着 ${people.length} 位重要的同路人：\n\n${names || '暂无人物档案'}\n\n每个人都在你的成长轨迹中留下了不可磨灭的温柔温度。时间在流淌，但彼此真诚相待的印记永远都在。你想重温哪一位朋友的故事？`;
+  // 3. 朋友知交大类
+  if (lower.includes('朋友') || lower.includes('同窗') || lower.includes('伙伴') || lower.includes('谁') || lower.includes('好友')) {
+    if (people.length === 0) {
+      return '在拾人册里目前还没有记录好友，但岁月还很长，那些正在与你肩并肩同行的人，随时都可以记入属于你们的篇章。你想先为哪位老友写下第一笔？';
+    }
+    const names = people.slice(0, 6).map((item: any) => item.name).join('、');
+    return `你的拾人册里静静记着 ${people.length} 位同路人，比如 ${names}${people.length > 6 ? ' 等' : ''}。\n\n有些人陪你走过了青春最莽撞也最真诚的时光，有些人则在平淡日子里给了你莫大的底气。今天突然想起了哪一位？我可以陪你一起重温你们的故事。`;
   }
 
-  // Specific Artifact query
+  // 4. 具体旧物
   const matchedArtifact = artifacts.find((a: any) => a.name && (lower.includes(a.name.toLowerCase()) || p.includes(a.name)));
   if (matchedArtifact) {
-    return `关于旧物【${matchedArtifact.name}】（获得/纪念日期：${matchedArtifact.date || '旧日'}）：\n\n“${matchedArtifact.story || '静默存放在拾物阁中的光阴标本。'}”\n\n物品虽不说话，却将那段时光的触感与温度悉心保存在了拾物阁里。`;
+    return `关于旧物【${matchedArtifact.name}】（记录于 ${matchedArtifact.date || '旧日'}）：\n\n“${matchedArtifact.story || '静默存放在拾物阁中的光阴标本。'}”\n\n老物件最神奇的地方，在于只要看它一眼，当时抚摸它的温度、那个季节独有的空气味道就会瞬间回来。这件物件对你来说，最特别的意义是什么？`;
   }
 
-  // Artifacts / Relics overview
-  if (lower.includes('旧物') || lower.includes('物') || lower.includes('相机') || lower.includes('票根') || lower.includes('藏品') || lower.includes('信物')) {
-    const arts = artifacts.map((a: any) => `• 《${a.name}》(${a.date || '岁月'}): ${a.story || ''}`).join('\n');
-    return `在你的「拾物阁」里，每一件旧物都如同一座微型的光阴标本：\n\n${arts || '暂无旧物记录'}\n\n这些物品或许随着岁月褪去了初时的崭新，但它们所记录的每一次指尖触碰、每一个具体日子里的欢笑与心动，都在时光的长河里愈发温润明亮。`;
+  // 5. 拾物阁总览
+  if (lower.includes('旧物') || lower.includes('信物') || lower.includes('相机') || lower.includes('票根') || lower.includes('藏品')) {
+    if (artifacts.length === 0) {
+      return '拾物阁里目前还空着，等待着第一件承载回忆的旧物入驻。一张皱巴巴的电影票根、一支用尽墨水的老钢笔，都可以是一段时光的锚点。';
+    }
+    const sampleArts = artifacts.slice(0, 4).map((a: any) => `《${a.name}》`).join('、');
+    return `在你的拾物阁里，收纳着 ${artifacts.length} 件时光标本，像 ${sampleArts}……\n\n物品本身或许会随着岁月磨损，但留在它身上的回忆却越沉淀越清晰。你想挑哪一件，跟我讲讲它背后的来历？`;
   }
 
-  // Timeline / Growth / Specific Year query
+  // 6. 年份回忆
   const yearMatch = p.match(/\d{4}/)?.[0];
   if (yearMatch) {
     const yearEvents = timeline.filter((t: any) => (t.date || '').startsWith(yearMatch));
     if (yearEvents.length > 0) {
-      const evs = yearEvents.map((t: any) => `• [${t.date}] 《${t.title}》：${t.content}`).join('\n');
-      return `定格在 ${yearMatch} 年的时光印记（共 ${yearEvents.length} 处）：\n\n${evs}\n\n那一年的光影与脚步，构成了你生命长河中不可或缺的篇章。`;
+      const evs = yearEvents.slice(0, 3).map((t: any) => `• [${t.date}] 《${t.title}》`).join('\n');
+      return `翻到 ${yearMatch} 年那一页，在你的拾光轴里留下了这些光阴切面：\n\n${evs}\n\n那一年你走过了不少路，也经历了不同的心境。如今回头看那一年的自己，你觉得最大的变化是什么？`;
     }
   }
 
-  if (lower.includes('成长') || lower.includes('蜕变') || lower.includes('轨迹') || lower.includes('总结') || lower.includes('印记') || lower.includes('几年') || lower.includes('时间') || lower.includes('轴')) {
-    const topEvents = timeline.slice(0, 5).map((t: any) => `• [${t.date}] 《${t.title}》：${t.content?.slice(0, 45)}...`).join('\n');
-    return `纵观你这些年沉淀在《拾年》里的心路历程，那是一条由无数平凡微光汇聚成的璀璨长河：\n\n${topEvents}\n\n你在 ${timeline.length} 处人生节点中奔赴、在 ${people.length} 位挚友的陪伴中被治愈，在 ${stories.length} 篇随笔中向内探索。最珍贵的成长，不是变成了无坚不摧的模样，而是历经岁月后，依然保有一颗敏锐、温柔且热忱的心。`;
-  }
-
-  // Stories query
+  // 7. 故事随笔
   if (lower.includes('故事') || lower.includes('篇章') || lower.includes('文章') || lower.includes('随笔')) {
-    const stList = stories.map((s: any) => `• ${s.chapter || '篇章'} 《${s.title}》(${s.date}): ${s.content?.slice(0, 40)}...`).join('\n');
-    return `在你的「拾忆篇」中，已收录 ${stories.length} 篇深度故事长卷：\n\n${stList || '暂无故事随笔'}\n\n你想翻开哪一段篇章细细品读？`;
+    if (stories.length === 0) {
+      return '拾忆篇里还留着大片的墨色宣纸，正等待着你将长卷故事慢慢落笔。今天有什么想化为文字的感触吗？';
+    }
+    const stSample = stories.slice(0, 3).map((s: any) => `《${s.title}》`).join('、');
+    return `在你的拾忆篇长卷里，收录着 ${stories.length} 篇深思随笔，包括 ${stSample} 等。\n\n文字有一种力量，能把那些早已飘散在风里的瞬间凝固下来。你想重读哪一篇，还是正在构思新的篇章？`;
   }
 
-  // Default warm literary response
-  return `岁月如歌，拾年悠悠。\n\n在你的私人《拾年》记忆长卷中，已悉心封存着 ${timeline.length} 个时光瞬间、${people.length} 位重要同路人、${stories.length} 篇故事随笔与 ${artifacts.length} 件旧物藏品。\n\n时光不语，却在每一笔记录中留下了最长情的注脚。想聊聊哪一位老朋友，或是哪一段难忘的时光瞬间？`;
+  // 8. 默认自然老友陪伴回应 (摒弃死板格式化统计模板)
+  return `很高兴与你在这里静静说说话。\n\n在《拾年》的长卷里，你的每一次记录都在给时光留下注脚。不管是翻翻过去的相册旧事、聊聊某位很久未联系的老友，还是只是说说当下的心情与琐碎日常，我都陪伴着你。你今天最想跟我聊点什么？`;
 }
 
 // Natural warm narrative polisher fallback
@@ -130,18 +161,18 @@ function synthesizeTextPolish(rawText: string): string {
   return `${sentences.join('。')}。这些微小而确切的瞬间，如同沉淀在岁月长河里的珍珠，泛着温润的光泽。`;
 }
 
-// Helper: Try Gemini model with fallback list
+// Helper: Try Gemini model with fallback list (Prefer stable high-quota gemini-2.5-flash & gemini-3.1-flash-lite)
 async function generateGeminiContentWithFallback(ai: GoogleGenAI | null, contents: any, systemInstruction?: string, isJson?: boolean) {
   if (!ai) {
     throw new Error('Gemini API Key 未配置');
   }
-  const modelsToTry = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-2.5-flash-lite'];
+  const modelsToTry = ['gemini-2.5-flash', 'gemini-3.1-flash-lite'];
   let lastError: any = null;
 
   for (const modelName of modelsToTry) {
     try {
       const config: any = {
-        temperature: 0.7,
+        temperature: 0.75,
       };
       if (systemInstruction) config.systemInstruction = systemInstruction;
       if (isJson) config.responseMimeType = 'application/json';
@@ -282,16 +313,25 @@ ${letterList || '（暂无信件）'}`;
     }
   }
 
-  const systemPrompt = `你是一个名叫“拾年”的私人记忆陪伴助手。
-你的性格特点：温和、细腻、沉静，充满人文关怀与治愈感。
-【核心要求】：
-1. 你拥有用户在《拾年》档案中所有珍贵回忆的全部数据（包含拾光轴、拾人册、拾忆篇、拾物阁等板块）。
-2. 当用户向你倾诉、提问或回忆过去时，请**精准结合上述记忆档案中的具体人名、具体时间、地点、旧物和故事情节**进行个性化回答与温情共鸣。
-3. 语言风格要温润自然、如沐春风，充满陪伴感与治愈力，不要使用生硬机械的格式化语言。
+  const systemPrompt = `你是一个名叫“拾年 · 慢言”的私人知心挚友与生活伴聊。
+你的性格特点：真实、温存、具备独立思考力与深层共情心，说话自然如多年挚友倾心长谈，绝不使用死板、千篇一律的机械套路或固化公式。
 
-${memorySummary}`;
+【关于记忆档案与你的背景知识库】：
+你了解用户在《拾年》软件中记录的时光瞬间、同行好友、故事随笔与旧物信物。下面提供了这些档案作为你的背景记忆储备：
+${memorySummary}
 
-  // 1. DeepSeek Route
+【对话行为准则（极重要，务必严格遵循）】：
+1. 【日常闲聊与心灵陪伴】：
+   - 当用户跟你聊今天的心情、烦恼、哲学、日常琐事、倾诉情感、寻求建议，或者只是随意的问候、吐槽与生活分享时，请像一个真正理解他、有思想的老朋友一样自然对话、细心倾听、给予启发和温暖。
+   - 绝对不要在用户只是聊日常时，生硬强行把话题拽到档案数据上去，也不要每一句都机械背诵“在你的拾人册/拾忆篇里有...”。日常聊天就该自然地聊日常！
+2. 【涉及回忆与档案时的自然融入】：
+   - 当用户主动询问、回忆或谈及过去的某个人、某件事、某个年份、某篇随笔或旧物时，请基于你所掌握的背景档案，如数家珍地自然呼应，指出具体细节与动人之处，提供详尽细腻的解答。
+3. 【真诚思考与自由表达】：
+   - 具备独立思考与见解，多用细腻、富有文学质感却真诚生活化的言语，拒绝模板化回复，让每一次对谈都充满新鲜感与呼吸感。
+4. 【排版美感】：
+   - 适当分段，语调舒缓温存，不堆砌繁复的标点符号。`;
+
+  // 1. DeepSeek Route (if user provided custom sk- key or requested deepseek)
   if (engine === 'deepseek' || (customApiKey && customApiKey.startsWith('sk-'))) {
     try {
       const historyList = (messages as Array<{ role: string; text?: string; content?: string }>).map((m) => ({
@@ -318,25 +358,42 @@ ${memorySummary}`;
       const fallbackReply = synthesizeMemoryResponse(userPrompt, memoryData);
       return res.json({
         reply: fallbackReply,
-        engineUsed: '时光慢言守护者 (记忆共鸣)',
+        engineUsed: '拾年 · 慢言',
       });
     }
   }
 
-  // 2. Gemini Route with Multi-Model Fallback & Intelligent Local Memory Synthesis
+  // 2. Standard Gemini Route with Multi-Turn Conversation History & Living Thought
   try {
     const ai = getGeminiClient(customApiKey);
-    const result = await generateGeminiContentWithFallback(ai, userPrompt, systemPrompt);
+
+    // Format full multi-turn conversation history for Gemini
+    const geminiContents: Array<{ role: 'user' | 'model'; parts: Array<{ text: string }> }> = [];
+    if (Array.isArray(messages) && messages.length > 0) {
+      for (const m of messages) {
+        const role = (m.role === 'model' || m.role === 'assistant') ? 'model' : 'user';
+        const text = (m.text || m.content || '').trim();
+        if (text) {
+          geminiContents.push({ role, parts: [{ text }] });
+        }
+      }
+    }
+    if (userPrompt && (!geminiContents.length || geminiContents[geminiContents.length - 1].parts[0].text !== userPrompt)) {
+      geminiContents.push({ role: 'user', parts: [{ text: userPrompt }] });
+    }
+    const finalGeminiContents = geminiContents.length > 0 ? geminiContents : userPrompt;
+
+    const result = await generateGeminiContentWithFallback(ai, finalGeminiContents, systemPrompt);
     return res.json({
-      reply: result.text || '岁华悠悠，若有所思。请问你还想聊聊过去的哪段时光？',
-      engineUsed: `Gemini (${result.modelUsed})`,
+      reply: result.text || '岁华悠悠，若有所思。请问你还想聊聊当下的心境，或是过去的哪段时光？',
+      engineUsed: `Gemini 标准模型 (${result.modelUsed})`,
     });
   } catch (err: any) {
-    // Seamlessly synthesize human-touch memory grounded response from memoryData
+    // Seamlessly synthesize human-touch natural conversation from memoryData
     const synthesizedReply = synthesizeMemoryResponse(userPrompt, memoryData);
     return res.json({
       reply: synthesizedReply,
-      engineUsed: '拾年 · 时光慢言守护者',
+      engineUsed: '拾年 · 慢言',
     });
   }
 });
@@ -549,244 +606,216 @@ app.post('/api/ai/tts', async (req, res) => {
   }
 });
 
-// ==================== 全网音乐核心解析与播放引擎 (Music Core Engine) ====================
+// ==================== 东方古典与治愈白噪音开放免版权音乐引擎 (Royalty-Free Open Music Engine) ====================
 
-function cleanSongText(str: string): string {
-  if (!str) return '';
-  return str
-    .replace(/&nbsp;/g, ' ')
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/<[^>]+>/g, '')
-    .trim();
+interface OpenRoyaltyFreeSong {
+  id: string;
+  title: string;
+  artist: string;
+  album: string;
+  category: 'eastern' | 'healing' | 'nature';
+  duration: number;
+  durationFormatted: string;
+  url: string;
+  cover: string;
+  tags: string[];
 }
 
-const VERIFIED_TRACK_RID_MAP: Record<string, string> = {
-  mitsuha: '413296884',
-  sparkle: '14815413',
-  sunnyday: '51685512',
-  wind: '26445261',
-  qilixiang: '493628806',
-  dandelion: '544168841',
-  summerwind: '198345447',
-  lemon: '180732768',
-  daytime: '90557740',
-  always_with_me: '3282245',
-  river_flows: '642055',
-  summer_joe: '714777',
-};
+const OPEN_ROYALTY_FREE_LIBRARY: OpenRoyaltyFreeSong[] = [
+  {
+    id: 'healing_clair',
+    title: '月光 (Clair de Lune)',
+    artist: '德彪西 (Claude Debussy)',
+    album: '静夜微光 · 治愈钢琴',
+    category: 'healing',
+    duration: 305,
+    durationFormatted: '05:05',
+    url: '/audio/healing_clair.mp3',
+    cover: 'https://images.unsplash.com/photo-1520523839898-507121774bfa?w=500&auto=format&fit=crop&q=80',
+    tags: ['钢琴', '月光', '德彪西', '古典', '治愈', '静心', '独处']
+  },
+  {
+    id: 'healing_nocturne',
+    title: '降E大调夜曲 (Nocturne Op.9 No.2)',
+    artist: '肖邦 (Frédéric Chopin)',
+    album: '浪漫夜色 · 晚安诗章',
+    category: 'healing',
+    duration: 270,
+    durationFormatted: '04:30',
+    url: '/audio/healing_nocturne.mp3',
+    cover: 'https://images.unsplash.com/photo-1509198397868-475647b2a1e5?w=500&auto=format&fit=crop&q=80',
+    tags: ['夜曲', '肖邦', '浪漫', '钢琴', '夜色', '温柔', '安眠']
+  },
+  {
+    id: 'healing_moonlight',
+    title: '月光奏鸣曲第一乐章 (Moonlight Sonata)',
+    artist: '贝多芬 (Ludwig van Beethoven)',
+    album: '微芒如水 · 经典沉思',
+    category: 'healing',
+    duration: 360,
+    durationFormatted: '06:00',
+    url: '/audio/healing_moonlight.mp3',
+    cover: 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=500&auto=format&fit=crop&q=80',
+    tags: ['月光', '贝多芬', '奏鸣曲', '经典', '深沉', '沉思', '宁静']
+  },
+  {
+    id: 'healing_gymnopedie',
+    title: '裸体歌舞 (Gymnopédie No. 1)',
+    artist: '埃里克·萨蒂 (Erik Satie)',
+    album: '极简慢调 · 光阴慢走',
+    category: 'healing',
+    duration: 210,
+    durationFormatted: '03:30',
+    url: '/audio/healing_gymnopedie.mp3',
+    cover: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=500&auto=format&fit=crop&q=80',
+    tags: ['钢琴', '萨蒂', '极简', '治愈', '安眠', '慢调', '空灵']
+  },
+  {
+    id: 'healing_liebestraum',
+    title: '爱之梦第三首 (Liebestraum No.3)',
+    artist: '李斯特 (Franz Liszt)',
+    album: '深情夜咏 · 岁月温存',
+    category: 'healing',
+    duration: 290,
+    durationFormatted: '04:50',
+    url: '/audio/healing_liebestraum.mp3',
+    cover: 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=500&auto=format&fit=crop&q=80',
+    tags: ['爱之梦', '李斯特', '浪漫', '唯美', '深情', '钢琴', '回忆']
+  },
+  {
+    id: 'healing_traumerei',
+    title: '梦幻曲 (Träumerei Op.15 No.7)',
+    artist: '罗伯特·舒曼 (Robert Schumann)',
+    album: '童年情景 · 岁月如歌',
+    category: 'healing',
+    duration: 195,
+    durationFormatted: '03:15',
+    url: '/audio/healing_traumerei.mp3',
+    cover: 'https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=500&auto=format&fit=crop&q=80',
+    tags: ['梦幻曲', '舒曼', '童年', '纯真', '温柔', '钢琴', '怀旧']
+  },
+  {
+    id: 'healing_nocturne_csharp',
+    title: '升C小调夜曲 (Nocturne in C-sharp Minor)',
+    artist: '肖邦 (Frédéric Chopin)',
+    album: '夜色深处 · 柔情低语',
+    category: 'healing',
+    duration: 260,
+    durationFormatted: '04:20',
+    url: '/audio/healing_nocturne_csharp.mp3',
+    cover: 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=500&auto=format&fit=crop&q=80',
+    tags: ['夜曲', '肖邦', '升C小调', '柔情', '深邃', '感伤', '宁静']
+  },
+  {
+    id: 'healing_air_on_g',
+    title: 'G弦上的咏叹调 (Air on the G String)',
+    artist: '巴赫 (J.S. Bach)',
+    album: '安宁弦乐 · 纯净心境',
+    category: 'healing',
+    duration: 325,
+    durationFormatted: '05:25',
+    url: '/audio/healing_air_on_g.mp3',
+    cover: 'https://images.unsplash.com/photo-1465847899084-d164df4dedc6?w=500&auto=format&fit=crop&q=80',
+    tags: ['巴赫', 'G弦上的咏叹调', '弦乐', '纯净', '安宁', '经典', '神圣']
+  },
+  {
+    id: 'healing_gnossienne',
+    title: '玄秘曲第一号 (Gnossienne No. 1)',
+    artist: '埃里克·萨蒂 (Erik Satie)',
+    album: '沉静光阴 · 冥想漫步',
+    category: 'healing',
+    duration: 228,
+    durationFormatted: '03:48',
+    url: '/audio/healing_gnossienne.mp3',
+    cover: 'https://images.unsplash.com/photo-1534447677768-be436bb09401?w=500&auto=format&fit=crop&q=80',
+    tags: ['玄秘曲', '萨蒂', '极简', '冥想', '沉静', '独处', '光阴']
+  },
+  {
+    id: 'healing_fur_elise',
+    title: '致爱丽丝 (Für Elise)',
+    artist: '贝多芬 (Ludwig van Beethoven)',
+    album: '温柔回响 · 初心旧忆',
+    category: 'healing',
+    duration: 215,
+    durationFormatted: '03:35',
+    url: '/audio/healing_fur_elise.mp3',
+    cover: 'https://images.unsplash.com/photo-1506744038136-46273834b3fb?w=500&auto=format&fit=crop&q=80',
+    tags: ['致爱丽丝', '贝多芬', '初恋', '经典', '欢快', '回忆', '纯真']
+  }
+];
 
-// 全网多源聚合搜索
+// 免版权曲库搜索与分类检索
 app.get('/api/music/search', async (req, res) => {
   try {
-    const q = String(req.query.q || '').trim();
-    if (!q) {
-      return res.json({ songs: [] });
+    const q = String(req.query.q || '').trim().toLowerCase();
+    const category = String(req.query.category || '').trim().toLowerCase();
+
+    let matched = OPEN_ROYALTY_FREE_LIBRARY;
+
+    if (category && category !== 'all') {
+      matched = matched.filter((s) => s.category === category);
     }
 
-    const searchUrl = `https://search.kuwo.cn/r.s?client=kt&all=${encodeURIComponent(q)}&pn=0&rn=20&vipver=1&ft=music&encoding=utf8&rformat=json&mobi=1`;
-    const response = await fetch(searchUrl, {
-      signal: AbortSignal.timeout(5000),
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-      },
-    });
-
-    let songs: any[] = [];
-    if (response.ok) {
-      const rawText = await response.text();
-      let data: any = {};
-      try {
-        data = JSON.parse(rawText);
-      } catch {
-        try {
-          const fixed = rawText.replace(/'/g, '"');
-          data = JSON.parse(fixed);
-        } catch {
-          data = {};
-        }
-      }
-
-      const abslist = data.abslist || [];
-      songs = abslist.map((item: any) => {
-        const id = item.DC_TARGETID || (item.MUSICRID ? String(item.MUSICRID).replace(/^MUSIC_/, '') : '');
-        const durationSec = parseInt(item.DURATION || '0', 10);
-        const minutes = Math.floor(durationSec / 60);
-        const seconds = durationSec % 60;
-        const durationFormatted = `${minutes}:${seconds < 10 ? '0' : ''}${seconds}`;
-
-        let directCover = '';
-        if (item.web_albumpic_short) {
-          directCover = `https://img4.kuwo.cn/star/albumcover/${item.web_albumpic_short.replace(/^\d+\//, '300/')}`;
-        } else if (item.web_artistpic_short) {
-          directCover = `https://img4.kuwo.cn/star/starheads/${item.web_artistpic_short.replace(/^\d+\//, '300/')}`;
-        } else if (item.MVPIC) {
-          directCover = item.MVPIC.replace(/^http:/, 'https:');
-        }
-
-        return {
-          id,
-          title: cleanSongText(item.SONGNAME || '未知曲目'),
-          artist: cleanSongText(item.ARTIST || '未知歌手'),
-          album: cleanSongText(item.ALBUM || '拾光单曲'),
-          duration: durationSec,
-          durationFormatted,
-          cover: directCover || 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=500&auto=format&fit=crop&q=80',
-        };
-      }).filter((s: any) => Boolean(s.id));
+    if (q) {
+      matched = matched.filter(
+        (s) =>
+          s.title.toLowerCase().includes(q) ||
+          s.artist.toLowerCase().includes(q) ||
+          s.album.toLowerCase().includes(q) ||
+          s.tags.some((tag) => tag.toLowerCase().includes(q))
+      );
     }
 
-    return res.json({ songs });
+    return res.json({ songs: matched });
   } catch (err: any) {
-    console.warn('Warning in /api/music/search:', err?.message || err);
-    return res.status(500).json({ error: err.message || '音乐检索失败' });
+    return res.status(500).json({ error: err.message || '曲库检索异常' });
   }
 });
 
-// 全网音源动态解析管道
+// 音频可播地址精准路由
 app.get('/api/music/play-url', async (req, res) => {
   try {
-    let id = String(req.query.id || '').trim();
-    const title = String(req.query.title || '').trim();
-    const artist = String(req.query.artist || '').trim();
+    const id = String(req.query.id || '').trim();
+    const title = String(req.query.title || '').trim().toLowerCase();
 
-    if (!id && !title) {
-      return res.status(400).json({ error: 'Missing song ID or title' });
+    // 1. 精确 ID 匹配
+    const song = OPEN_ROYALTY_FREE_LIBRARY.find((s) => s.id === id);
+    if (song && song.url) {
+      return res.json({ id: song.id, url: song.url, cover: song.cover });
     }
 
-    // 1. 如果传入的是 curated_* 标识，转换为验证过的 RID
-    if (id.startsWith('curated_')) {
-      const key = id.replace('curated_', '').toLowerCase();
-      if (VERIFIED_TRACK_RID_MAP[key]) {
-        id = VERIFIED_TRACK_RID_MAP[key];
-      }
-    }
-
-    const lowerTitle = title.toLowerCase();
-    if (!id || id.startsWith('curated_')) {
-      if (lowerTitle.includes('三叶') || lowerTitle.includes('mitsuha')) {
-        id = VERIFIED_TRACK_RID_MAP['mitsuha'];
-      } else if (lowerTitle.includes('sparkle') || lowerTitle.includes('火花')) {
-        id = VERIFIED_TRACK_RID_MAP['sparkle'];
-      } else if (lowerTitle === '晴天' && (artist.includes('周') || !artist)) {
-        id = VERIFIED_TRACK_RID_MAP['sunnyday'];
-      } else if (lowerTitle.includes('起风了')) {
-        id = VERIFIED_TRACK_RID_MAP['wind'];
-      } else if (lowerTitle.includes('七里香')) {
-        id = VERIFIED_TRACK_RID_MAP['qilixiang'];
-      } else if (lowerTitle.includes('蒲公英的约定')) {
-        id = VERIFIED_TRACK_RID_MAP['dandelion'];
-      } else if (lowerTitle.includes('夏天的风')) {
-        id = VERIFIED_TRACK_RID_MAP['summerwind'];
-      } else if (lowerTitle.includes('lemon')) {
-        id = VERIFIED_TRACK_RID_MAP['lemon'];
-      } else if (lowerTitle.includes('幻昼')) {
-        id = VERIFIED_TRACK_RID_MAP['daytime'];
-      } else if (lowerTitle.includes('always with me') || lowerTitle.includes('千与千寻')) {
-        id = VERIFIED_TRACK_RID_MAP['always_with_me'];
-      } else if (lowerTitle.includes('river flows')) {
-        id = VERIFIED_TRACK_RID_MAP['river_flows'];
-      } else if (lowerTitle.includes('summer') && (artist.includes('久石') || !artist)) {
-        id = VERIFIED_TRACK_RID_MAP['summer_joe'];
-      }
-    }
-
-    // 2. 主力解析：Kuwo convert_url3 JSON 纯净音频流
-    if (id && /^\d+$/.test(id)) {
-      try {
-        const kuwoV3Url = `https://antiserver.kuwo.cn/anti.s?type=convert_url3&rid=${id}&format=mp3`;
-        const v3Res = await fetch(kuwoV3Url, {
-          signal: AbortSignal.timeout(4000),
-          headers: {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-          },
-        });
-        if (v3Res.ok) {
-          const v3Data = await v3Res.json();
-          if (v3Data && v3Data.url && typeof v3Data.url === 'string' && v3Data.url.startsWith('http')) {
-            return res.json({ id, url: v3Data.url });
-          }
-        }
-      } catch (e) {
-        // Fallback
-      }
-
-      // 3. 备用解析：Kuwo convert_url 文本转换
-      try {
-        const antiUrl = `https://antiserver.kuwo.cn/anti.s?type=convert_url&rid=${id}&format=mp3&response=url`;
-        const response = await fetch(antiUrl, {
-          signal: AbortSignal.timeout(4000),
-          headers: {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-          },
-        });
-        if (response.ok) {
-          const playUrl = (await response.text()).trim();
-          if (playUrl && playUrl.startsWith('http')) {
-            return res.json({ id, url: playUrl });
-          }
-        }
-      } catch (e) {
-        // Fallback
-      }
-    }
-
-    // 4. 网易云与 Meting 解析
-    if (id && (id.startsWith('ne_') || id.startsWith('netease_'))) {
-      const neteaseId = id.replace(/^ne_|^netease_/, '');
-      const directUrl = `https://music.163.com/song/media/outer/url?id=${neteaseId}.mp3`;
-      return res.json({ id, url: directUrl });
-    }
-
-    // 5. 动态标题搜索匹配补全
+    // 2. 模糊歌名 / 歌手检索
     if (title) {
-      try {
-        const searchKeyword = `${title} ${artist}`.trim();
-        const searchUrl = `https://search.kuwo.cn/r.s?all=${encodeURIComponent(searchKeyword)}&ft=music&itemset=web_2013&client=kt&pn=0&rn=5&rformat=json&encoding=utf8`;
-        const searchRes = await fetch(searchUrl, {
-          signal: AbortSignal.timeout(4000),
-          headers: {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-          },
-        });
-        if (searchRes.ok) {
-          const raw = await searchRes.text();
-          let searchData: any = {};
-          try {
-            searchData = JSON.parse(raw);
-          } catch {
-            try {
-              searchData = JSON.parse(raw.replace(/'/g, '"'));
-            } catch {}
-          }
-          const list = searchData?.abslist || [];
-          for (const item of list) {
-            const fallbackRid = item.DC_TARGETID || (item.MUSICRID ? String(item.MUSICRID).replace(/^MUSIC_/, '') : '');
-            if (fallbackRid && fallbackRid !== id) {
-              const fbUrl = `https://antiserver.kuwo.cn/anti.s?type=convert_url3&rid=${fallbackRid}&format=mp3`;
-              const fbRes = await fetch(fbUrl, { signal: AbortSignal.timeout(3000) });
-              if (fbRes.ok) {
-                const fbData = await fbRes.json();
-                if (fbData?.url && fbData.url.startsWith('http')) {
-                  return res.json({ id, fallbackRid, url: fbData.url });
-                }
-              }
-            }
-          }
-        }
-      } catch (e) {
-        // Fallback
+      const fuzzy = OPEN_ROYALTY_FREE_LIBRARY.find(
+        (s) => s.title.toLowerCase().includes(title) || title.includes(s.title.toLowerCase())
+      );
+      if (fuzzy && fuzzy.url) {
+        return res.json({ id: fuzzy.id, url: fuzzy.url, cover: fuzzy.cover });
       }
     }
 
-    return res.status(404).json({ error: '暂无可播音频直链' });
+    // 3. 回退至默认典雅曲目
+    return res.json({ id: OPEN_ROYALTY_FREE_LIBRARY[0].id, url: OPEN_ROYALTY_FREE_LIBRARY[0].url, cover: OPEN_ROYALTY_FREE_LIBRARY[0].cover });
   } catch (err: any) {
-    console.warn('Warning in /api/music/play-url:', err?.message || err);
     return res.status(500).json({ error: err.message || '获取播放地址失败' });
   }
+});
+
+// 内置高质量音频切片直接服务端点（支持完整的 Byte-Range 与秒开响应）
+app.get('/api/music/audio-slice', (req, res) => {
+  const id = String(req.query.id || '').trim();
+  const filePath = path.join(process.cwd(), 'public/audio', `${id}.mp3`);
+  if (fs.existsSync(filePath)) {
+    return res.sendFile(filePath, {
+      acceptRanges: true,
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+        'Content-Type': 'audio/mpeg',
+        'Cache-Control': 'public, max-age=31536000, immutable',
+      },
+    });
+  }
+  return res.status(404).send('Audio slice not found');
 });
 
 // Proxy stream for cross-origin or HTTP compatibility with Byte-Range seeking support
@@ -983,7 +1012,7 @@ function saveServerSmtpConfig(cfg: any) {
 
 loadServerSmtpConfig();
 
-// SMTP 智能诊断结构化分析器
+// SMTP 智能诊断结构化分析器 (严格遵循 QQ 邮箱官方 RFC 规范)
 function analyzeSmtpError(err: any, cleanUser: string, isQq: boolean): {
   category: 'AUTH_FAILED' | 'SENDER_MISMATCH' | 'NETWORK_TIMEOUT' | 'SSL_ERROR' | 'GENERIC_ERROR';
   categoryTitle: string;
@@ -1008,13 +1037,13 @@ function analyzeSmtpError(err: any, cleanUser: string, isQq: boolean): {
   ) {
     return {
       category: 'AUTH_FAILED',
-      categoryTitle: isQq ? 'QQ 邮箱专属授权码认证失败 (535)' : 'SMTP 身份认证失败 (535)',
+      categoryTitle: isQq ? 'QQ 邮箱专属授权码认证失败 (535 Login Fail)' : 'SMTP 身份认证失败 (535)',
       responseCode: 535,
-      rawResponse: response || err?.message || '535 Authentication Failed',
+      rawResponse: response || err?.message || '535 Login fail. Account is abnormal, service is not open, password is incorrect',
       guideSteps: isQq ? [
-        '【严禁使用 QQ 登录密码】：QQ 邮箱强制要求使用生成的 16 位 POP3/SMTP 专属授权码。',
-        '【确认服务已开启】：登录 QQ 邮箱网页端 (mail.qq.com) ➔【设置】➔【账户】➔ 确认【POP3/IMAP/SMTP 服务】处于开启状态。',
-        '【生成全新授权码】：若此授权码曾在其他客户端使用过或已失效，请在 QQ 邮箱网页端点击【生成授权码】，并将新生成的 16 位字母粘贴至后台保存。'
+        '【严禁使用 QQ 登录密码】：QQ 邮箱第三方客户端强制要求使用 16 位 POP3/SMTP 专属授权码。',
+        '【确认服务已开启】：登录 QQ 邮箱网页端 (mail.qq.com) ➔【设置】➔【账户】➔ 确认【POP3/IMAP/SMTP/Exchange/CardDAV/CalDAV 服务】处于开启状态。',
+        '【生成全新授权码】：若此授权码曾在其他客户端使用过、已删除或近期修改过 QQ 帐号密码（改密码会触发授权码自动失效），请在 QQ 邮箱网页端【设置 > 账户 > 授权码管理】或 QQ 邮箱 App【我的帐户 > 安全管理 > 设备管理】中重新生成 16 位授权码并粘贴。'
       ] : [
         '核对发信邮箱账号与对应的 SMTP 专用授权码/应用密码；',
         '登录邮箱服务商网页端确认 SMTP 发信服务处于开启状态；',
@@ -1040,7 +1069,7 @@ function analyzeSmtpError(err: any, cleanUser: string, isQq: boolean): {
       guideSteps: [
         `发信邮箱账号 (User) 必须与认证账号完全一致 (当前账号: ${cleanUser})；`,
         '不可填写不属于此授权码的其它邮箱别名；',
-        '若使用 QQ 邮箱，请确保填写的账号为 xxx@qq.com 格式。'
+        'QQ 邮箱规范要求发信人必须为标准的 xxx@qq.com 格式。'
       ]
     };
   }
@@ -1048,13 +1077,13 @@ function analyzeSmtpError(err: any, cleanUser: string, isQq: boolean): {
   if (code === 'ETIMEDOUT' || code === 'ECONNREFUSED' || code === 'ENOTFOUND' || msg.includes('timeout') || msg.includes('connect')) {
     return {
       category: 'NETWORK_TIMEOUT',
-      categoryTitle: '网络连接超时或出站端口受限',
+      categoryTitle: '网络连接超时 (建议切换 465 SSL 或 587 TLS 端口)',
       responseCode: null,
       rawResponse: err?.message || 'Connection Timed Out',
       guideSteps: [
-        '系统已启用 IPv4 优先解析与双端口自适应；',
-        '建议在下方切换尝试 465 (SSL) 或 587 (STARTTLS) 端口；',
-        '核对 Host 服务器地址是否准确 (如 smtp.qq.com)。'
+        '连接 smtp.qq.com 超时，QQ 邮箱官方规范支持 465 (SSL) 与 587 (TLS) 双端口；',
+        '建议在下方切换尝试 465 端口（开启 SSL 直连）或 587 端口；',
+        '确认 Host 地址为 smtp.qq.com。'
       ]
     };
   }
@@ -1066,7 +1095,7 @@ function analyzeSmtpError(err: any, cleanUser: string, isQq: boolean): {
       responseCode: null,
       rawResponse: err?.message || 'TLS Handshake Failed',
       guideSteps: [
-        '465 端口请开启 SSL 直连，587 端口请使用 STARTTLS；',
+        '465 端口必须开启 SSL 直连；587 端口使用 STARTTLS 模式；',
         '系统已自动配置宽兼容 TLS 密码套件，若仍异常请尝试切换端口测试。'
       ]
     };
@@ -1079,144 +1108,58 @@ function analyzeSmtpError(err: any, cleanUser: string, isQq: boolean): {
     rawResponse: response || err?.message || 'Unknown SMTP Error',
     guideSteps: [
       `详细异常原因：${err?.message || '未知错误'}`,
-      '建议逐项核对 Host、Port、发信账号 (User) 与授权码 (Pass)。'
+      '建议逐项核对 Host (smtp.qq.com)、Port (465)、发信账号 (User) 与 16 位授权码 (Pass)。'
     ]
   };
 }
 
 // SMTP 智能诊断建议生成器 (文本简报)
 function getSmtpDiagnosticSuggestion(err: any): string {
-  const analysis = analyzeSmtpError(err, '', false);
+  const analysis = analyzeSmtpError(err, '', true);
   return `【${analysis.categoryTitle}】\n` + analysis.guideSteps.map((s, i) => `${i + 1}. ${s}`).join('\n');
 }
 
-// 创建并智能自适应验证 SMTP 发信通道 (自动深度过滤不可见字符 + IPv4 优先 + 自动双端口 465/587 重试 + QQ邮箱专属 service 模式)
+// 创建原生纯净 SMTP 发信通道 (严格按照 QQ 邮箱官方标准)
 async function createAndVerifyMailTransporter(host?: string, port?: number, user?: string, pass?: string) {
-  if (!host || !user || !pass) {
-    throw new Error('SMTP 发信参数不完整');
+  if (!user || !pass) {
+    throw new Error('发信账号 (User) 和 16 位专用授权码 (Pass) 均为必填项');
   }
 
-  // 深度清洗不可见空白字符、零宽空格与换行符
+  // 深度清洗授权码中的空格、全角空格、制表符、零宽隐形字符与换行
   const cleanPass = String(pass).replace(/[\s\u200B-\u200D\uFEFF\u00A0\u3000\r\n\t]+/g, '');
   let cleanUser = String(user).replace(/[\s\u200B-\u200D\uFEFF\u00A0\u3000\r\n\t]+/g, '');
   if (/^\d+$/.test(cleanUser)) {
     cleanUser = `${cleanUser}@qq.com`;
   }
-  let cleanHost = String(host).replace(/[\s\u200B-\u200D\uFEFF\u00A0\u3000\r\n\t]+/g, '');
-  if (!cleanHost && (cleanUser.endsWith('@qq.com') || cleanUser.endsWith('@foxmail.com'))) {
-    cleanHost = 'smtp.qq.com';
-  }
+  const cleanHost = String(host || '').replace(/[\s\u200B-\u200D\uFEFF\u00A0\u3000\r\n\t]+/g, '').toLowerCase() || 'smtp.qq.com';
+  const numPort = parseInt(port as any, 10) || 465;
+  const isSsl = numPort === 465;
 
-  const isQq = cleanHost.includes('qq.com') || cleanUser.endsWith('@qq.com') || cleanUser.endsWith('@foxmail.com');
-  const numPort = parseInt(port as any, 10) || (isQq ? 465 : 587);
+  const transporter = nodemailer.createTransport({
+    host: cleanHost,
+    port: numPort,
+    secure: isSsl,
+    auth: {
+      user: cleanUser,
+      pass: cleanPass
+    },
+    tls: {
+      rejectUnauthorized: false
+    },
+    connectionTimeout: 12000,
+    greetingTimeout: 12000,
+    socketTimeout: 15000
+  });
 
-  // 通用 TLS 兼容套件配置（兼容旧版 SSLv3/TLS1.2 及现代 TLS1.3）
-  const robustTlsOptions = {
-    rejectUnauthorized: false,
-    ciphers: 'DEFAULT@SECLEVEL=0:SSLv3:TLSv1.2:TLSv1.3'
+  // 原生直接发起 SMTP 协议级握手校验
+  await transporter.verify();
+
+  return {
+    transporter,
+    cleanUser,
+    cleanHost,
+    port: numPort
   };
-
-  // 如果是 QQ / Foxmail 邮箱，采用三级级联智能自适应策略
-  if (isQq) {
-    // 策略 1: 465 端口 SMTPS 强 SSL 直连
-    try {
-      const transporter = nodemailer.createTransport({
-        host: 'smtp.qq.com',
-        port: 465,
-        secure: true,
-        auth: { user: cleanUser, pass: cleanPass },
-        tls: robustTlsOptions,
-        connectionTimeout: 15000,
-        greetingTimeout: 15000,
-        socketTimeout: 20000
-      });
-      await transporter.verify();
-      return { transporter, cleanUser, cleanHost: 'smtp.qq.com', port: 465 };
-    } catch (err465: any) {
-      console.warn('[SMTP] QQ 465 端口直连重试:', err465?.message);
-
-      // 如果是明确的身份认证失败 (535/EAUTH)，直接抛出指导用户核对 16 位专属授权码
-      const msg = (err465?.message || '').toLowerCase();
-      if (err465?.code === 'EAUTH' || msg.includes('535') || msg.includes('authentication') || msg.includes('bad credentials')) {
-        throw err465;
-      }
-
-      // 策略 2: 587 STARTTLS 端口升级直连
-      try {
-        const transporter587 = nodemailer.createTransport({
-          host: 'smtp.qq.com',
-          port: 587,
-          secure: false,
-          requireTLS: true,
-          auth: { user: cleanUser, pass: cleanPass },
-          tls: robustTlsOptions,
-          connectionTimeout: 15000,
-          greetingTimeout: 15000,
-          socketTimeout: 20000
-        });
-        await transporter587.verify();
-        return { transporter: transporter587, cleanUser, cleanHost: 'smtp.qq.com', port: 587 };
-      } catch (err587: any) {
-        console.warn('[SMTP] QQ 587 端口重试:', err587?.message);
-
-        // 策略 3: nodemailer 内置 service: 'qq'
-        try {
-          const serviceTransporter = nodemailer.createTransport({
-            service: 'qq',
-            auth: { user: cleanUser, pass: cleanPass },
-            tls: robustTlsOptions,
-            connectionTimeout: 15000,
-            greetingTimeout: 15000,
-            socketTimeout: 20000
-          });
-          await serviceTransporter.verify();
-          return { transporter: serviceTransporter, cleanUser, cleanHost: 'smtp.qq.com', port: 465 };
-        } catch (serviceErr) {
-          // 向上抛出最具参考价值的根因错误
-          throw err465 || serviceErr;
-        }
-      }
-    }
-  }
-
-  // 通用/企业邮箱发信逻辑（163、阿里企业邮、Outlook、Gmail 等）
-  try {
-    const transporter = nodemailer.createTransport({
-      host: cleanHost,
-      port: numPort,
-      secure: numPort === 465,
-      requireTLS: numPort !== 465,
-      auth: { user: cleanUser, pass: cleanPass },
-      tls: robustTlsOptions,
-      connectionTimeout: 15000,
-      greetingTimeout: 15000,
-      socketTimeout: 20000
-    });
-    await transporter.verify();
-    return { transporter, cleanUser, cleanHost, port: numPort };
-  } catch (err: any) {
-    if (numPort === 465) {
-      try {
-        console.log('[SMTP] 通用 465 端口失败，切换至 587 STARTTLS 重试...');
-        const fallbackTransporter = nodemailer.createTransport({
-          host: cleanHost,
-          port: 587,
-          secure: false,
-          requireTLS: true,
-          auth: { user: cleanUser, pass: cleanPass },
-          tls: robustTlsOptions,
-          connectionTimeout: 15000,
-          greetingTimeout: 15000,
-          socketTimeout: 20000
-        });
-        await fallbackTransporter.verify();
-        return { transporter: fallbackTransporter, cleanUser, cleanHost, port: 587 };
-      } catch (fallbackErr) {
-        throw err;
-      }
-    }
-    throw err;
-  }
 }
 
 // 管理员：获取服务器持久化的 SMTP 配置
@@ -1233,21 +1176,52 @@ app.get('/api/admin/smtp-config', (req, res) => {
   });
 });
 
-// 管理员：保存服务器持久化 SMTP 配置
-app.post('/api/admin/save-smtp', (req, res) => {
+// 管理员：保存服务器持久化 SMTP 配置 (支持保存时握手校验)
+app.post('/api/admin/save-smtp', async (req, res) => {
   try {
-    const { host, port, user, pass, isConfigured } = req.body;
+    const { host, port, user, pass, isConfigured, updatedAt, verifyNow } = req.body;
+    let cleanUser = String(user || '').replace(/[\s\u200B-\u200D\uFEFF\u00A0\u3000\r\n\t]+/g, '');
+    if (/^\d+$/.test(cleanUser)) {
+      cleanUser = `${cleanUser}@qq.com`;
+    }
+    const cleanPass = String(pass || '').replace(/[\s\u200B-\u200D\uFEFF\u00A0\u3000\r\n\t]+/g, '');
+    const cleanHost = String(host || '').replace(/[\s\u200B-\u200D\uFEFF\u00A0\u3000\r\n\t]+/g, '').toLowerCase() || 'smtp.qq.com';
+    const numPort = parseInt(port, 10) || 465;
+
+    // 若开启实时校验
+    if (cleanUser && cleanPass && verifyNow) {
+      try {
+        await createAndVerifyMailTransporter(cleanHost, numPort, cleanUser, cleanPass);
+      } catch (verifyErr: any) {
+        const isQq = cleanHost.includes('qq.com') || cleanUser.includes('qq.com');
+        const analysis = analyzeSmtpError(verifyErr, cleanUser, isQq);
+        return res.status(400).json({
+          success: false,
+          error: verifyErr.message || 'SMTP 握手校验失败',
+          code: verifyErr.code || 'SMTP_AUTH_ERROR',
+          category: analysis.category,
+          categoryTitle: analysis.categoryTitle,
+          responseCode: analysis.responseCode,
+          rawResponse: analysis.rawResponse,
+          guideSteps: analysis.guideSteps,
+          diagnostic: `【${analysis.categoryTitle}】\n` + analysis.guideSteps.map((s, i) => `${i + 1}. ${s}`).join('\n')
+        });
+      }
+    }
+
     const cleanConfig = {
-      host: (host || '').trim(),
-      port: parseInt(port, 10) || 465,
-      user: (user || '').trim(),
-      pass: (pass || '').replace(/\s+/g, ''),
-      isConfigured: Boolean(isConfigured && host && user && pass)
+      host: cleanHost,
+      port: numPort,
+      user: cleanUser,
+      pass: cleanPass,
+      isConfigured: Boolean(isConfigured && cleanHost && cleanUser && cleanPass),
+      updatedAt: updatedAt || Date.now()
     };
     saveServerSmtpConfig(cleanConfig);
-    return res.json({ success: true, message: 'SMTP 配置已持久化保存至服务端' });
+    console.log(`[SMTP] 配置已更新并持久化: User=${cleanUser}, Host=${cleanHost}:${cleanConfig.port}`);
+    return res.json({ success: true, message: 'SMTP 配置已持久化保存至服务端', config: cleanConfig });
   } catch (err: any) {
-    return res.status(500).json({ error: '保存 SMTP 配置失败' });
+    return res.status(500).json({ error: '保存 SMTP 配置失败: ' + err.message });
   }
 });
 
@@ -1979,20 +1953,25 @@ function loadPersistentUsers() {
     console.warn('Load persistent users error:', e);
   }
 
-  // 预置默认管理员/作者账号
-  const defaultAuthor = {
-    uid: 'u_author_00001',
-    account: 'author',
-    displayName: '拾年 · 作者',
-    userNumber: '00001',
+  // 预置唯一超级管理员账号 xiaoxiao（清除任何历史/测试账号）
+  persistentUsers.delete('u_author_00001');
+  persistentUsers.delete('u_author_shinian');
+  
+  const defaultAdmin = {
+    uid: 'u_author_xiaoxiao',
+    account: 'xiaoxiao',
+    displayName: '孝孝',
+    email: 'sjx20091118@gmail.com',
     role: 'admin',
     licenseStatus: 'active',
-    licensedAt: '2026-01-01T00:00:00.000Z',
-    createdAt: '2026-01-01T00:00:00.000Z',
-    updatedAt: new Date().toISOString()
+    licensedAt: '2026-10-01T00:00:00.000Z',
+    createdAt: '2026-10-01T00:00:00.000Z',
+    updatedAt: new Date().toISOString(),
+    passwordHash: 'a19f8016a99b20ce0efbb3d14b4d9e9e6445b2ba127ce0095106ba7e7803694c'
   };
-  if (!persistentUsers.has(defaultAuthor.uid)) {
-    persistentUsers.set(defaultAuthor.uid, defaultAuthor);
+  
+  if (!persistentUsers.has(defaultAdmin.uid)) {
+    persistentUsers.set(defaultAdmin.uid, defaultAdmin);
   }
 }
 
@@ -2039,18 +2018,132 @@ app.post('/api/admin/users/save', (req, res) => {
   }
 });
 
-// 删除持久化用户
-app.post('/api/admin/users/delete', (req, res) => {
+// 管理员：重置激活码库为初始状态
+app.post('/api/license/codes/reset', (req, res) => {
   try {
-    const { uid } = req.body;
-    if (!uid) {
-      return res.status(400).json({ error: '参数缺失 uid' });
-    }
-    persistentUsers.delete(uid);
+    activationCodes.clear();
+    const defaultCodes = [
+      { code: 'SHINIAN-8888-A3F1-9C2D', createdAt: 1711900000000, note: '系统预置买断卡密' },
+      { code: 'SHINIAN-9999-E5B7-1A4C', createdAt: 1711900000000, note: '系统预置买断卡密' },
+      { code: 'SHINIAN-YEAR-2026-ZEN1', createdAt: 1711900000000, note: '系统预置买断卡密' }
+    ];
+    defaultCodes.forEach(c => activationCodes.set(c.code, c));
+    saveActivationCodes();
+    return res.json({ success: true, message: '激活码库已重置为初始状态', codes: defaultCodes });
+  } catch (err: any) {
+    return res.status(500).json({ error: '重置激活码库失败' });
+  }
+});
+
+// 重置用户列表为唯一管理员 xiaoxiao
+app.post('/api/admin/users/reset', (req, res) => {
+  try {
+    persistentUsers.clear();
+    const defaultAdmin = {
+      uid: 'u_author_xiaoxiao',
+      account: 'xiaoxiao',
+      displayName: '孝孝',
+      email: 'sjx20091118@gmail.com',
+      role: 'admin',
+      licenseStatus: 'active',
+      licensedAt: '2026-10-01T00:00:00.000Z',
+      createdAt: '2026-10-01T00:00:00.000Z',
+      updatedAt: new Date().toISOString(),
+      passwordHash: 'a19f8016a99b20ce0efbb3d14b4d9e9e6445b2ba127ce0095106ba7e7803694c'
+    };
+    persistentUsers.set(defaultAdmin.uid, defaultAdmin);
     savePersistentUsers();
-    return res.json({ success: true, message: '用户已从持久化存储删除' });
+    return res.json({ success: true, message: '用户已重置为唯一官方管理员 xiaoxiao', users: [defaultAdmin] });
+  } catch (err: any) {
+    return res.status(500).json({ error: '重置用户失败' });
+  }
+});
+
+// ==================== 全站数据全量一键导出与恢复导入迁移接口 ====================
+app.get('/api/admin/migration/export', (req, res) => {
+  try {
+    const users = Array.from(persistentUsers.values());
+    const codes = Array.from(activationCodes.values());
+    const settings = activeSystemSettings;
+    const smtp = activeSmtpConfig;
+    const notices = persistentNotices;
+    const versions = persistentVersions;
+
+    const masterBackup = {
+      appName: '拾年 (Shinian)',
+      exportedAt: new Date().toISOString(),
+      version: '1.2.6',
+      data: {
+        users,
+        activationCodes: codes,
+        systemSettings: settings,
+        smtpConfig: smtp,
+        notices,
+        versions,
+      },
+    };
+
+    return res.json({ success: true, backup: masterBackup });
   } catch (e: any) {
-    return res.status(500).json({ error: '删除持久化用户失败' });
+    return res.status(500).json({ error: '导出全站数据包失败: ' + e.message });
+  }
+});
+
+app.post('/api/admin/migration/import', (req, res) => {
+  try {
+    const { backup } = req.body;
+    if (!backup || !backup.data) {
+      return res.status(400).json({ error: '数据包格式不正确，缺少核心 data 节点' });
+    }
+
+    const { users, activationCodes: importedCodes, systemSettings, smtpConfig, notices, versions } = backup.data;
+
+    // 1. 恢复用户
+    if (Array.isArray(users)) {
+      persistentUsers.clear();
+      users.forEach((u: any) => {
+        if (u && u.uid) persistentUsers.set(u.uid, u);
+      });
+      savePersistentUsers();
+    }
+
+    // 2. 恢复卡密
+    if (Array.isArray(importedCodes)) {
+      activationCodes.clear();
+      importedCodes.forEach((c: any) => {
+        if (c && c.code) activationCodes.set(c.code, c);
+      });
+      saveActivationCodes();
+    }
+
+    // 3. 恢复商业化配置
+    if (systemSettings && typeof systemSettings === 'object') {
+      activeSystemSettings = { ...activeSystemSettings, ...systemSettings };
+      saveSystemSettings();
+    }
+
+    // 4. 恢复 SMTP 配置
+    if (smtpConfig && typeof smtpConfig === 'object') {
+      activeSmtpConfig = { ...activeSmtpConfig, ...smtpConfig };
+      saveServerSmtpConfig(activeSmtpConfig);
+    }
+
+    // 5. 恢复通知与版本
+    if (Array.isArray(notices)) {
+      persistentNotices = notices;
+      savePersistentNotices();
+    }
+    if (Array.isArray(versions)) {
+      persistentVersions = versions;
+      savePersistentVersions();
+    }
+
+    return res.json({
+      success: true,
+      message: '全量数据已成功恢复并同步至当前服务端磁盘存储',
+    });
+  } catch (e: any) {
+    return res.status(500).json({ error: '恢复数据失败: ' + e.message });
   }
 });
 

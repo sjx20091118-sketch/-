@@ -12,7 +12,10 @@ import {
   EyeOff,
   CheckCircle2,
   AlertCircle,
-  Trash2
+  Trash2,
+  Copy,
+  Check,
+  ArrowLeft
 } from 'lucide-react';
 import {
   DomesticUser,
@@ -106,7 +109,21 @@ export const MyProfileModal: React.FC<MyProfileModalProps> = ({
 
   // 实时头像状态：毫秒级同步渲染，彻底杜绝重合与显示延迟
   const [avatarUrl, setAvatarUrl] = useState<string>(currentUser?.photoURL || '');
+  const [copiedAccount, setCopiedAccount] = useState(false);
   const avatarInputRef = useRef<HTMLInputElement | null>(null);
+
+  const handleCopyAccount = () => {
+    if (!currentUser?.account) return;
+    try {
+      navigator.clipboard.writeText(currentUser.account);
+      setCopiedAccount(true);
+      showToast('已复制用户账号');
+      sound.playHapticClick();
+      setTimeout(() => setCopiedAccount(false), 2000);
+    } catch {
+      showToast(`账号：${currentUser.account}`);
+    }
+  };
 
   useEffect(() => {
     if (isOpen && currentUser) {
@@ -136,7 +153,7 @@ export const MyProfileModal: React.FC<MyProfileModalProps> = ({
     }, 720);
   };
 
-  // Canvas fluid wave exit background animation
+  // Canvas fluid wave exit background animation (Optimized: zero CPU cost when idle)
   useEffect(() => {
     if (!isOpen) return;
     const canvas = canvasRef.current;
@@ -146,12 +163,17 @@ export const MyProfileModal: React.FC<MyProfileModalProps> = ({
 
     let width = (canvas.width = window.innerWidth);
     let height = (canvas.height = window.innerHeight);
-    let animationFrameId: number;
 
+    if (!isExitingWave) {
+      ctx.clearRect(0, 0, width, height);
+      return;
+    }
+
+    let animationFrameId: number;
     const render = () => {
       ctx.clearRect(0, 0, width, height);
 
-      if (isExitingWave && waveStartTimeRef.current > 0) {
+      if (waveStartTimeRef.current > 0) {
         const elapsed = (Date.now() - waveStartTimeRef.current) / 720;
         const progress = Math.min(1, Math.max(0, elapsed));
         const maxDist = Math.hypot(width, height);
@@ -173,12 +195,14 @@ export const MyProfileModal: React.FC<MyProfileModalProps> = ({
         ctx.beginPath();
         ctx.arc(width / 2, height / 2, currentWaveRadius, 0, Math.PI * 2);
         ctx.fill();
-      }
 
-      animationFrameId = requestAnimationFrame(render);
+        if (progress < 1) {
+          animationFrameId = requestAnimationFrame(render);
+        }
+      }
     };
 
-    render();
+    animationFrameId = requestAnimationFrame(render);
 
     const handleResize = () => {
       if (!canvas) return;
@@ -188,7 +212,7 @@ export const MyProfileModal: React.FC<MyProfileModalProps> = ({
     window.addEventListener('resize', handleResize);
 
     return () => {
-      cancelAnimationFrame(animationFrameId);
+      if (animationFrameId) cancelAnimationFrame(animationFrameId);
       window.removeEventListener('resize', handleResize);
     };
   }, [isOpen, isExitingWave, currentTheme]);
@@ -468,126 +492,198 @@ export const MyProfileModal: React.FC<MyProfileModalProps> = ({
 
   return createPortal(
     <AnimatePresence>
-      <div className="fixed inset-0 z-[10000] flex items-center justify-center p-4 sm:p-6 select-none overflow-hidden">
+      <div className="fixed inset-0 z-[10000] overflow-y-auto custom-scrollbar select-none">
         {/* 背景 Canvas：用于支持令用户惊艳的流体水墨海浪消融退出动画 */}
         <canvas
           ref={canvasRef}
-          className="absolute inset-0 w-full h-full pointer-events-none z-0"
+          className="fixed inset-0 w-full h-full pointer-events-none z-0"
         />
 
-        {/* 背景遮罩：带有水墨消融退隐效果 */}
+        {/* 全局全屏沉浸式页面主体 (一体化通体水墨弥散背景，零横线割裂，60FPS GPU硬件加速) */}
         <motion.div
           initial={{ opacity: 0 }}
-          animate={{ opacity: isExitingWave ? 0 : 1 }}
-          exit={{ opacity: 0 }}
-          transition={{ duration: 0.35 }}
-          onClick={handleCloseWithEffect}
-          className="absolute inset-0 bg-black/60 dark:bg-black/80 backdrop-blur-md cursor-pointer"
-        />
-
-        {/* 个人管理极简卡片（苹果极简主义 + 东方留白 + 严格视口自适应） */}
-        <motion.div
-          initial={{ scale: 0.94, opacity: 0, y: 16 }}
           animate={
             isExitingWave
-              ? { scale: 0.94, opacity: 0, y: -10 }
-              : { scale: 1, opacity: 1, y: 0 }
+              ? { opacity: 0, y: -6 }
+              : { opacity: 1, y: 0 }
           }
-          exit={{ scale: 0.94, opacity: 0, y: -10 }}
-          transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
-          className="relative w-full max-w-md max-h-[85vh] rounded-[32px] overflow-hidden shadow-2xl z-10 border border-white/60 dark:border-white/15 apple-liquid-glass flex flex-col my-auto gpu-layer-isolate"
+          exit={{ opacity: 0, y: -6 }}
+          transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
+          className="relative min-h-screen w-full flex flex-col z-10 transform-gpu"
           style={{
-            backgroundColor: isDarkMode ? 'rgba(18, 24, 21, 0.95)' : 'rgba(255, 253, 249, 0.97)',
-            color: isDarkMode ? '#FAF8F5' : '#223028'
+            backgroundColor: isDarkMode ? '#121815' : '#FAF8F5',
+            color: isDarkMode ? '#FAF8F5' : '#223028',
+            willChange: 'opacity, transform'
           }}
         >
-          {/* 1. 顶部身份展示栏 (吸顶固定) */}
-          <div className="p-5 sm:p-6 border-b border-black/5 dark:border-white/10 flex items-center justify-between shrink-0">
-            <div className="flex items-center gap-3.5 min-w-0">
-              {/* 头像上传区 */}
+          {/* 全屏通体统一水墨弥散底图与氛围光晕 (静态渲染+GPU加速，彻底解决显卡高斯模糊卡顿) */}
+          <div className="fixed inset-0 overflow-hidden pointer-events-none z-0 transform-gpu">
+            {avatarUrl ? (
+              <img
+                src={avatarUrl}
+                alt=""
+                className="w-full h-full object-cover scale-125 blur-3xl opacity-30 dark:opacity-20 transform-gpu"
+                style={{ willChange: 'opacity' }}
+              />
+            ) : (
               <div
-                className="relative group cursor-pointer shrink-0"
+                className="w-full h-full opacity-30 dark:opacity-20 blur-3xl transform-gpu"
+                style={{
+                  background: `radial-gradient(circle at 50% 20%, ${currentTheme.primary}80, ${currentTheme.accent}60 50%, transparent 80%)`
+                }}
+              />
+            )}
+            {/* 全屏水墨通透柔光渐变 - 无缝贯通全屏，彻底消除割裂线 */}
+            <div
+              className="absolute inset-0"
+              style={{
+                background: isDarkMode
+                  ? 'linear-gradient(to bottom, rgba(18,24,21,0.5) 0%, rgba(18,24,21,0.78) 45%, rgba(18,24,21,0.95) 100%)'
+                  : 'linear-gradient(to bottom, rgba(250,248,245,0.45) 0%, rgba(250,248,245,0.75) 45%, rgba(250,248,245,0.95) 100%)'
+              }}
+            />
+            {/* 顶部中央东方水墨泼彩主氛围晕染 */}
+            <div
+              className="absolute -top-20 left-1/2 -translate-x-1/2 w-[520px] h-[360px] rounded-full blur-3xl pointer-events-none opacity-40"
+              style={{ backgroundColor: currentTheme.primary }}
+            />
+            {/* 侧下方辅助弥散光晕 */}
+            <div
+              className="absolute bottom-10 right-10 w-80 h-80 rounded-full blur-3xl pointer-events-none opacity-25"
+              style={{ backgroundColor: currentTheme.accent }}
+            />
+          </div>
+
+          {/* 左上角精致悬浮返回按钮 (单向返回，保留返回，绝对无右上角关闭按钮) */}
+          <div className="absolute top-4 sm:top-6 left-4 sm:left-6 z-30">
+            <button
+              type="button"
+              onClick={handleCloseWithEffect}
+              className="flex items-center gap-2 px-4 py-2 rounded-full bg-white/70 dark:bg-white/10 hover:bg-white/95 dark:hover:bg-white/20 border border-black/5 dark:border-white/15 backdrop-blur-md text-neutral-700 dark:text-neutral-200 transition-all cursor-pointer shadow-xs group active:scale-95"
+              title="返回主界面"
+            >
+              <ArrowLeft size={16} className="transition-transform group-hover:-translate-x-0.5 duration-200" />
+              <span className="text-xs font-serif font-bold tracking-wider">返回</span>
+            </button>
+          </div>
+
+          {/* 动画包裹层：流畅无缝浮现 (丝滑 60FPS) */}
+          <motion.div
+            initial={{ opacity: 0, scale: 0.985, y: 6 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
+            className="w-full flex-1 flex flex-col z-10 transform-gpu"
+          >
+            {/* 1. 顶部身份展示区 (无任何生硬单色圆框，纯粹水墨晕染与无缝衔接) */}
+            <div className="relative pt-12 sm:pt-16 pb-4 px-6 shrink-0 flex flex-col items-center justify-center text-center select-none z-10">
+              {/* 居中悬浮纯净无界大头像 (96px) 与背后多层柔光呼吸泼彩晕染 */}
+              <div
+                className="relative z-10 group cursor-pointer mt-1"
                 onClick={() => avatarInputRef.current?.click()}
                 title="点击更换头像"
               >
+                {/* 外层大范围水墨泼彩弥散色晕 (Splatter Bloom Glow) */}
                 <div
-                  className="w-14 h-14 sm:w-16 sm:h-16 rounded-full overflow-hidden border-2 shadow-sm flex items-center justify-center transition-transform group-hover:scale-105"
+                  className="absolute -inset-6 rounded-full blur-2xl opacity-75 group-hover:opacity-100 transition-opacity duration-500 animate-pulse pointer-events-none"
                   style={{
-                    borderColor: `${currentTheme.primary}70`,
-                    backgroundColor: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.03)'
+                    background: `radial-gradient(circle, ${currentTheme.primary} 20%, ${currentTheme.accent} 60%, transparent 85%)`
                   }}
+                />
+
+                {/* 次层多重柔光呼吸光晕 (Multi-layer Ambient Soft Halo) */}
+                <div
+                  className="absolute -inset-2 rounded-full blur-xl opacity-85 pointer-events-none"
+                  style={{
+                    background: `radial-gradient(circle, ${currentTheme.accent} 20%, ${currentTheme.primary} 70%, transparent 90%)`
+                  }}
+                />
+
+                {/* 纯净无边界大头像本体 (无任何生硬单色边框，纯悬浮质感) */}
+                <div
+                  className="w-24 h-24 sm:w-28 sm:h-28 rounded-full overflow-hidden shadow-2xl relative transition-transform duration-300 group-hover:scale-105 flex items-center justify-center"
                 >
                   {avatarUrl ? (
                     <img
                       key={avatarUrl}
                       src={avatarUrl}
                       alt="Avatar"
-                      className="w-full h-full object-cover"
+                      className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
                       onError={() => setAvatarUrl('')}
                     />
                   ) : (
                     <div
-                      className="w-full h-full flex items-center justify-center font-serif font-bold text-white text-lg sm:text-xl select-none"
-                      style={{ backgroundColor: currentTheme.primary }}
+                      className="w-full h-full flex items-center justify-center font-serif font-bold text-white text-3xl select-none"
+                      style={{
+                        background: `linear-gradient(135deg, ${currentTheme.primary}, ${currentTheme.accent})`
+                      }}
                     >
                       {currentUser.displayName?.[0] || '拾'}
                     </div>
                   )}
                 </div>
 
-                <div
-                  className="absolute bottom-0 left-0 -translate-x-1 translate-y-0.5 p-1.5 rounded-full text-white shadow-md border-2 border-white dark:border-[#141B18] group-hover:scale-110 transition-transform"
-                  style={{ backgroundColor: currentTheme.primary }}
-                  title="点击更换头像"
-                >
-                  <Camera size={11} />
-                </div>
-                <input
-                  ref={avatarInputRef}
-                  type="file"
-                  accept="image/*"
-                  onChange={handleAvatarChange}
-                  className="hidden"
-                />
+              {/* 悬浮微晶相机换头像徽章 */}
+              <div
+                className="absolute bottom-0 right-0 p-2 rounded-full text-white shadow-lg backdrop-blur-md group-hover:scale-110 transition-transform cursor-pointer border border-white/40 dark:border-white/20"
+                style={{
+                  background: `linear-gradient(135deg, ${currentTheme.primary}, ${currentTheme.accent})`
+                }}
+                title="点击更换头像"
+              >
+                <Camera size={13} />
               </div>
-
-              {/* 核心信息 */}
-              <div className="min-w-0 flex-1 space-y-0.5">
-                <h3
-                  className="text-base sm:text-lg font-serif font-bold truncate tracking-wide"
-                  style={{ color: isDarkMode ? '#FAF8F5' : '#223028' }}
-                >
-                  {currentUser.displayName}
-                </h3>
-                <div className="text-xs opacity-60 font-mono tracking-tight">
-                  账号: {currentUser.account}
-                </div>
-              </div>
+              <input
+                ref={avatarInputRef}
+                type="file"
+                accept="image/*"
+                onChange={handleAvatarChange}
+                className="hidden"
+              />
             </div>
 
-            {/* 关闭按钮 */}
-            <button
-              onClick={handleCloseWithEffect}
-              className="p-2 rounded-full hover:bg-black/5 dark:hover:bg-white/10 text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 transition-colors cursor-pointer"
+            {/* 居中昵称 */}
+            <h2
+              className="mt-3.5 text-xl sm:text-2xl font-serif font-bold tracking-wide relative z-10 drop-shadow-2xs"
+              style={{ color: isDarkMode ? '#FAF8F5' : '#1C2822' }}
             >
-              <X size={18} />
+              {currentUser.displayName || '拾年墨客'}
+            </h2>
+
+            {/* 居中胶囊账号徽章 (点击复制) */}
+            <button
+              type="button"
+              onClick={handleCopyAccount}
+              title="点击复制账号"
+              className="mt-2 relative z-10 inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-white/60 dark:bg-white/10 border border-black/5 dark:border-white/15 hover:bg-white/90 dark:hover:bg-white/20 backdrop-blur-md text-xs font-mono tracking-tight transition-all cursor-pointer shadow-2xs group active:scale-95"
+              style={{ color: isDarkMode ? 'rgba(250,248,245,0.85)' : 'rgba(34,48,40,0.85)' }}
+            >
+              <span className="opacity-70">账号:</span>
+              <span className="font-semibold">{currentUser.account}</span>
+              {copiedAccount ? (
+                <Check size={12} className="text-emerald-500 ml-0.5" />
+              ) : (
+                <Copy size={12} className="opacity-50 group-hover:opacity-90 ml-0.5 transition-opacity" />
+              )}
             </button>
           </div>
 
-          {/* 2. 核心操作表单（中间可滚动区域，丝滑自适应任何视口高度） */}
-          <div className="flex-1 overflow-y-auto custom-scrollbar p-5 sm:p-6 space-y-5">
+          {/* 2. 下方全透明极简表单区 (无缝融汇于水墨背景，无任何横线与纯白割裂) */}
+          <div className="w-full max-w-2xl mx-auto px-4 sm:px-6 pt-2 pb-12 space-y-6 z-10 relative">
             {/* 分组 1: 修改昵称 */}
-            <form onSubmit={handleUpdateName} className="space-y-1.5">
+            <form onSubmit={handleUpdateName} className="space-y-2">
               <label className="text-xs font-serif font-bold tracking-wider flex items-center gap-1.5 opacity-80">
                 <User size={13} style={{ color: currentTheme.primary }} />
                 <span>修改昵称</span>
               </label>
 
               <div
-                className="relative flex items-center rounded-2xl border transition-all apple-liquid-glass"
+                className="relative flex items-center rounded-2xl border transition-all duration-300 backdrop-blur-md focus-within:ring-2"
                 style={{
-                  backgroundColor: isDarkMode ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.02)',
-                  borderColor: isDarkMode ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.08)'
+                  background: isDarkMode
+                    ? 'linear-gradient(135deg, rgba(255,255,255,0.06) 0%, rgba(255,255,255,0.02) 100%)'
+                    : 'linear-gradient(135deg, rgba(255,255,255,0.75) 0%, rgba(255,255,255,0.35) 100%)',
+                  borderColor: isDarkMode ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.08)',
+                  boxShadow: isDarkMode ? '0 4px 20px rgba(0,0,0,0.2)' : '0 4px 20px rgba(0,0,0,0.03)'
                 }}
               >
                 <input
@@ -600,18 +696,20 @@ export const MyProfileModal: React.FC<MyProfileModalProps> = ({
                   spellCheck={false}
                   placeholder="输入新昵称"
                   required
-                  className="w-full min-h-[44px] pl-4 pr-20 bg-transparent text-xs sm:text-sm font-serif outline-none"
+                  className="w-full min-h-[48px] pl-4 pr-28 bg-transparent text-xs sm:text-sm font-serif outline-none"
                 />
                 <div className="absolute right-1.5 top-1/2 -translate-y-1/2">
                   <button
                     type="submit"
                     disabled={isSavingName}
-                    className="px-3 py-1.5 rounded-xl text-white text-xs font-serif font-bold transition-all cursor-pointer disabled:opacity-30 hover:opacity-95 shadow-2xs"
+                    className="px-4 py-2 rounded-xl text-white text-xs font-serif font-bold transition-all duration-200 cursor-pointer disabled:opacity-40 hover:brightness-110 active:scale-95 flex items-center gap-1 shadow-sm"
                     style={{
-                      backgroundColor: currentTheme.primary
+                      backgroundColor: currentTheme.primary,
+                      color: '#FFFFFF',
+                      boxShadow: `0 3px 12px ${currentTheme.primary}40`
                     }}
                   >
-                    {isSavingName ? '保存中' : '保存'}
+                    <span>{isSavingName ? '保存中' : '保存昵称'}</span>
                   </button>
                 </div>
               </div>
@@ -644,10 +742,13 @@ export const MyProfileModal: React.FC<MyProfileModalProps> = ({
               {/* Case 1: 用户当前已绑定邮箱，且处于默认查看状态 */}
               {currentUser.email && emailSubMode === 'idle' && (
                 <div
-                  className="p-3.5 rounded-2xl border apple-liquid-glass flex items-center justify-between gap-2"
+                  className="p-3.5 sm:p-4 rounded-2xl border backdrop-blur-md flex items-center justify-between gap-2 transition-all duration-300"
                   style={{
-                    backgroundColor: isDarkMode ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.015)',
-                    borderColor: isDarkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.06)'
+                    background: isDarkMode
+                      ? 'linear-gradient(135deg, rgba(255,255,255,0.06) 0%, rgba(255,255,255,0.02) 100%)'
+                      : 'linear-gradient(135deg, rgba(255,255,255,0.75) 0%, rgba(255,255,255,0.35) 100%)',
+                    borderColor: isDarkMode ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.08)',
+                    boxShadow: isDarkMode ? '0 4px 20px rgba(0,0,0,0.2)' : '0 4px 20px rgba(0,0,0,0.03)'
                   }}
                 >
                   <div className="min-w-0 flex-1">
@@ -656,7 +757,7 @@ export const MyProfileModal: React.FC<MyProfileModalProps> = ({
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-1.5 shrink-0">
+                  <div className="flex items-center gap-2 shrink-0">
                     <button
                       type="button"
                       onClick={() => {
@@ -666,11 +767,11 @@ export const MyProfileModal: React.FC<MyProfileModalProps> = ({
                         setShowBindOtpInput(false);
                         setBindOtp('');
                       }}
-                      className="px-3 py-1.5 rounded-xl text-xs font-serif font-medium border transition-all cursor-pointer hover:opacity-90 active:scale-95"
+                      className="px-4 py-2 rounded-xl text-white text-xs font-serif font-bold transition-all duration-200 cursor-pointer hover:brightness-110 active:scale-95 shadow-sm"
                       style={{
-                        backgroundColor: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.03)',
-                        borderColor: isDarkMode ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.08)',
-                        color: isDarkMode ? currentTheme.primary : currentTheme.primaryDark
+                        backgroundColor: currentTheme.primary,
+                        color: '#FFFFFF',
+                        boxShadow: `0 3px 12px ${currentTheme.primary}40`
                       }}
                     >
                       换绑
@@ -683,7 +784,10 @@ export const MyProfileModal: React.FC<MyProfileModalProps> = ({
                         setUnbindOtp('');
                         handleSendUnbindOtp();
                       }}
-                      className="px-3 py-1.5 rounded-xl text-xs font-serif font-medium border border-red-500/20 text-red-500/80 hover:text-red-500 hover:bg-red-500/10 transition-all cursor-pointer active:scale-95"
+                      className="px-4 py-2 rounded-xl text-xs font-serif font-bold border border-red-500/30 text-red-500/90 hover:text-white hover:bg-red-500 transition-all duration-200 cursor-pointer active:scale-95 shadow-xs backdrop-blur-md"
+                      style={{
+                        backgroundColor: isDarkMode ? 'rgba(239,68,68,0.1)' : 'rgba(239,68,68,0.06)'
+                      }}
                     >
                       解绑
                     </button>
@@ -694,18 +798,23 @@ export const MyProfileModal: React.FC<MyProfileModalProps> = ({
               {/* Case 2: 换绑邮箱模式 或 初始绑定模式 */}
               {(!currentUser.email || emailSubMode === 'change') && (
                 <div
-                  className="space-y-2 p-3 rounded-2xl border apple-liquid-glass"
+                  className="space-y-3 p-4 sm:p-5 rounded-2xl border backdrop-blur-md transition-all duration-300"
                   style={{
-                    backgroundColor: isDarkMode ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.015)',
-                    borderColor: isDarkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.06)'
+                    background: isDarkMode
+                      ? 'linear-gradient(135deg, rgba(255,255,255,0.06) 0%, rgba(255,255,255,0.02) 100%)'
+                      : 'linear-gradient(135deg, rgba(255,255,255,0.75) 0%, rgba(255,255,255,0.35) 100%)',
+                    borderColor: isDarkMode ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.08)',
+                    boxShadow: isDarkMode ? '0 4px 20px rgba(0,0,0,0.2)' : '0 4px 20px rgba(0,0,0,0.03)'
                   }}
                 >
                   {/* 邮箱输入框 */}
                   <div
-                    className="relative flex items-center rounded-2xl border transition-all apple-liquid-glass"
+                    className="relative flex items-center rounded-2xl border transition-all duration-300 backdrop-blur-md focus-within:ring-2"
                     style={{
-                      backgroundColor: isDarkMode ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.02)',
-                      borderColor: isDarkMode ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.08)'
+                      background: isDarkMode
+                        ? 'linear-gradient(135deg, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0.01) 100%)'
+                        : 'linear-gradient(135deg, rgba(255,255,255,0.85) 0%, rgba(255,255,255,0.45) 100%)',
+                      borderColor: isDarkMode ? 'rgba(255,255,255,0.14)' : 'rgba(0,0,0,0.1)'
                     }}
                   >
                     <input
@@ -717,16 +826,18 @@ export const MyProfileModal: React.FC<MyProfileModalProps> = ({
                       autoCapitalize="none"
                       spellCheck={false}
                       placeholder="输入电子邮箱地址"
-                      className="w-full min-h-[44px] pl-4 pr-24 bg-transparent text-xs sm:text-sm font-sans outline-none"
+                      className="w-full min-h-[48px] pl-4 pr-32 bg-transparent text-xs sm:text-sm font-sans outline-none"
                     />
                     <div className="absolute right-1.5 top-1/2 -translate-y-1/2">
                       <button
                         type="button"
                         disabled={isSendingBindOtp || bindCountdown > 0}
                         onClick={handleSendBindOtp}
-                        className="px-3 py-1.5 rounded-xl text-white text-xs font-serif font-bold transition-all cursor-pointer disabled:opacity-30 hover:opacity-95 shadow-2xs"
+                        className="px-3.5 py-2 rounded-xl text-white text-xs font-serif font-bold transition-all duration-200 cursor-pointer disabled:opacity-40 hover:brightness-110 active:scale-95 shadow-sm"
                         style={{
-                          backgroundColor: currentTheme.primary
+                          backgroundColor: currentTheme.primary,
+                          color: '#FFFFFF',
+                          boxShadow: `0 3px 12px ${currentTheme.primary}40`
                         }}
                       >
                         {isSendingBindOtp ? '发送中...' : bindCountdown > 0 ? `${bindCountdown}s` : '获取验证码'}
@@ -737,7 +848,7 @@ export const MyProfileModal: React.FC<MyProfileModalProps> = ({
                   {/* 展开的 6 位验证码输入与确认按钮 */}
                   {showBindOtpInput && (
                     <div className="space-y-2 pt-1">
-                      <div className="grid grid-cols-1 sm:grid-cols-5 gap-2">
+                      <div className="grid grid-cols-1 sm:grid-cols-5 gap-2.5">
                         <input
                           name="bindOtp"
                           type="text"
@@ -748,19 +859,23 @@ export const MyProfileModal: React.FC<MyProfileModalProps> = ({
                           autoCapitalize="none"
                           spellCheck={false}
                           placeholder="输入 6 位验证码"
-                          className="sm:col-span-3 min-h-[42px] px-3.5 rounded-2xl border text-xs font-mono tracking-widest outline-none transition-all apple-liquid-glass text-center font-bold"
+                          className="sm:col-span-3 min-h-[48px] px-3.5 rounded-2xl border text-xs font-mono tracking-widest outline-none transition-all text-center font-bold backdrop-blur-md"
                           style={{
-                            backgroundColor: isDarkMode ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.02)',
-                            borderColor: isDarkMode ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.08)'
+                            background: isDarkMode
+                              ? 'linear-gradient(135deg, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0.01) 100%)'
+                              : 'linear-gradient(135deg, rgba(255,255,255,0.85) 0%, rgba(255,255,255,0.45) 100%)',
+                            borderColor: isDarkMode ? 'rgba(255,255,255,0.14)' : 'rgba(0,0,0,0.1)'
                           }}
                         />
                         <button
                           type="button"
                           disabled={isSavingEmail}
                           onClick={() => handleConfirmBind()}
-                          className="sm:col-span-2 min-h-[42px] px-3 rounded-2xl text-xs font-serif font-bold text-white transition-all shadow-sm flex items-center justify-center cursor-pointer disabled:opacity-30 hover:opacity-95"
+                          className="sm:col-span-2 min-h-[48px] px-3 rounded-2xl text-xs font-serif font-bold text-white transition-all duration-200 shadow-sm flex items-center justify-center cursor-pointer disabled:opacity-40 hover:brightness-110 active:scale-95"
                           style={{
-                            backgroundColor: currentTheme.primary
+                            backgroundColor: currentTheme.primary,
+                            color: '#FFFFFF',
+                            boxShadow: `0 3px 12px ${currentTheme.primary}40`
                           }}
                         >
                           {isSavingEmail ? '校验中...' : currentUser.email ? '确认换绑' : '确认绑定'}
@@ -777,10 +892,11 @@ export const MyProfileModal: React.FC<MyProfileModalProps> = ({
               {/* Case 3: 解绑邮箱安全验证模式 */}
               {currentUser.email && emailSubMode === 'unbind' && (
                 <div
-                  className="space-y-2.5 p-4 rounded-2xl border apple-liquid-glass"
+                  className="space-y-3 p-4 sm:p-5 rounded-2xl border backdrop-blur-md transition-all duration-300"
                   style={{
-                    backgroundColor: isDarkMode ? 'rgba(239, 68, 68, 0.04)' : 'rgba(239, 68, 68, 0.02)',
-                    borderColor: isDarkMode ? 'rgba(239, 68, 68, 0.2)' : 'rgba(239, 68, 68, 0.15)'
+                    backgroundColor: isDarkMode ? 'rgba(239, 68, 68, 0.05)' : 'rgba(239, 68, 68, 0.03)',
+                    borderColor: isDarkMode ? 'rgba(239, 68, 68, 0.25)' : 'rgba(239, 68, 68, 0.18)',
+                    boxShadow: '0 4px 20px rgba(239, 68, 68, 0.06)'
                   }}
                 >
                   <div className="flex items-center justify-between">
@@ -805,7 +921,7 @@ export const MyProfileModal: React.FC<MyProfileModalProps> = ({
                     解绑需向当前绑定邮箱「<span className="font-mono font-medium">{currentUser.email}</span>」发送验证码以验证本人身份。
                   </p>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-5 gap-2 pt-1">
+                  <div className="grid grid-cols-1 sm:grid-cols-5 gap-2.5 pt-1">
                     <input
                       name="unbindOtp"
                       type="text"
@@ -816,24 +932,26 @@ export const MyProfileModal: React.FC<MyProfileModalProps> = ({
                       autoCapitalize="none"
                       spellCheck={false}
                       placeholder="输入 6 位解绑码"
-                      className="sm:col-span-3 min-h-[42px] px-3.5 rounded-2xl border text-xs font-mono tracking-widest outline-none transition-all apple-liquid-glass text-center font-bold"
+                      className="sm:col-span-3 min-h-[48px] px-3.5 rounded-2xl border text-xs font-mono tracking-widest outline-none transition-all text-center font-bold backdrop-blur-md"
                       style={{
-                        backgroundColor: isDarkMode ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.02)',
-                        borderColor: isDarkMode ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.08)'
+                        background: isDarkMode
+                          ? 'linear-gradient(135deg, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0.01) 100%)'
+                          : 'linear-gradient(135deg, rgba(255,255,255,0.85) 0%, rgba(255,255,255,0.45) 100%)',
+                        borderColor: isDarkMode ? 'rgba(255,255,255,0.14)' : 'rgba(0,0,0,0.1)'
                       }}
                     />
                     <button
                       type="button"
                       disabled={isSendingUnbindOtp || unbindCountdown > 0}
                       onClick={handleSendUnbindOtp}
-                      className="sm:col-span-2 min-h-[42px] px-3 rounded-2xl text-xs font-serif font-medium border flex items-center justify-center cursor-pointer disabled:opacity-50 transition-all"
+                      className="sm:col-span-2 min-h-[48px] px-3 rounded-2xl text-xs font-serif font-bold text-white transition-all duration-200 shadow-sm flex items-center justify-center cursor-pointer disabled:opacity-40 hover:brightness-110 active:scale-95"
                       style={{
-                        backgroundColor: isDarkMode ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)',
-                        borderColor: isDarkMode ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.1)',
-                        color: isDarkMode ? '#FAF8F5' : '#2B332E'
+                        backgroundColor: currentTheme.primary,
+                        color: '#FFFFFF',
+                        boxShadow: `0 3px 12px ${currentTheme.primary}40`
                       }}
                     >
-                      {isSendingUnbindOtp ? '发送中...' : unbindCountdown > 0 ? `${unbindCountdown}s 后重发` : '获取验证码'}
+                      {isSendingUnbindOtp ? '发送中...' : unbindCountdown > 0 ? `${unbindCountdown}s 重发` : '获取验证码'}
                     </button>
                   </div>
 
@@ -842,9 +960,10 @@ export const MyProfileModal: React.FC<MyProfileModalProps> = ({
                       type="button"
                       disabled={isUnbinding}
                       onClick={() => handleConfirmUnbind()}
-                      className="w-full min-h-[40px] rounded-xl text-white text-xs font-serif font-bold transition-all shadow-sm flex items-center justify-center cursor-pointer disabled:opacity-35 hover:brightness-110"
+                      className="w-full min-h-[48px] rounded-2xl text-white text-xs font-serif font-bold transition-all duration-200 shadow-md flex items-center justify-center cursor-pointer disabled:opacity-40 hover:brightness-110 active:scale-95 border border-red-400/30"
                       style={{
-                        backgroundColor: '#DC2626'
+                        background: 'linear-gradient(135deg, #DC2626, #B91C1C)',
+                        boxShadow: '0 4px 14px rgba(220, 38, 38, 0.35)'
                       }}
                     >
                       {isUnbinding ? '解绑中...' : '确认解绑该邮箱'}
@@ -863,12 +982,15 @@ export const MyProfileModal: React.FC<MyProfileModalProps> = ({
                 </label>
               </div>
 
-              <div className="space-y-2">
+              <div className="space-y-3">
                 <div
-                  className="flex items-center rounded-2xl border px-3.5 min-h-[42px] transition-all apple-liquid-glass"
+                  className="flex items-center rounded-2xl border px-4 min-h-[48px] transition-all duration-300 backdrop-blur-md focus-within:ring-2"
                   style={{
-                    backgroundColor: isDarkMode ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.02)',
-                    borderColor: isDarkMode ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.08)'
+                    background: isDarkMode
+                      ? 'linear-gradient(135deg, rgba(255,255,255,0.06) 0%, rgba(255,255,255,0.02) 100%)'
+                      : 'linear-gradient(135deg, rgba(255,255,255,0.75) 0%, rgba(255,255,255,0.35) 100%)',
+                    borderColor: isDarkMode ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.08)',
+                    boxShadow: isDarkMode ? '0 4px 20px rgba(0,0,0,0.2)' : '0 4px 20px rgba(0,0,0,0.03)'
                   }}
                 >
                   <input
@@ -894,10 +1016,13 @@ export const MyProfileModal: React.FC<MyProfileModalProps> = ({
                 </div>
 
                 <div
-                  className="flex items-center rounded-2xl border px-3.5 min-h-[42px] transition-all apple-liquid-glass"
+                  className="flex items-center rounded-2xl border px-4 min-h-[48px] transition-all duration-300 backdrop-blur-md focus-within:ring-2"
                   style={{
-                    backgroundColor: isDarkMode ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.02)',
-                    borderColor: isDarkMode ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.08)'
+                    background: isDarkMode
+                      ? 'linear-gradient(135deg, rgba(255,255,255,0.06) 0%, rgba(255,255,255,0.02) 100%)'
+                      : 'linear-gradient(135deg, rgba(255,255,255,0.75) 0%, rgba(255,255,255,0.35) 100%)',
+                    borderColor: isDarkMode ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.08)',
+                    boxShadow: isDarkMode ? '0 4px 20px rgba(0,0,0,0.2)' : '0 4px 20px rgba(0,0,0,0.03)'
                   }}
                 >
                   <input
@@ -922,13 +1047,15 @@ export const MyProfileModal: React.FC<MyProfileModalProps> = ({
                   </button>
                 </div>
 
-                <div className="pt-0.5 flex justify-end">
+                <div className="pt-1">
                   <button
                     type="submit"
                     disabled={isSavingPass}
-                    className="w-full min-h-[40px] rounded-xl text-white text-xs font-serif font-bold transition-all cursor-pointer disabled:opacity-30 hover:opacity-95"
+                    className="w-full min-h-[48px] rounded-2xl text-white text-xs font-serif font-bold transition-all duration-200 cursor-pointer disabled:opacity-40 hover:brightness-110 active:scale-95 shadow-md flex items-center justify-center"
                     style={{
-                      backgroundColor: currentTheme.primary
+                      backgroundColor: currentTheme.primary,
+                      color: '#FFFFFF',
+                      boxShadow: `0 4px 14px ${currentTheme.primary}45`
                     }}
                   >
                     {isSavingPass ? '保存中...' : '保存密码'}
@@ -936,32 +1063,42 @@ export const MyProfileModal: React.FC<MyProfileModalProps> = ({
                 </div>
               </div>
             </form>
-          </div>
 
-          {/* 3. 底部退出登录与注销账号 (吸底固定，确保任何屏幕尺寸均完美可见) */}
-          <div className="p-4 sm:p-5 border-t border-black/5 dark:border-white/10 shrink-0 bg-white/40 dark:bg-black/20 backdrop-blur-md flex items-center gap-2.5">
-            <button
-              type="button"
-              onClick={handleLogout}
-              className="flex-1 py-2 rounded-2xl border border-black/10 dark:border-white/10 text-neutral-600 dark:text-neutral-300 hover:bg-black/5 dark:hover:bg-white/5 font-serif text-xs font-medium flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
-            >
-              <LogOut size={14} />
-              <span>退出登录</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                sound.playWaterDrop(740);
-                setShowDeregisterConfirm(true);
-              }}
-              className="py-2 px-3.5 rounded-2xl border border-red-500/20 text-red-500/80 hover:text-red-500 hover:bg-red-500/10 font-serif text-xs font-medium flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
-              title="注销此账号及解绑邮箱"
-            >
-              <Trash2 size={13} />
-              <span>注销账号</span>
-            </button>
+            {/* 分组 4: 退出登录与注销账号 (一体化无缝流排版，无任何割裂横线) */}
+            <div className="pt-4 pb-6 flex items-center gap-3">
+              <button
+                type="button"
+                onClick={handleLogout}
+                className="flex-1 py-3.5 px-4 rounded-2xl border text-neutral-700 dark:text-neutral-200 font-serif text-xs font-bold flex items-center justify-center gap-2 transition-all duration-200 cursor-pointer active:scale-95 backdrop-blur-md shadow-xs"
+                style={{
+                  background: isDarkMode
+                    ? 'linear-gradient(135deg, rgba(255,255,255,0.06) 0%, rgba(255,255,255,0.02) 100%)'
+                    : 'linear-gradient(135deg, rgba(255,255,255,0.75) 0%, rgba(255,255,255,0.35) 100%)',
+                  borderColor: isDarkMode ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.08)'
+                }}
+              >
+                <LogOut size={15} />
+                <span>退出登录</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  sound.playWaterDrop(740);
+                  setShowDeregisterConfirm(true);
+                }}
+                className="py-3.5 px-5 rounded-2xl border border-red-500/30 text-red-600/90 dark:text-red-400 font-serif text-xs font-bold flex items-center justify-center gap-1.5 transition-all duration-200 cursor-pointer active:scale-95 backdrop-blur-md shadow-xs"
+                style={{
+                  backgroundColor: isDarkMode ? 'rgba(239, 68, 68, 0.08)' : 'rgba(239, 68, 68, 0.04)'
+                }}
+                title="注销此账号及解绑邮箱"
+              >
+                <Trash2 size={14} />
+                <span>注销账号</span>
+              </button>
+            </div>
           </div>
         </motion.div>
+      </motion.div>
 
         {/* 注销账号确认弹窗 */}
         <AnimatePresence>

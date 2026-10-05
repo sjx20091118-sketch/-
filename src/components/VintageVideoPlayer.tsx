@@ -105,7 +105,30 @@ export const VintageVideoPlayer: React.FC<VintageVideoPlayerProps> = ({
         detail: { id: instanceId }
       })
     );
+    // 立即通知背景音乐播放器暂停并释放后台硬解，杜绝主界面视频与音乐双重硬件解码冲突
+    window.dispatchEvent(
+      new CustomEvent('time-gallery:media-pause-music', {
+        detail: { id: instanceId }
+      })
+    );
   };
+
+  const notifyVideoStopped = () => {
+    window.dispatchEvent(
+      new CustomEvent('time-gallery:media-resume-music', {
+        detail: { id: instanceId }
+      })
+    );
+  };
+
+  // 组件卸载时安全释放状态
+  useEffect(() => {
+    return () => {
+      if (isPlaying) {
+        notifyVideoStopped();
+      }
+    };
+  }, [isPlaying]);
 
   // 处理视口停留自动播放
   useEffect(() => {
@@ -122,7 +145,10 @@ export const VintageVideoPlayer: React.FC<VintageVideoPlayerProps> = ({
         // 浏览器受策略限制暂缓起播
       });
     } else {
-      video.pause();
+      if (!video.paused) {
+        video.pause();
+        notifyVideoStopped();
+      }
       setIsPlaying(false);
     }
   }, [autoPlayMuted, isFullscreenModalOpen]);
@@ -141,6 +167,7 @@ export const VintageVideoPlayer: React.FC<VintageVideoPlayerProps> = ({
     } else {
       activeVideo.pause();
       setIsPlaying(false);
+      notifyVideoStopped();
     }
   };
 
@@ -220,9 +247,9 @@ export const VintageVideoPlayer: React.FC<VintageVideoPlayerProps> = ({
   // 物理返回键优雅退出视频全屏放映
   useBackHandler('vintage-video-fullscreen', 90, isFullscreenModalOpen, closeFullscreen);
 
-  // Canvas fluid wave exit background animation
+  // Canvas fluid wave exit background animation (only render when actively exiting)
   useEffect(() => {
-    if (!isFullscreenModalOpen) return;
+    if (!isFullscreenModalOpen || !isExitingWave) return;
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
@@ -287,17 +314,7 @@ export const VintageVideoPlayer: React.FC<VintageVideoPlayerProps> = ({
     };
   }, [isFullscreenModalOpen, isExitingWave]);
 
-  // 全屏锁定背景滚动
-  useEffect(() => {
-    if (isFullscreenModalOpen) {
-      const orig = document.body.style.overflow;
-      document.body.style.overflow = 'hidden';
-      return () => {
-        document.body.style.overflow = orig;
-      };
-    }
-  }, [isFullscreenModalOpen]);
-
+  // 移除对 document.body.style.overflow 的破坏性重写，依靠 fixed inset-0 容器自隔离杜绝滚动条跳动闪烁
   const progressPercent = duration > 0 ? (currentTime / duration) * 100 : 0;
 
   return (
@@ -321,14 +338,18 @@ export const VintageVideoPlayer: React.FC<VintageVideoPlayerProps> = ({
                 const vid = e.currentTarget;
                 if (vid.videoWidth > 0 && vid.videoHeight > 0) {
                   const canvas = document.createElement('canvas');
-                  canvas.width = Math.min(vid.videoWidth, 640);
-                  canvas.height = Math.round((canvas.width * vid.videoHeight) / vid.videoWidth);
+                  const w = Math.min(vid.videoWidth, 420);
+                  const h = Math.round((w * vid.videoHeight) / vid.videoWidth);
+                  canvas.width = w;
+                  canvas.height = h;
                   const ctx = canvas.getContext('2d');
                   if (ctx) {
-                    ctx.drawImage(vid, 0, 0, canvas.width, canvas.height);
-                    const d = canvas.toDataURL('image/jpeg', 0.84);
-                    if (d && d.length > 200) setGeneratedPoster(d);
+                    ctx.drawImage(vid, 0, 0, w, h);
+                    const d = canvas.toDataURL('image/jpeg', 0.75);
+                    if (d && d.length > 100) setGeneratedPoster(d);
                   }
+                  canvas.width = 0;
+                  canvas.height = 0;
                 }
               } catch (err) {}
             }
@@ -336,19 +357,19 @@ export const VintageVideoPlayer: React.FC<VintageVideoPlayerProps> = ({
           className="w-full h-full object-cover max-h-[360px]"
         />
 
-        {/* 胶片放映标识（左上角微型标 - 苹果液态玻璃风格） */}
-        <div className="absolute top-2.5 left-2.5 pointer-events-none z-10 flex items-center gap-1.5 px-3 py-1 rounded-full bg-black/45 backdrop-blur-md border border-white/20 text-white/90 text-[10px] font-mono shadow-xs">
+        {/* 胶片放映标识（左上角微型标 - 高性能纯净玻璃质感，杜绝在视频表面做高斯模糊滤镜导致显存爆炸） */}
+        <div className="absolute top-2.5 left-2.5 pointer-events-none z-10 flex items-center gap-1.5 px-3 py-1 rounded-full bg-black/70 border border-white/20 text-white/90 text-[10px] font-mono shadow-xs">
           <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
           <span>{isPlaying && !isFullscreenModalOpen ? '放映中' : '岁月影像'}</span>
           {duration > 0 && <span className="opacity-70 font-mono">· {formatVideoDuration(duration)}</span>}
         </div>
 
-        {/* 右上角快捷控制区：轻触静音/发声 + 放大放映（全白色液态玻璃图标，彻底告别刺眼杂色） */}
+        {/* 右上角快捷控制区：轻触静音/发声 + 放大放映（高性能半透明，消除 GPU 瓦片争抢） */}
         <div className="absolute top-2.5 right-2.5 z-20 flex items-center gap-1.5">
           <button
             type="button"
             onClick={handleToggleMute}
-            className="p-2 rounded-full bg-black/40 hover:bg-black/60 text-white backdrop-blur-md transition-all active:scale-90 border border-white/15 cursor-pointer shadow-xs"
+            className="p-2 rounded-full bg-black/60 hover:bg-black/80 text-white transition-all active:scale-90 border border-white/20 cursor-pointer shadow-xs"
             title={isMuted ? '轻触开启声音' : '静音'}
           >
             {isMuted ? <VolumeX className="w-3.5 h-3.5 text-white/80" /> : <Volume2 className="w-3.5 h-3.5 text-white" />}
@@ -358,7 +379,7 @@ export const VintageVideoPlayer: React.FC<VintageVideoPlayerProps> = ({
             <button
               type="button"
               onClick={openFullscreen}
-              className="p-2 rounded-full bg-black/40 hover:bg-black/60 text-white backdrop-blur-md transition-all active:scale-90 border border-white/15 cursor-pointer shadow-xs"
+              className="p-2 rounded-full bg-black/60 hover:bg-black/80 text-white transition-all active:scale-90 border border-white/20 cursor-pointer shadow-xs"
               title="沉浸放大放映"
             >
               <Maximize2 className="w-3.5 h-3.5" />
@@ -366,13 +387,13 @@ export const VintageVideoPlayer: React.FC<VintageVideoPlayerProps> = ({
           )}
         </div>
 
-        {/* 暂停时居中的温雅微光播放按键（苹果极简磨砂液态玻璃） */}
+        {/* 暂停时居中的温雅微光播放按键 */}
         {!isPlaying && !isFullscreenModalOpen && (
           <motion.div
             initial={{ scale: 0.85, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
             exit={{ scale: 0.85, opacity: 0 }}
-            className="absolute z-10 w-12 h-12 rounded-full bg-white/20 hover:bg-white/30 backdrop-blur-md border border-white/30 flex items-center justify-center text-white shadow-xl transition-transform group-hover:scale-110 active:scale-95"
+            className="absolute z-10 w-12 h-12 rounded-full bg-black/60 hover:bg-black/75 border border-white/40 flex items-center justify-center text-white shadow-xl transition-transform group-hover:scale-110 active:scale-95"
           >
             <Play className="w-5 h-5 fill-white translate-x-0.5" />
           </motion.div>
@@ -406,7 +427,7 @@ export const VintageVideoPlayer: React.FC<VintageVideoPlayerProps> = ({
               animate={{ opacity: isExitingWave ? 0 : 1 }}
               exit={{ opacity: 0 }}
               transition={{ duration: 0.65, ease: [0.16, 1, 0.3, 1] }}
-              className="fixed inset-0 w-screen h-[100dvh] z-[10050] flex items-center justify-center p-2 sm:p-6 bg-black/85 backdrop-blur-xl select-none overflow-hidden"
+              className="fixed inset-0 w-full h-full z-[10050] flex items-center justify-center p-2 sm:p-6 bg-black/85 backdrop-blur-xl select-none overflow-hidden"
             >
               {/* 背景 Canvas：用于支持令用户惊艳的流体水墨海浪消融退出动画 */}
               <canvas

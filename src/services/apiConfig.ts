@@ -4,34 +4,64 @@ const SERVER_URL_KEY = 'shinian_api_server_url';
 // Active Cloud Run backend URL for deployed Capacitor APK builds and web preview (Public Accessible Shared URL)
 export const DEFAULT_CLOUD_API_URL = 'https://ais-pre-cq7pozdu24b5b7weqvtffs-80463223160.asia-northeast1.run.app';
 
+export function isNativeMobilePlatform(): boolean {
+  if (Capacitor.isNativePlatform()) return true;
+  if (typeof window !== 'undefined') {
+    if ((window as any).Capacitor?.isNative) return true;
+    if (window.location.protocol === 'capacitor:' || window.location.protocol === 'file:') return true;
+  }
+  return false;
+}
+
+/**
+ * Returns the saved custom Cloudflare Worker / Server URL configured by user
+ */
+export function getSavedApiServerUrl(): string {
+  try {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem(SERVER_URL_KEY);
+      if (saved && saved.trim()) {
+        return saved.trim().replace(/\/+$/, '');
+      }
+    }
+    return DEFAULT_CLOUD_API_URL;
+  } catch {
+    return DEFAULT_CLOUD_API_URL;
+  }
+}
+
 /**
  * Returns the effective API Base URL.
- * - In local dev/web preview on Vite server: returns empty string "" (relative path /api/...)
- * - In standalone mobile/Capacitor APK: returns configured custom server URL or cloud server URL
+ * - In local dev/web preview on Vite server: strictly returns empty string "" (relative path /api/...)
+ * - In standalone mobile/Capacitor APK: returns configured custom server URL, local LAN origin, or default Cloud API URL
  */
 export function getApiBaseUrl(): string {
   try {
+    const isNative = isNativeMobilePlatform();
+
+    // 在普通浏览器 / AI Studio 预览环境（http: 或 https:）下：
+    // 使用纯净同源相对路径 ""，杜绝跨域预检与 Failed to fetch
+    if (!isNative && typeof window !== 'undefined') {
+      return '';
+    }
+
+    // 在原生移动端独立容器 (Capacitor) 内读取外部基址
     const custom = localStorage.getItem(SERVER_URL_KEY);
     if (custom && custom.trim()) {
       return custom.trim().replace(/\/+$/, '');
     }
 
-    // Check if running in Capacitor native app or static WebView file/capacitor origin
-    const isCapacitor = Capacitor.isNativePlatform() || 
-      (typeof window !== 'undefined' && (
-        (window as any).Capacitor?.isNative ||
-        window.location.protocol === 'capacitor:' ||
-        window.location.protocol === 'file:' ||
-        (window.location.hostname === 'localhost' && window.location.port === '')
-      ));
-
-    if (isCapacitor) {
-      return DEFAULT_CLOUD_API_URL;
+    // 移动端自适应探测：如果当前通过内网 IP 或域名加载，优先采用该 origin
+    if (typeof window !== 'undefined' && window.location.origin) {
+      const proto = window.location.protocol;
+      if ((proto === 'http:' || proto === 'https:') && !window.location.origin.includes('localhost')) {
+        return window.location.origin;
+      }
     }
 
-    return '';
+    return DEFAULT_CLOUD_API_URL;
   } catch {
-    return '';
+    return DEFAULT_CLOUD_API_URL;
   }
 }
 

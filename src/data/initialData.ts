@@ -23,13 +23,6 @@ export const INITIAL_SEED: AppData = {
         'https://i.imgs.ovh/2026/08/30/7d9f95bdddfd2cb6ba5b0e4b71aceef4.jpg',
         'https://i.imgs.ovh/2026/08/30/053e3fab96cb3d4e6349447a8ca17bfa.png'
       ],
-      impressions: [
-        {
-          id: 'imp-author-2026',
-          year: '2026',
-          text: '很容易记住一些别人觉得无关紧要的小事，一句话、一张照片、一本书、一段经历，都可能被他放在心里很久。总想着往前走，却又总忍不住回头看看那些已经发生过的人和事。'
-        }
-      ],
       customFields: {
         '初识地点': '新沂',
         '认识地点': '新沂',

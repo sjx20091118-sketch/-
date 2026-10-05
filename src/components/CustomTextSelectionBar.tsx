@@ -475,63 +475,67 @@ export const CustomTextSelectionBar: React.FC<CustomTextSelectionBarProps> = ({
 
   const content = (
     <div className="pointer-events-none select-none">
-      {/* 1. 专属东方水墨水滴起始游标 (Start Teardrop Handle) */}
+      {/* 1. 专属东方水墨竖直水滴起始游标 (Start Vertical Teardrop Handle - 放置在文字下方，0遮挡文字) */}
       {selectionState.startHandle && (
         <div
           style={{
             position: 'fixed',
             left: `${selectionState.startHandle.x}px`,
-            top: `${selectionState.startHandle.y}px`,
+            top: `${selectionState.startHandle.y + selectionState.startHandle.height + 2}px`,
+            transform: 'translateX(-50%)',
             zIndex: 9999998,
             pointerEvents: 'none'
           }}
-          className="transition-transform duration-75"
+          className="transition-transform duration-75 flex flex-col items-center"
         >
-          {/* 垂直对齐竖线 */}
-          <div
-            className="w-[2px] rounded-full absolute -top-0.5 -left-[1px] shadow-xs pointer-events-none"
-            style={{
-              height: `${selectionState.startHandle.height + 2}px`,
-              backgroundColor: primaryColor
-            }}
-          />
-          {/* 左侧水滴下标 */}
-          <div
-            className="w-3.5 h-3.5 rounded-full rounded-tr-none rotate-45 absolute -bottom-3 -left-[6px] shadow-[0_2px_8px_rgba(0,0,0,0.22)] border border-white/60 dark:border-white/30 transition-transform active:scale-125"
-            style={{
-              backgroundColor: primaryColor
-            }}
-          />
+          <svg
+            width="12"
+            height="15"
+            viewBox="0 0 12 15"
+            fill="none"
+            className="drop-shadow-[0_2px_6px_rgba(0,0,0,0.25)]"
+          >
+            <path
+              d="M6 0.5 C6 0.5 1 5.5 1 9.2 C1 12 3.24 14.2 6 14.2 C8.76 14.2 11 12 11 9.2 C11 5.5 6 0.5 6 0.5 Z"
+              fill={primaryColor}
+              stroke={isDarkMode ? 'rgba(255,255,255,0.7)' : 'rgba(255,255,255,0.95)'}
+              strokeWidth="1.2"
+            />
+            {/* 灵动高光微点 */}
+            <circle cx="4.8" cy="7.8" r="1" fill="white" opacity="0.65" />
+          </svg>
         </div>
       )}
 
-      {/* 2. 专属东方水墨水滴结束游标 (End Teardrop Handle) */}
+      {/* 2. 专属东方水墨竖直水滴结束游标 (End Vertical Teardrop Handle - 放置在文字下方，0遮挡文字) */}
       {selectionState.endHandle && (
         <div
           style={{
             position: 'fixed',
             left: `${selectionState.endHandle.x}px`,
-            top: `${selectionState.endHandle.y}px`,
+            top: `${selectionState.endHandle.y + selectionState.endHandle.height + 2}px`,
+            transform: 'translateX(-50%)',
             zIndex: 9999998,
             pointerEvents: 'none'
           }}
-          className="transition-transform duration-75"
+          className="transition-transform duration-75 flex flex-col items-center"
         >
-          {/* 垂直对齐竖线 */}
-          <div
-            className="w-[2px] rounded-full absolute -top-0.5 -left-[1px] shadow-xs pointer-events-none"
-            style={{
-              height: `${selectionState.endHandle.height + 2}px`,
-              backgroundColor: primaryColor
-            }}
-          />
-          {/* 右侧水滴下标 */}
-          <div
-            className="w-3.5 h-3.5 rounded-full rounded-tl-none -rotate-45 absolute -bottom-3 -left-[6px] shadow-[0_2px_8px_rgba(0,0,0,0.22)] border border-white/60 dark:border-white/30 transition-transform active:scale-125"
-            style={{
-              backgroundColor: primaryColor
-            }}
-          />
+          <svg
+            width="12"
+            height="15"
+            viewBox="0 0 12 15"
+            fill="none"
+            className="drop-shadow-[0_2px_6px_rgba(0,0,0,0.25)]"
+          >
+            <path
+              d="M6 0.5 C6 0.5 1 5.5 1 9.2 C1 12 3.24 14.2 6 14.2 C8.76 14.2 11 12 11 9.2 C11 5.5 6 0.5 6 0.5 Z"
+              fill={primaryColor}
+              stroke={isDarkMode ? 'rgba(255,255,255,0.7)' : 'rgba(255,255,255,0.95)'}
+              strokeWidth="1.2"
+            />
+            {/* 灵动高光微点 */}
+            <circle cx="4.8" cy="7.8" r="1" fill="white" opacity="0.65" />
+          </svg>
         </div>
       )}
 

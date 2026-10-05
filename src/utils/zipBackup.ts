@@ -1,6 +1,6 @@
 import JSZip from 'jszip';
 import { AppData } from '../types';
-import { getMediaBlob, isIndexedDbMedia } from '../services/indexedDbMedia';
+import { getMediaBlob, isIndexedDbMedia, saveMediaBlob } from '../services/indexedDbMedia';
 
 /**
  * Helper to extract binary payload from Base64 Data URL
@@ -35,8 +35,45 @@ function dataUrlToBinary(dataUrl: string): { mime: string; ext: string; data: Ui
 }
 
 /**
+ * Trigger file download via Web Browser or Native Android Bridge
+ */
+function triggerFileDownload(blob: Blob, filename: string): void {
+  const nativeBridge = (window as any).AndroidAppBridge || (window as any).ShinianNativeBridge;
+
+  if (nativeBridge && (typeof nativeBridge.saveZipToDownloads === 'function' || typeof nativeBridge.saveFileToDownloads === 'function' || typeof nativeBridge.saveZip === 'function')) {
+    try {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const base64 = reader.result as string;
+        if (typeof nativeBridge.saveZipToDownloads === 'function') {
+          nativeBridge.saveZipToDownloads(base64, filename);
+        } else if (typeof nativeBridge.saveFileToDownloads === 'function') {
+          nativeBridge.saveFileToDownloads(base64, filename, 'application/zip');
+        } else if (typeof nativeBridge.saveZip === 'function') {
+          nativeBridge.saveZip(base64, filename);
+        }
+      };
+      reader.readAsDataURL(blob);
+      return;
+    } catch (bridgeErr) {
+      console.warn('原生 ZIP 下载桥接异常，切换至 Web 下载通道', bridgeErr);
+    }
+  }
+
+  // Web 浏览器标准下载通道
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 3000);
+}
+
+/**
  * Full ZIP Archive Exporter (Memory Safe & Fast STORE Mode)
- * Bundles all JSON text data + all uploaded images and videos into a .zip file without crashing memory
+ * Bundles all JSON text data + all uploaded images and videos into a .zip file
  */
 export async function exportZipArchive(
   data: AppData,
@@ -84,7 +121,7 @@ export async function exportZipArchive(
 
   onProgress?.(15, '正在打包时光轴影像...');
 
-  // Timeline Media (Data URLs & IndexedDB binary blobs)
+  // Timeline Media
   for (let idx = 0; idx < data.timeline.length; idx++) {
     const item = data.timeline[idx];
     if (item.image && item.image.startsWith('data:')) {
@@ -121,7 +158,7 @@ export async function exportZipArchive(
     if (person.avatar && person.avatar.startsWith('data:')) {
       const parsed = dataUrlToBinary(person.avatar);
       if (parsed && imageFolder) {
-        imageFolder.file(`avatar_${person.name || person.id || idx}.${parsed.ext}`, parsed.data);
+        imageFolder.file(`avatar_${person.id || person.name || idx}.${parsed.ext}`, parsed.data);
       }
     }
     if (person.photos && Array.isArray(person.photos)) {
@@ -151,7 +188,7 @@ export async function exportZipArchive(
 
   onProgress?.(55, '正在打包拾物阁旧藏画卷与高清短片...');
 
-  // Artifacts Media (Support multi-images and multi-videos)
+  // Artifacts Media
   for (let idx = 0; idx < data.artifacts.length; idx++) {
     const art = data.artifacts[idx];
     
@@ -200,88 +237,38 @@ export async function exportZipArchive(
               videoFolder.file(`idb_${vidItem.url.replace('idb://', '')}.${ext}`, blob);
             }
           } catch (e) {
-            console.warn('Failed to bundle artifact video item:', vidItem.url, e);
+            console.warn('Failed to bundle artifact sub-video:', vidItem.url, e);
           }
         }
       }
     }
   }
 
-  onProgress?.(75, '正在打包时光信笺音画附件...');
+  onProgress?.(75, '正在压缩生成离线档案 ZIP 包...');
 
-  // Letters Media
-  if (data.letters) {
-    for (let idx = 0; idx < data.letters.length; idx++) {
-      const letter = data.letters[idx];
-      if (letter.mediaUrl && isIndexedDbMedia(letter.mediaUrl) && videoFolder) {
-        try {
-          const blob = await getMediaBlob(letter.mediaUrl);
-          if (blob) {
-            const ext = blob.type.includes('webm') ? 'webm' : (blob.type.includes('mov') ? 'mov' : 'mp4');
-            videoFolder.file(`idb_${letter.mediaUrl.replace('idb://', '')}.${ext}`, blob);
-          }
-        } catch (e) {
-          console.warn('Failed to bundle letter media:', letter.mediaUrl, e);
-        }
-      }
-    }
-  }
-
-  onProgress?.(85, '正在极速生成无损归档文件...');
-
-  // Generate ZIP Blob using STORE (zero-compression, super fast, prevents out of memory)
   const blob = await zip.generateAsync(
     {
       type: 'blob',
-      compression: 'STORE'
+      compression: 'DEFLATE',
+      compressionOptions: { level: 6 }
     },
     (metadata) => {
-      onProgress?.(85 + Math.floor(metadata.percent * 0.14), `打包进度 ${Math.floor(metadata.percent)}%...`);
+      onProgress?.(75 + Math.round(metadata.percent * 0.2), `正在压缩档案 [${Math.round(metadata.percent)}%]...`);
     }
   );
 
-  onProgress?.(100, '打包完成，准备下载...');
+  onProgress?.(98, '正在保存至本地文件系统...');
 
-  const filename = `拾年_全量记忆档案备份_${new Date().toISOString().slice(0, 10)}.zip`;
+  const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+  const filename = `拾年档案备份_${dateStr}.zip`;
+  triggerFileDownload(blob, filename);
 
-  // 1. 安卓原生 APK 桥接优先通道：直接通过 MediaStore.Downloads 写入手机公共下载目录与压缩包分类
-  const win = typeof window !== 'undefined' ? (window as any) : {};
-  const nativeBridge = win.AndroidBridge || win.Android || win.JSBridge;
-
-  if (nativeBridge && (typeof nativeBridge.saveZipToDownloads === 'function' || typeof nativeBridge.saveFileToDownloads === 'function' || typeof nativeBridge.saveZip === 'function')) {
-    try {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        const base64 = reader.result as string;
-        if (typeof nativeBridge.saveZipToDownloads === 'function') {
-          nativeBridge.saveZipToDownloads(base64, filename);
-        } else if (typeof nativeBridge.saveFileToDownloads === 'function') {
-          nativeBridge.saveFileToDownloads(base64, filename, 'application/zip');
-        } else if (typeof nativeBridge.saveZip === 'function') {
-          nativeBridge.saveZip(base64, filename);
-        }
-      };
-      reader.readAsDataURL(blob);
-      return;
-    } catch (bridgeErr) {
-      console.warn('原生 ZIP 下载桥接异常，切换至 Web 下载通道', bridgeErr);
-    }
-  }
-
-  // 2. Web 浏览器标准下载通道
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  setTimeout(() => URL.revokeObjectURL(url), 3000);
+  onProgress?.(100, '离线档案 ZIP 包导出完成');
 }
 
 /**
  * Universal Archive Parser
- * Supports both .zip and .json backup files
+ * Supports both .zip and .json backup files and fully rehydrates media/ images and videos
  */
 export async function parseBackupArchive(file: File): Promise<{
   data: AppData;
@@ -293,10 +280,9 @@ export async function parseBackupArchive(file: File): Promise<{
   if (isZip) {
     const zip = await JSZip.loadAsync(file);
 
-    // Try finding data.json
+    // 1. Try finding data.json
     let jsonFile = zip.file('data.json');
     if (!jsonFile) {
-      // Find any .json in the root of zip
       const jsonFiles = zip.file(/\.json$/i);
       if (jsonFiles.length > 0) {
         jsonFile = jsonFiles[0];
@@ -309,8 +295,96 @@ export async function parseBackupArchive(file: File): Promise<{
 
     const jsonText = await jsonFile.async('text');
     const parsed = JSON.parse(jsonText);
+    const result = validateAndNormalizeData(parsed, file.name);
 
-    return validateAndNormalizeData(parsed, file.name);
+    // 2. Rehydrate media images & videos from media/ folder
+    const mediaMap = new Map<string, string>();
+
+    const imageFiles = zip.file(/media\/images\/.+/i);
+    for (const imgFile of imageFiles) {
+      try {
+        const base64 = await imgFile.async('base64');
+        const filename = imgFile.name.split('/').pop() || '';
+        const ext = filename.split('.').pop()?.toLowerCase() || 'jpg';
+        const mime = ext === 'png' ? 'image/png' : (ext === 'webp' ? 'image/webp' : 'image/jpeg');
+        const dataUrl = `data:${mime};base64,${base64}`;
+        mediaMap.set(filename, dataUrl);
+        // Also map base key without extension
+        const baseKey = filename.replace(/\.[^.]+$/, '');
+        mediaMap.set(baseKey, dataUrl);
+      } catch (e) {
+        console.warn('Failed to unpack image from zip:', imgFile.name, e);
+      }
+    }
+
+    // Process videos and restore to IndexedDB
+    const videoFiles = zip.file(/media\/videos\/.+/i);
+    for (const vidFile of videoFiles) {
+      try {
+        const blob = await vidFile.async('blob');
+        const filename = vidFile.name.split('/').pop() || '';
+        if (filename.startsWith('idb_')) {
+          const rawId = filename.replace(/^idb_/, '').replace(/\.[^.]+$/, '');
+          const idbUri = await saveMediaBlob(blob, rawId);
+          mediaMap.set(filename, idbUri);
+          mediaMap.set(rawId, idbUri);
+        }
+      } catch (e) {
+        console.warn('Failed to restore video from zip to indexedDB:', vidFile.name, e);
+      }
+    }
+
+    // 3. Re-inject media into timeline
+    result.data.timeline.forEach((t, idx) => {
+      const key = `timeline_${t.id || idx}`;
+      if (mediaMap.has(key)) {
+        t.image = mediaMap.get(key)!;
+      }
+      const vidKey = `timeline_video_${t.id || idx}`;
+      if (mediaMap.has(vidKey)) {
+        t.video = mediaMap.get(vidKey)!;
+      }
+    });
+
+    // 4. Re-inject media into people
+    result.data.people.forEach((p, idx) => {
+      const keyId = `avatar_${p.id || idx}`;
+      const keyName = `avatar_${p.name || idx}`;
+      if (mediaMap.has(keyId)) {
+        p.avatar = mediaMap.get(keyId)!;
+      } else if (mediaMap.has(keyName)) {
+        p.avatar = mediaMap.get(keyName)!;
+      }
+
+      if (Array.isArray(p.photos)) {
+        p.photos = p.photos.map((photo, pIdx) => {
+          const photoKey = `person_${p.id || idx}_photo_${pIdx}`;
+          if (mediaMap.has(photoKey)) {
+            return mediaMap.get(photoKey)!;
+          }
+          return photo;
+        });
+      }
+    });
+
+    // 5. Re-inject media into artifacts
+    result.data.artifacts.forEach((a, idx) => {
+      const key = `artifact_${a.id || idx}`;
+      if (mediaMap.has(key)) {
+        a.image = mediaMap.get(key)!;
+      }
+      if (Array.isArray(a.images)) {
+        a.images = a.images.map((img, imgIdx) => {
+          const imgKey = `artifact_${a.id || idx}_img_${imgIdx}`;
+          if (mediaMap.has(imgKey)) {
+            return mediaMap.get(imgKey)!;
+          }
+          return img;
+        });
+      }
+    });
+
+    return result;
   } else {
     // Standard JSON text file
     return new Promise((resolve, reject) => {
@@ -353,4 +427,90 @@ function validateAndNormalizeData(parsed: any, filename: string): {
     customGroups,
     filename
   };
+}
+
+/**
+ * Full Master Data Backup ZIP Exporter (Includes all user anime avatars, activation codes, settings, smtp, notices, versions)
+ */
+export async function exportMasterBackupZip(masterData: any): Promise<void> {
+  const zip = new JSZip();
+
+  // 1. database.json
+  zip.file('database.json', JSON.stringify(masterData, null, 2));
+
+  // 2. Readme
+  const readme = `# 《拾年》全站云端主库全量灾备包
+导出时间: ${new Date().toLocaleString()}
+应用版本: 1.2.6
+
+本压缩包内含完整系统数据库 (database.json) 与全部注册用户的高清动漫头像 (avatars/)。
+在《拾年》管理后台中直接选取此 .zip 文件即可一键秒级恢复全站数据与用户！`;
+  zip.file('README.txt', readme);
+
+  // 3. Avatars folder
+  const avatarsFolder = zip.folder('avatars');
+  const users = masterData?.data?.users || [];
+  for (const user of users) {
+    if (user.photoURL && user.photoURL.startsWith('data:')) {
+      const parsed = dataUrlToBinary(user.photoURL);
+      if (parsed && avatarsFolder) {
+        const name = (user.account || user.uid).replace(/[^a-zA-Z0-9_-]/g, '_');
+        avatarsFolder.file(`${name}.${parsed.ext}`, parsed.data);
+      }
+    }
+  }
+
+  const blob = await zip.generateAsync({
+    type: 'blob',
+    compression: 'DEFLATE',
+    compressionOptions: { level: 6 }
+  });
+
+  const filename = `shinian_master_backup_${new Date().toISOString().slice(0, 10)}.zip`;
+  triggerFileDownload(blob, filename);
+}
+
+/**
+ * Master Data Backup ZIP / JSON Parser
+ */
+export async function parseMasterBackupFile(file: File): Promise<any> {
+  const isZip = file.name.toLowerCase().endsWith('.zip') || file.type.includes('zip') || file.type.includes('compressed');
+
+  if (isZip) {
+    const zip = await JSZip.loadAsync(file);
+    let jsonFile = zip.file('database.json') || zip.file('data.json');
+    if (!jsonFile) {
+      const jsonFiles = zip.file(/\.json$/i);
+      if (jsonFiles.length > 0) jsonFile = jsonFiles[0];
+    }
+
+    if (!jsonFile) {
+      throw new Error('未在 ZIP 压缩包中找到合法的 database.json 数据文件');
+    }
+
+    const jsonText = await jsonFile.async('text');
+    const masterData = JSON.parse(jsonText);
+
+    // Rehydrate avatars from avatars/ folder if present
+    const avatarsFolder = zip.folder('avatars');
+    if (avatarsFolder && masterData?.data?.users) {
+      for (const user of masterData.data.users) {
+        if (!user.photoURL) {
+          const name = (user.account || user.uid).replace(/[^a-zA-Z0-9_-]/g, '_');
+          const avatarFile = avatarsFolder.file(new RegExp(`^${name}\\.(png|jpg|jpeg|webp)$`, 'i'))[0];
+          if (avatarFile) {
+            const base64 = await avatarFile.async('base64');
+            const ext = avatarFile.name.split('.').pop()?.toLowerCase() || 'png';
+            const mime = ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg' : (ext === 'webp' ? 'image/webp' : 'image/png');
+            user.photoURL = `data:${mime};base64,${base64}`;
+          }
+        }
+      }
+    }
+
+    return masterData;
+  } else {
+    const text = await file.text();
+    return JSON.parse(text);
+  }
 }

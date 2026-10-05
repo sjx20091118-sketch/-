@@ -208,7 +208,7 @@ export const LocalImageUploader: React.FC<LocalImageUploaderProps> = ({
       </div>
 
       {value ? (
-        <div className="relative rounded-2xl overflow-hidden border border-[#5B7B6D]/20 bg-[#FAF8F5] group shadow-2xs">
+        <div className="relative rounded-2xl overflow-hidden border border-[#5B7B6D]/20 dark:border-white/10 bg-[#FAF8F5] dark:bg-[#1A2520] group shadow-2xs">
           <div className={`${mode === 'banner' ? 'h-36' : 'h-44'} w-full relative`}>
             <MediaImage src={value} alt="Preview" className="w-full h-full object-cover" />
             <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end justify-between p-3">
@@ -232,14 +232,14 @@ export const LocalImageUploader: React.FC<LocalImageUploaderProps> = ({
               </div>
             </div>
           </div>
-          <div className="p-2.5 bg-white/90 border-t border-[#5B7B6D]/10 flex items-center justify-between text-[11px] text-[#6E7C75]">
-            <span className="flex items-center gap-1 text-[#5B7B6D] font-medium">
-              <Check className="w-3.5 h-3.5 text-emerald-600" /> 本地离线存储已就绪
+          <div className="p-2.5 bg-white/90 dark:bg-white/5 border-t border-[#5B7B6D]/10 dark:border-white/10 flex items-center justify-between text-[11px] text-[#6E7C75] dark:text-[#A7B4AD]">
+            <span className="flex items-center gap-1 text-[#5B7B6D] dark:text-[#A7D1BF] font-medium">
+              <Check className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" /> 本地离线存储已就绪
             </span>
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
-              className="text-[#5B7B6D] hover:underline font-semibold active:opacity-75 touch-manipulation p-1"
+              className="text-[#5B7B6D] dark:text-[#A7D1BF] hover:underline font-semibold active:opacity-75 touch-manipulation p-1"
             >
               重新上传
             </button>
@@ -253,11 +253,11 @@ export const LocalImageUploader: React.FC<LocalImageUploaderProps> = ({
           onClick={() => fileInputRef.current?.click()}
           className={`p-6 rounded-2xl border-2 border-dashed transition-all cursor-pointer text-center space-y-2.5 touch-manipulation select-none active:scale-[0.99] ${
             isDragging
-              ? 'border-[#E88765] bg-[#FDF0EB]/60'
-              : 'border-[#5B7B6D]/25 bg-[#FAF8F5]/80 hover:bg-white active:bg-[#F2EFE9] hover:border-[#5B7B6D]/50'
+              ? 'border-[#E88765] bg-[#FDF0EB]/60 dark:bg-[#E88765]/10'
+              : 'border-[#5B7B6D]/25 dark:border-white/15 bg-[#FAF8F5]/80 dark:bg-white/[0.03] hover:bg-white dark:hover:bg-white/[0.07] active:bg-[#F2EFE9] dark:active:bg-white/10 hover:border-[#5B7B6D]/50 dark:hover:border-white/30'
           }`}
         >
-          <div className="w-12 h-12 rounded-full bg-white shadow-2xs border border-[#5B7B6D]/15 flex items-center justify-center text-[#5B7B6D] mx-auto">
+          <div className="w-12 h-12 rounded-full bg-white dark:bg-white/10 shadow-2xs border border-[#5B7B6D]/15 dark:border-white/15 flex items-center justify-center text-[#5B7B6D] dark:text-[#E88765] mx-auto">
             {isProcessing ? (
               <RefreshCw className="w-5 h-5 animate-spin text-[#E88765]" />
             ) : (
@@ -265,10 +265,10 @@ export const LocalImageUploader: React.FC<LocalImageUploaderProps> = ({
             )}
           </div>
           <div>
-            <p className="text-xs font-bold text-[#2B332E]">
+            <p className="text-xs font-bold text-[#2B332E] dark:text-[#FAF8F5]">
               {isProcessing ? '正在优化图片并载入本地...' : '点击选择手机本地照片 / 拍照'}
             </p>
-            <p className="text-[10px] text-[#6E7C75] mt-0.5">
+            <p className="text-[10px] text-[#6E7C75] dark:text-[#A7B4AD] mt-0.5">
               支持 JPG、PNG、WEBP · 纯单机本地存储，离线可查
             </p>
           </div>
@@ -279,7 +279,7 @@ export const LocalImageUploader: React.FC<LocalImageUploaderProps> = ({
                 type="button"
                 onClick={aiGenerateButton.onGenerate}
                 disabled={aiGenerateButton.isLoading}
-                className="min-h-[40px] px-3.5 py-1.5 rounded-xl bg-white border border-[#5B7B6D]/20 hover:border-[#E88765] active:bg-[#FDF0EB] text-[#5B7B6D] active:text-[#E88765] text-xs font-medium transition-all shadow-2xs flex items-center gap-1.5 active:scale-95 touch-manipulation"
+                className="min-h-[40px] px-3.5 py-1.5 rounded-xl bg-white dark:bg-white/10 border border-[#5B7B6D]/20 dark:border-white/15 hover:border-[#E88765] active:bg-[#FDF0EB] dark:active:bg-white/15 text-[#5B7B6D] dark:text-[#FAF8F5] active:text-[#E88765] text-xs font-medium transition-all shadow-2xs flex items-center gap-1.5 active:scale-95 touch-manipulation"
               >
                 <Palette className="w-3.5 h-3.5 text-[#E88765]" />
                 <span>{aiGenerateButton.isLoading ? '绘图中...' : (aiGenerateButton.text || 'AI 绘制画面')}</span>

@@ -3,7 +3,6 @@ import { motion, AnimatePresence } from 'motion/react';
 import {
   MoreHorizontal,
   Feather,
-  RotateCcw,
   Trash2,
   Copy,
   Check,
@@ -15,8 +14,6 @@ import {
 import { ChatMessage, HealingTheme } from '../types';
 
 interface TimeAiCompanionProps {
-  aiEngine: 'gemini' | 'deepseek';
-  onToggleEngine: () => void;
   messages: ChatMessage[];
   onClearMessages: () => void;
   input: string;
@@ -38,7 +35,7 @@ const INSPIRATION_CHIPS = [
   {
     icon: '💌',
     label: '关于某位老朋友的回忆',
-    prompt: '回顾一下我和重要好友们（如江川、许知夏、沈砚）之间的温暖点滴与成长痕迹。'
+    prompt: '回顾一下我和重要好友们之间的温暖点滴与成长痕迹。'
   },
   {
     icon: '☕',
@@ -58,8 +55,6 @@ const INSPIRATION_CHIPS = [
 ];
 
 export const TimeAiCompanion: React.FC<TimeAiCompanionProps> = ({
-  aiEngine,
-  onToggleEngine,
   messages,
   onClearMessages,
   input,
@@ -214,32 +209,7 @@ export const TimeAiCompanion: React.FC<TimeAiCompanionProps> = ({
                     : 'bg-white/95 border-[#5B7B6D]/20 text-[#2B332E] paper-texture'
                 }`}
               >
-                <div
-                  className={`px-2.5 py-1.5 text-[10px] font-mono border-b flex items-center justify-between ${
-                    isDarkMode ? 'text-[#A0B0A7] border-white/10' : 'text-[#6E7C75] border-[#5B7B6D]/10'
-                  }`}
-                >
-                  <span>对谈引擎</span>
-                  <span className="font-bold" style={{ color: isDarkMode ? theme.accent : theme.primary }}>
-                    {aiEngine === 'deepseek' ? 'DeepSeek-V3' : '标准模型'}
-                  </span>
-                </div>
 
-                <button
-                  type="button"
-                  onClick={() => {
-                    onToggleEngine();
-                    setIsMenuOpen(false);
-                  }}
-                  className={`w-full px-2.5 py-2 rounded-xl text-left flex items-center justify-between transition-colors ${
-                    isDarkMode ? 'text-[#FAF8F5] hover:bg-white/10' : 'text-[#2B332E] hover:bg-[#FAF8F5]'
-                  }`}
-                >
-                  <span className="flex items-center gap-2">
-                    <RotateCcw className="w-3.5 h-3.5" style={{ color: isDarkMode ? theme.accent : theme.primary }} />
-                    <span>切换模型引擎</span>
-                  </span>
-                </button>
 
                 <button
                   type="button"

@@ -253,6 +253,121 @@ export async function extractVideoPoster(file: File | Blob): Promise<{ poster: s
 }
 
 /**
+ * 从已解析的视频 URL (无论是 Blob URL 还是直链) 智能抽取高清避黑视频封面
+ */
+export async function extractVideoPosterFromUrl(videoUrl: string): Promise<string> {
+  return new Promise((resolve) => {
+    let isSettled = false;
+    const video = document.createElement('video');
+    video.preload = 'auto';
+    video.muted = true;
+    video.playsInline = true;
+    video.src = videoUrl;
+
+    const cleanup = () => {
+      if (!isSettled) {
+        isSettled = true;
+        try {
+          video.pause();
+          video.src = '';
+          video.load();
+        } catch (e) {}
+      }
+    };
+
+    let bestScore = -1;
+    let bestPoster = '';
+    let candidateTimes: number[] = [];
+    let currentCandidateIndex = 0;
+
+    const safetyTimer = setTimeout(() => {
+      if (isSettled) return;
+      cleanup();
+      resolve(bestPoster);
+    }, 2800);
+
+    const finishWithBest = () => {
+      clearTimeout(safetyTimer);
+      cleanup();
+      resolve(bestPoster);
+    };
+
+    const tryNextCandidate = () => {
+      if (isSettled) return;
+      if (currentCandidateIndex >= candidateTimes.length) {
+        finishWithBest();
+        return;
+      }
+
+      const targetTime = candidateTimes[currentCandidateIndex];
+      currentCandidateIndex++;
+
+      try {
+        if (isFinite(targetTime) && targetTime >= 0) {
+          video.currentTime = targetTime;
+        } else {
+          tryNextCandidate();
+        }
+      } catch {
+        tryNextCandidate();
+      }
+    };
+
+    video.onloadeddata = () => {
+      if (isSettled) return;
+      const initialFrame = captureFrameFromVideo(video);
+      if (initialFrame && initialFrame.poster) {
+        bestPoster = initialFrame.poster;
+        bestScore = initialFrame.score;
+      }
+    };
+
+    video.onloadedmetadata = () => {
+      if (isSettled) return;
+      const dur = isFinite(video.duration) && video.duration > 0 ? video.duration : 3;
+
+      if (dur > 6) {
+        candidateTimes = [0.8, 1.8, dur * 0.25, dur * 0.45];
+      } else if (dur > 2) {
+        candidateTimes = [0.6, dur * 0.35, dur * 0.65];
+      } else {
+        candidateTimes = [Math.max(0.1, dur * 0.3)];
+      }
+
+      tryNextCandidate();
+    };
+
+    video.onseeked = () => {
+      if (isSettled) return;
+      const frame = captureFrameFromVideo(video);
+      if (frame && frame.poster) {
+        if (frame.score > bestScore || !bestPoster) {
+          bestScore = frame.score;
+          bestPoster = frame.poster;
+        }
+
+        if (frame.score >= 38) {
+          finishWithBest();
+          return;
+        }
+      }
+
+      tryNextCandidate();
+    };
+
+    video.onerror = () => {
+      finishWithBest();
+    };
+
+    try {
+      video.load();
+    } catch {
+      finishWithBest();
+    }
+  });
+}
+
+/**
  * 格式化秒数为 MM:SS 视频时长
  */
 export function formatVideoDuration(seconds?: number): string {

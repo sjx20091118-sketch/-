@@ -7,384 +7,169 @@ export interface SongItem {
   durationFormatted?: string;
   cover?: string;
   url?: string;
+  category?: 'eastern' | 'healing' | 'nature' | 'custom' | 'local';
   isLocal?: boolean;
-  engine?: 'cloud' | 'network' | 'dual' | 'local';
+  engine?: 'cloud' | 'network' | 'dual' | 'local' | 'synthesizer';
+  noiseType?: 'rain' | 'breeze' | 'stream' | 'fireplace' | 'bowl';
 }
 
-const RECENT_KEY = 'shinian_recent_playlist_v6';
-const FAVORITES_KEY = 'shinian_music_favorites_v3';
-const HISTORY_KEY = 'shinian_music_history_v3';
-export const DEFAULT_FALLBACK_COVER = 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=500&auto=format&fit=crop&q=80';
+const RECENT_KEY = 'shinian_recent_playlist_v7';
+const FAVORITES_KEY = 'shinian_music_favorites_v4';
+const HISTORY_KEY = 'shinian_music_history_v4';
+export const DEFAULT_FALLBACK_COVER = 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=500&auto=format&fit=crop&q=80';
 
-// 推荐精选时光曲库 (Verified HiFi Tracks - 内置全网直通免鉴权超清真彩音源)
+export const MUSIC_CATEGORIES = [
+  { id: 'all', label: '全部治愈曲目' },
+  { id: 'healing', label: '现代治愈慢调' },
+  { id: 'custom', label: '自定与导入' }
+] as const;
+
+// 现代治愈钢琴与纯音免版权典藏时光曲目 (CC0 / Public Domain / 稳定永不失效)
 export const CURATED_TIME_SONGS: SongItem[] = [
   {
-    id: 'ne_413296884',
-    title: '三叶的主题曲 (Theme of Mitsuha)',
-    artist: 'RADWIMPS',
-    album: '《你的名字。》电影原声带',
-    duration: 155,
-    durationFormatted: '02:35',
-    url: 'https://music.163.com/song/media/outer/url?id=413296884.mp3',
-    cover: 'https://images.unsplash.com/photo-1534447677768-be436bb09401?w=500&auto=format&fit=crop&q=80',
-    engine: 'network',
+    id: 'healing_clair',
+    title: '月光 (Clair de Lune)',
+    artist: '德彪西 (Claude Debussy)',
+    album: '静夜微光 · 治愈钢琴',
+    category: 'healing',
+    duration: 305,
+    durationFormatted: '05:05',
+    url: '/audio/healing_clair.mp3',
+    cover: 'https://images.unsplash.com/photo-1520523839898-507121774bfa?w=500&auto=format&fit=crop&q=80',
+    engine: 'network'
   },
   {
-    id: 'ne_439915614',
-    title: 'Sparkle (火花 · 你的名字)',
-    artist: 'RADWIMPS',
-    album: '《你的名字。》插曲',
-    duration: 320,
-    durationFormatted: '05:20',
-    url: 'https://music.163.com/song/media/outer/url?id=439915614.mp3',
+    id: 'healing_nocturne',
+    title: '降E大调夜曲 (Nocturne Op.9 No.2)',
+    artist: '肖邦 (Frédéric Chopin)',
+    album: '浪漫夜色 · 晚安诗章',
+    category: 'healing',
+    duration: 270,
+    durationFormatted: '04:30',
+    url: '/audio/healing_nocturne.mp3',
     cover: 'https://images.unsplash.com/photo-1509198397868-475647b2a1e5?w=500&auto=format&fit=crop&q=80',
-    engine: 'network',
+    engine: 'network'
   },
   {
-    id: 'ne_186016',
-    title: '晴天',
-    artist: '周杰伦',
-    album: '叶惠美 · 青春漫步',
-    duration: 269,
-    durationFormatted: '04:29',
-    url: 'https://music.163.com/song/media/outer/url?id=186016.mp3',
-    cover: 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=500&auto=format&fit=crop&q=80',
-    engine: 'network',
-  },
-  {
-    id: 'ne_1330348068',
-    title: '起风了 (原版)',
-    artist: '买辣椒也用券',
-    album: '起风了 · 怀念如风',
-    duration: 313,
-    durationFormatted: '05:13',
-    url: 'https://music.163.com/song/media/outer/url?id=1330348068.mp3',
-    cover: 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=500&auto=format&fit=crop&q=80',
-    engine: 'network',
-  },
-  {
-    id: 'ne_186001',
-    title: '七里香',
-    artist: '周杰伦',
-    album: '七里香 · 盛夏诗篇',
-    duration: 299,
-    durationFormatted: '04:59',
-    url: 'https://music.163.com/song/media/outer/url?id=186001.mp3',
-    cover: 'https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=500&auto=format&fit=crop&q=80',
-    engine: 'network',
-  },
-  {
-    id: 'ne_185997',
-    title: '蒲公英的约定',
-    artist: '周杰伦',
-    album: '我很忙 · 岁月长白',
-    duration: 247,
-    durationFormatted: '04:07',
-    url: 'https://music.163.com/song/media/outer/url?id=185997.mp3',
-    cover: 'https://images.unsplash.com/photo-1465847899084-d164df4dedc6?w=500&auto=format&fit=crop&q=80',
-    engine: 'network',
-  },
-  {
-    id: 'ne_254574',
-    title: '夏天的风',
-    artist: '温岚',
-    album: '温式效应 · 记忆微风',
-    duration: 222,
-    durationFormatted: '03:42',
-    url: 'https://music.163.com/song/media/outer/url?id=254574.mp3',
-    cover: 'https://images.unsplash.com/photo-1506744038136-46273834b3fb?w=500&auto=format&fit=crop&q=80',
-    engine: 'network',
-  },
-  {
-    id: 'ne_541687281',
-    title: 'Lemon',
-    artist: '米津玄師 (Kenshi Yonezu)',
-    album: '《Unnatural》主题曲',
-    duration: 255,
-    durationFormatted: '04:15',
-    url: 'https://music.163.com/song/media/outer/url?id=541687281.mp3',
-    cover: 'https://images.unsplash.com/photo-1518495973542-4542c06a5843?w=500&auto=format&fit=crop&q=80',
-    engine: 'network',
-  },
-  {
-    id: 'ne_26092788',
-    title: '幻昼 (Illusionary Daytime)',
-    artist: 'Shirfine',
-    album: 'Illusionary Daytime · 空间流转',
-    duration: 252,
-    durationFormatted: '04:12',
-    url: 'https://music.163.com/song/media/outer/url?id=26092788.mp3',
+    id: 'healing_moonlight',
+    title: '月光奏鸣曲第一乐章 (Moonlight Sonata)',
+    artist: '贝多芬 (Ludwig van Beethoven)',
+    album: '微芒如水 · 经典沉思',
+    category: 'healing',
+    duration: 360,
+    durationFormatted: '06:00',
+    url: '/audio/healing_moonlight.mp3',
     cover: 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=500&auto=format&fit=crop&q=80',
-    engine: 'network',
+    engine: 'network'
   },
   {
-    id: 'ne_443242',
-    title: 'Summer (菊次郎的夏天)',
-    artist: '久石让 (Joe Hisaishi)',
-    album: '菊次郎的夏天 电影原声',
-    duration: 224,
-    durationFormatted: '03:44',
-    url: 'https://music.163.com/song/media/outer/url?id=443242.mp3',
-    cover: 'https://images.unsplash.com/photo-1476514525535-07fb3b4ae5f1?w=500&auto=format&fit=crop&q=80',
-    engine: 'network',
+    id: 'healing_gymnopedie',
+    title: '裸体歌舞 (Gymnopédie No. 1)',
+    artist: '埃里克·萨蒂 (Erik Satie)',
+    album: '极简慢调 · 光阴慢走',
+    category: 'healing',
+    duration: 210,
+    durationFormatted: '03:30',
+    url: '/audio/healing_gymnopedie.mp3',
+    cover: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=500&auto=format&fit=crop&q=80',
+    engine: 'network'
   },
+  {
+    id: 'healing_liebestraum',
+    title: '爱之梦第三首 (Liebestraum No.3)',
+    artist: '李斯特 (Franz Liszt)',
+    album: '深情夜咏 · 岁月温存',
+    category: 'healing',
+    duration: 290,
+    durationFormatted: '04:50',
+    url: '/audio/healing_liebestraum.mp3',
+    cover: 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=500&auto=format&fit=crop&q=80',
+    engine: 'network'
+  },
+  {
+    id: 'healing_traumerei',
+    title: '梦幻曲 (Träumerei Op.15 No.7)',
+    artist: '罗伯特·舒曼 (Robert Schumann)',
+    album: '童年情景 · 岁月如歌',
+    category: 'healing',
+    duration: 195,
+    durationFormatted: '03:15',
+    url: '/audio/healing_traumerei.mp3',
+    cover: 'https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=500&auto=format&fit=crop&q=80',
+    engine: 'network'
+  },
+  {
+    id: 'healing_nocturne_csharp',
+    title: '升C小调夜曲 (Nocturne in C-sharp Minor)',
+    artist: '肖邦 (Frédéric Chopin)',
+    album: '夜色深处 · 柔情低语',
+    category: 'healing',
+    duration: 260,
+    durationFormatted: '04:20',
+    url: '/audio/healing_nocturne_csharp.mp3',
+    cover: 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=500&auto=format&fit=crop&q=80',
+    engine: 'network'
+  },
+  {
+    id: 'healing_air_on_g',
+    title: 'G弦上的咏叹调 (Air on the G String)',
+    artist: '巴赫 (J.S. Bach)',
+    album: '安宁弦乐 · 纯净心境',
+    category: 'healing',
+    duration: 325,
+    durationFormatted: '05:25',
+    url: '/audio/healing_air_on_g.mp3',
+    cover: 'https://images.unsplash.com/photo-1465847899084-d164df4dedc6?w=500&auto=format&fit=crop&q=80',
+    engine: 'network'
+  },
+  {
+    id: 'healing_gnossienne',
+    title: '玄秘曲第一号 (Gnossienne No. 1)',
+    artist: '埃里克·萨蒂 (Erik Satie)',
+    album: '沉静光阴 · 冥想漫步',
+    category: 'healing',
+    duration: 228,
+    durationFormatted: '03:48',
+    url: '/audio/healing_gnossienne.mp3',
+    cover: 'https://images.unsplash.com/photo-1534447677768-be436bb09401?w=500&auto=format&fit=crop&q=80',
+    engine: 'network'
+  },
+  {
+    id: 'healing_fur_elise',
+    title: '致爱丽丝 (Für Elise)',
+    artist: '贝多芬 (Ludwig van Beethoven)',
+    album: '温柔回响 · 初心旧忆',
+    category: 'healing',
+    duration: 215,
+    durationFormatted: '03:35',
+    url: '/audio/healing_fur_elise.mp3',
+    cover: 'https://images.unsplash.com/photo-1506744038136-46273834b3fb?w=500&auto=format&fit=crop&q=80',
+    engine: 'network'
+  }
 ];
 
 export const CURATED_DUAL_ENGINE_SONGS = CURATED_TIME_SONGS;
 export const DEFAULT_TRACK: SongItem = CURATED_TIME_SONGS[0];
 export const DEFAULT_INSPIRATION_SONGS: SongItem[] = CURATED_TIME_SONGS;
 
-import { buildApiUrl } from './apiConfig';
-
 /**
- * 纯前端通用 JSONP 请求封装器 (免 CORS 跨域限制，100% 适配安卓原生与浏览器)
- */
-function jsonpRequest<T>(url: string, paramCallback = 'callback', timeoutMs = 4500): Promise<T | null> {
-  return new Promise((resolve) => {
-    if (typeof document === 'undefined') {
-      resolve(null);
-      return;
-    }
-
-    const callbackName = `shinian_jsonp_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
-    const script = document.createElement('script');
-    script.type = 'text/javascript';
-
-    const cleanup = () => {
-      if (script.parentNode) {
-        script.parentNode.removeChild(script);
-      }
-      try {
-        // @ts-ignore
-        delete window[callbackName];
-      } catch {}
-    };
-
-    const timer = setTimeout(() => {
-      cleanup();
-      resolve(null);
-    }, timeoutMs);
-
-    // @ts-ignore
-    window[callbackName] = (data: T) => {
-      clearTimeout(timer);
-      cleanup();
-      resolve(data);
-    };
-
-    const separator = url.includes('?') ? '&' : '?';
-    script.src = `${url}${separator}${paramCallback}=${callbackName}`;
-    script.onerror = () => {
-      clearTimeout(timer);
-      cleanup();
-      resolve(null);
-    };
-
-    document.head.appendChild(script);
-  });
-}
-
-/**
- * 纯前端酷我免后台 JSONP 引擎 (提取超清专辑封面与直接可播 RID)
- */
-async function searchKuwoJsonp(query: string): Promise<SongItem[]> {
-  try {
-    const url = `https://search.kuwo.cn/r.s?client=kt&all=${encodeURIComponent(query)}&pn=0&rn=20&vipver=1&ft=music&encoding=utf8&rformat=json&mobi=1`;
-    const data = await jsonpRequest<any>(url, 'callback', 4000);
-    if (data && data.abslist && Array.isArray(data.abslist)) {
-      return data.abslist.map((item: any) => {
-        const id = item.DC_TARGETID || (item.MUSICRID ? String(item.MUSICRID).replace(/^MUSIC_/, '') : '');
-        const durationSec = parseInt(item.DURATION || '0', 10);
-        const minutes = Math.floor(durationSec / 60);
-        const seconds = durationSec % 60;
-        const durationFormatted = `${minutes}:${seconds < 10 ? '0' : ''}${seconds}`;
-
-        // 提取真彩专辑封面与歌手肖像
-        let directCover = '';
-        if (item.web_albumpic_short) {
-          directCover = `https://img4.kuwo.cn/star/albumcover/${item.web_albumpic_short.replace(/^\d+\//, '400/')}`;
-        } else if (item.web_artistpic_short) {
-          directCover = `https://img4.kuwo.cn/star/starheads/${item.web_artistpic_short.replace(/^\d+\//, '400/')}`;
-        } else if (item.MVPIC) {
-          directCover = item.MVPIC.replace(/^http:/, 'https:');
-        }
-
-        return {
-          id: id || `kw_${Date.now()}_${Math.random()}`,
-          title: (item.SONGNAME || '未知曲目').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&'),
-          artist: (item.ARTIST || '未知歌手').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&'),
-          album: (item.ALBUM || '时光单曲').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&'),
-          duration: durationSec,
-          durationFormatted,
-          cover: directCover || '',
-          url: id ? `https://antiserver.kuwo.cn/anti.s?type=convert_url&rid=${id}&format=mp3&response=url` : undefined,
-          engine: 'network' as const
-        };
-      }).filter((s: SongItem) => Boolean(s.id));
-    }
-  } catch (err) {
-    console.warn('Kuwo jsonp search error:', err);
-  }
-  return [];
-}
-
-/**
- * 纯前端酷狗音乐开放检索通道 (提取高清真彩封面)
- */
-async function searchKugouPublic(query: string): Promise<SongItem[]> {
-  try {
-    const url = `https://songsearch.kugou.com/song_search_v2?keyword=${encodeURIComponent(query)}&page=1&pagesize=20&userid=-1&clientver=&platform=WebFilter&tag=em&filter=2&iscorrection=1`;
-    const data = await jsonpRequest<any>(url, 'callback', 4000);
-    if (data && data.data && Array.isArray(data.data.lists)) {
-      return data.data.lists.map((item: any) => {
-        const title = (item.SongName || '未知曲目').replace(/<\/?em>/g, '').replace(/&amp;/g, '&');
-        const artist = (item.SingerName || '未知歌手').replace(/<\/?em>/g, '').replace(/&amp;/g, '&');
-        const album = (item.AlbumName || '时光单曲').replace(/<\/?em>/g, '').replace(/&amp;/g, '&');
-        const durationSec = parseInt(item.Duration || '0', 10);
-        const minutes = Math.floor(durationSec / 60);
-        const seconds = durationSec % 60;
-        const durationFormatted = `${minutes}:${seconds < 10 ? '0' : ''}${seconds}`;
-        const hash = item.FileHash || item.HQFileHash || item.SQFileHash || '';
-
-        // 提取超清真彩专辑/歌手封面
-        let directCover = '';
-        if (item.Image && typeof item.Image === 'string') {
-          directCover = item.Image.replace('{size}', '400').replace(/^http:/, 'https:');
-        } else if (item.AlbumPrivilege?.album_img) {
-          directCover = item.AlbumPrivilege.album_img.replace('{size}', '400').replace(/^http:/, 'https:');
-        }
-
-        return {
-          id: `kg_${hash}`,
-          title,
-          artist,
-          album,
-          duration: durationSec,
-          durationFormatted,
-          cover: directCover || '',
-          engine: 'network' as const,
-        };
-      }).filter((s: SongItem) => s.id !== 'kg_');
-    }
-  } catch (err) {
-    console.warn('KuGou public search fallback:', err);
-  }
-  return [];
-}
-
-/**
- * 纯前端 QQ 音乐开放 JSONP 检索 (提取真彩专辑封面)
- */
-async function searchQQMusicJsonp(query: string): Promise<SongItem[]> {
-  try {
-    const url = `https://c.y.qq.com/soso/fcgi-bin/client_search_cp?ct=24&qqmusic_ver=1298&new_json=1&remoteplace=txt.yqq.song&searchid=1&t=0&aggr=1&cr=1&catZhida=0&lossless=0&flag_qc=0&p=1&n=20&w=${encodeURIComponent(query)}&g_tk=5381&loginUin=0&hostUin=0&inCharset=utf8&outCharset=utf-8&notice=0&platform=yqq.json&needNewCode=0`;
-    const data = await jsonpRequest<any>(url, 'jsonpCallback', 4000);
-    if (data && data.data && data.data.song && Array.isArray(data.data.song.list)) {
-      return data.data.song.list.map((item: any) => {
-        const songMid = item.mid || item.songmid || '';
-        const title = item.title || item.name || '未知曲目';
-        const artist = item.singer && Array.isArray(item.singer) ? item.singer.map((s: any) => s.name).join(' / ') : '未知歌手';
-        const album = item.album ? item.album.name : '时光单曲';
-        const durationSec = item.interval || 0;
-        const minutes = Math.floor(durationSec / 60);
-        const seconds = durationSec % 60;
-        const durationFormatted = `${minutes}:${seconds < 10 ? '0' : ''}${seconds}`;
-        const albumMid = item.album ? item.album.mid : '';
-        const singerMid = item.singer?.[0]?.mid || '';
-        
-        let cover = '';
-        if (albumMid) {
-          cover = `https://y.gtimg.cn/music/photo_new/T002R300x300M000${albumMid}.jpg`;
-        } else if (singerMid) {
-          cover = `https://y.gtimg.cn/music/photo_new/T001R300x300M000${singerMid}.jpg`;
-        }
-
-        return {
-          id: `qq_${songMid}`,
-          title,
-          artist,
-          album,
-          duration: durationSec,
-          durationFormatted,
-          cover,
-          engine: 'network' as const,
-        };
-      }).filter((s: SongItem) => s.id !== 'qq_');
-    }
-  } catch (err) {
-    console.warn('QQ music search error:', err);
-  }
-  return [];
-}
-
-/**
- * 全网多通道高可用免后台音乐检索 (多源引擎自适应并发，确保真彩封面提取)
+ * 纯净免版权曲库模糊检索
  */
 export async function searchSongs(query: string): Promise<SongItem[]> {
-  const q = (query || '').trim();
-  if (!q) return [];
-
-  // 1. 优先调用后端安全中继接口 (毫秒级并发，提取真彩封面与官方直链，彻底杜绝前端注入 script 引发的 Script error)
-  try {
-    const apiUrl = buildApiUrl(`/api/music/search?q=${encodeURIComponent(q)}`);
-    const res = await fetch(apiUrl, { signal: AbortSignal.timeout(4000) });
-    if (res.ok) {
-      const data = await res.json();
-      if (data.songs && Array.isArray(data.songs) && data.songs.length > 0) {
-        return data.songs;
-      }
-    }
-  } catch (err) {
-    console.warn('Backend music search proxy warning:', err);
+  const q = (query || '').trim().toLowerCase();
+  if (!q) {
+    return CURATED_TIME_SONGS;
   }
 
-  // 2. 备选：纯前端免后台免 CORS 的多通道开放检索 (仅在脱机或独立 APP 离线时激活)
-  try {
-    const kwPromise = searchKuwoJsonp(q);
-    const kgPromise = searchKugouPublic(q);
-    const qqPromise = searchQQMusicJsonp(q);
-
-    const [kwResults, kgResults, qqResults] = await Promise.all([
-      kwPromise.catch(() => []),
-      kgPromise.catch(() => []),
-      qqPromise.catch(() => []),
-    ]);
-
-    const combined: SongItem[] = [];
-    const seen = new Set<string>();
-
-    const appendList = (list: SongItem[]) => {
-      for (const song of list) {
-        const key = `${song.title.toLowerCase()}_${song.artist.toLowerCase()}`;
-        if (!seen.has(key)) {
-          seen.add(key);
-          combined.push(song);
-        }
-      }
-    };
-
-    appendList(kwResults);
-    appendList(kgResults);
-    appendList(qqResults);
-
-    if (combined.length > 0) {
-      return combined.slice(0, 30);
-    }
-  } catch (err) {
-    console.warn('Multi-channel frontend search fallback:', err);
-  }
-
-  // 3. 兜底：本地及缓存曲库关键词智能模糊匹配
-  const lowerQ = q.toLowerCase();
-  const allCurated = [...CURATED_TIME_SONGS, ...loadSavedPlaylist(), ...loadFavorites()];
+  const allSongs = [...CURATED_TIME_SONGS, ...loadSavedPlaylist(), ...loadFavorites()];
   const uniqueMap = new Map<string, SongItem>();
-  
-  for (const song of allCurated) {
+
+  for (const song of allSongs) {
     if (!song || !song.id) continue;
     if (
-      song.title.toLowerCase().includes(lowerQ) ||
-      song.artist.toLowerCase().includes(lowerQ) ||
-      song.album.toLowerCase().includes(lowerQ)
+      song.title.toLowerCase().includes(q) ||
+      song.artist.toLowerCase().includes(q) ||
+      song.album.toLowerCase().includes(q)
     ) {
       uniqueMap.set(song.id, song);
     }
@@ -395,12 +180,11 @@ export async function searchSongs(query: string): Promise<SongItem[]> {
     return matches;
   }
 
-  // 4. 返回精选时光推荐
   return CURATED_TIME_SONGS.slice(0, 8);
 }
 
 /**
- * 全网免鉴权音频流地址与真彩封面极速解析 (智能免鉴权直链+双引擎秒级容灾，直接给 <audio> 注入真实可播 MP3 流)
+ * 获取可播放音频地址
  */
 export async function fetchSongPlayUrl(
   id: string,
@@ -410,54 +194,29 @@ export async function fetchSongPlayUrl(
 ): Promise<string> {
   if (!id && !title) return '';
 
-  // 1. 若已经是直链或 Blob，直接返回
   if (id.startsWith('http://') || id.startsWith('https://') || id.startsWith('blob:')) {
     return id;
   }
 
-  const cleanId = id.replace(/^(MUSIC_|curated_|ne_|netease_|kw_)/, '');
-
-  // 2. 检查是否在精选曲库中有预置验证超清直链
-  const foundCurated = CURATED_TIME_SONGS.find(s => s.id === cleanId || s.id === id || s.id === `ne_${cleanId}`);
-  if (foundCurated && foundCurated.url) {
-    return foundCurated.url;
+  // 1. 精选免版权曲库中检索匹配
+  const found = CURATED_TIME_SONGS.find(s => s.id === id);
+  if (found && found.url) {
+    onEnrichSong?.({ url: found.url, cover: found.cover });
+    return found.url;
   }
 
-  // 3. 优先通过加速解析接口提取极速 CDN 真实 MP3 直链 (毫秒级返回真彩音频流)
-  try {
-    let endpoint = `/api/music/play-url?id=${encodeURIComponent(id)}`;
-    if (title) endpoint += `&title=${encodeURIComponent(title)}`;
-    if (artist) endpoint += `&artist=${encodeURIComponent(artist)}`;
-
-    const fullUrl = buildApiUrl(endpoint);
-    const res = await fetch(fullUrl, { signal: AbortSignal.timeout(4000) });
-    if (res.ok) {
-      const data = await res.json();
-      if (data.url && typeof data.url === 'string' && data.url.startsWith('http')) {
-        onEnrichSong?.({ url: data.url, cover: data.cover });
-        return data.url;
-      }
-    }
-  } catch (err) {
-    console.warn('API music play-url failed, falling back to direct CDN:', err);
-  }
-
-  // 4. 网易云直接高保真直链 (外链无需鉴权，直接可播)
-  if (id.startsWith('ne_') || id.startsWith('netease_') || /^\d+$/.test(cleanId)) {
-    return `https://music.163.com/song/media/outer/url?id=${cleanId}.mp3`;
-  }
-
-  // 5. 兜底精选回退 (保证任意点击皆有悦耳音乐回响，杜绝死寂)
+  // 2. 按歌名模糊回退
   if (title) {
-    const matchedCurated = CURATED_TIME_SONGS.find(s => 
-      s.title.includes(title) || (artist && s.artist.includes(artist)) || title.includes(s.title)
+    const matched = CURATED_TIME_SONGS.find(s => 
+      s.title.includes(title) || title.includes(s.title)
     );
-    if (matchedCurated && matchedCurated.url) {
-      return matchedCurated.url;
+    if (matched && matched.url) {
+      onEnrichSong?.({ url: matched.url, cover: matched.cover });
+      return matched.url;
     }
   }
 
-  return '';
+  return CURATED_TIME_SONGS[0].url || '';
 }
 
 export function createLocalSongItem(file: File): SongItem {
@@ -470,6 +229,7 @@ export function createLocalSongItem(file: File): SongItem {
     album: '设备专属导入',
     url: objectUrl,
     isLocal: true,
+    category: 'local',
     engine: 'local',
     cover: DEFAULT_FALLBACK_COVER,
     durationFormatted: '本地音频',
@@ -481,9 +241,10 @@ export function createCustomUrlSongItem(url: string, title?: string): SongItem {
   return {
     id: `custom_${Date.now()}`,
     title: title?.trim() || '网络音乐流',
-    artist: '外部流媒体',
+    artist: '开放流媒体',
     album: '自定义音源',
     url: cleanUrl,
+    category: 'custom',
     engine: 'network',
     cover: 'https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=500&auto=format&fit=crop&q=80',
     durationFormatted: '网络流',
@@ -493,15 +254,28 @@ export function createCustomUrlSongItem(url: string, title?: string): SongItem {
 export function loadSavedPlaylist(): SongItem[] {
   try {
     const raw = localStorage.getItem(RECENT_KEY);
-    if (!raw) return CURATED_DUAL_ENGINE_SONGS;
+    if (!raw) return CURATED_TIME_SONGS;
     const parsed = JSON.parse(raw);
     if (Array.isArray(parsed) && parsed.length > 0) {
+      // 过滤旧版侵权、失效防盗链或已移除的东方/自然/雨滴曲目，自动同步最新现代治愈典藏曲库
+      const isOutdated = parsed.some(
+        (item) => item.id?.startsWith('ne_') || 
+                  item.id?.startsWith('oriental_') || 
+                  item.id?.startsWith('nature_') || 
+                  item.id === 'healing_raindrop' ||
+                  item.url?.includes('music.163.com') || 
+                  item.url?.includes('pixabay.com')
+      );
+      if (isOutdated) {
+        savePlaylist(CURATED_TIME_SONGS);
+        return CURATED_TIME_SONGS;
+      }
       const valid = parsed.filter(item => !item.isLocal || (item.url && item.url.startsWith('blob:')));
-      return valid.length > 0 ? valid : CURATED_DUAL_ENGINE_SONGS;
+      return valid.length > 0 ? valid : CURATED_TIME_SONGS;
     }
-    return CURATED_DUAL_ENGINE_SONGS;
+    return CURATED_TIME_SONGS;
   } catch {
-    return CURATED_DUAL_ENGINE_SONGS;
+    return CURATED_TIME_SONGS;
   }
 }
 
@@ -519,7 +293,19 @@ export function loadFavorites(): SongItem[] {
     const raw = localStorage.getItem(FAVORITES_KEY);
     if (!raw) return [];
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
+    if (Array.isArray(parsed)) {
+      // 过滤旧版侵权或失效链接，并同步更新新地址
+      return parsed
+        .filter(item => !item.id?.startsWith('ne_') && !item.url?.includes('music.163.com'))
+        .map(item => {
+          if (item.url?.includes('pixabay.com')) {
+            const fresh = CURATED_TIME_SONGS.find(c => c.id === item.id);
+            if (fresh) return { ...item, url: fresh.url };
+          }
+          return item;
+        });
+    }
+    return [];
   } catch {
     return [];
   }
@@ -539,7 +325,10 @@ export function loadHistory(): SongItem[] {
     const raw = localStorage.getItem(HISTORY_KEY);
     if (!raw) return [];
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
+    if (Array.isArray(parsed)) {
+      return parsed.filter(item => !item.id?.startsWith('ne_') && !item.url?.includes('music.163.com'));
+    }
+    return [];
   } catch {
     return [];
   }

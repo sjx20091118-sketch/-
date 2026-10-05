@@ -34,6 +34,16 @@ export const AddPersonModalForm: React.FC<AddPersonModalProps> = ({
   addPersonKnownDate
 }) => {
   const [avatar, setAvatar] = useState<string>('');
+  const [knownDate, setKnownDate] = useState<string>(addPersonKnownDate || '2021-09-01');
+  const [birthday, setBirthday] = useState<string>(addPersonBirthday || '');
+
+  React.useEffect(() => {
+    if (addPersonKnownDate) setKnownDate(addPersonKnownDate);
+  }, [addPersonKnownDate]);
+
+  React.useEffect(() => {
+    if (addPersonBirthday !== undefined) setBirthday(addPersonBirthday);
+  }, [addPersonBirthday]);
 
   if (!isOpen) return null;
 
@@ -47,7 +57,6 @@ export const AddPersonModalForm: React.FC<AddPersonModalProps> = ({
     const cleanWechat = ((fd.get('wechat') as string) || '').trim();
     const cleanQq = ((fd.get('qq') as string) || '').trim();
     const cleanBio = ((fd.get('bio') as string) || '').trim();
-    const cleanImpression = ((fd.get('impression') as string) || '').trim();
 
     if (!avatar) {
       showToast('请上传人物头像相片（必填项）');
@@ -66,7 +75,7 @@ export const AddPersonModalForm: React.FC<AddPersonModalProps> = ({
       uploadPersonAvatarToCloud(avatar).catch(() => {});
     }
 
-    const bDay = addPersonBirthday?.trim() || '';
+    const bDay = birthday?.trim() || '';
     const zodiacVal = bDay ? getZodiacFromBirthday(bDay) : '未知';
 
     onSubmit({
@@ -77,17 +86,14 @@ export const AddPersonModalForm: React.FC<AddPersonModalProps> = ({
       group: formPersonGroup || '未分组',
       birthday: bDay || '未填写',
       zodiac: zodiacVal,
-      knownDate: addPersonKnownDate || '2021-09-01',
+      knownDate: knownDate || '2021-09-01',
       wechat: cleanWechat,
       qq: cleanQq,
       phone: cleanPhone,
       hobbies: '未填写',
       color: '暖杏粉',
       bio: cleanBio || `${cleanRel} · 珍贵回忆的同路人`,
-      customFields: { '认识地点': cleanKnowWhere || '时光长廊' },
-      impressions: cleanImpression
-        ? [{ id: 'imp-0', year: new Date().getFullYear().toString(), text: cleanImpression }]
-        : []
+      customFields: { '认识地点': cleanKnowWhere || '时光长廊' }
     });
   };
 
@@ -179,15 +185,17 @@ export const AddPersonModalForm: React.FC<AddPersonModalProps> = ({
                   setDatePickerConfig({
                     isOpen: true,
                     title: '选择相识起始日期',
-                    value: addPersonKnownDate || '2021-09-01',
+                    value: knownDate || '2021-09-01',
                     mode: 'full',
-                    onConfirm: () => {}
+                    onConfirm: (val: string) => {
+                      if (val) setKnownDate(val);
+                    }
                   });
                 }}
                 className="font-mono text-xs text-[#2B332E] dark:text-[#FAF8F5] font-bold flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-stone-100/80 dark:bg-white/10 border border-stone-200 dark:border-white/10 hover:border-primary transition-all cursor-pointer shadow-2xs active:scale-95"
               >
                 <Calendar className="w-3.5 h-3.5 text-[#5B7B6D]" />
-                <span>{addPersonKnownDate || '2021-09-01'}</span>
+                <span>{knownDate || '2021-09-01'}</span>
               </button>
             </div>
 
@@ -200,15 +208,17 @@ export const AddPersonModalForm: React.FC<AddPersonModalProps> = ({
                   setDatePickerConfig({
                     isOpen: true,
                     title: '选择好友生日',
-                    value: addPersonBirthday || '',
+                    value: birthday || '',
                     mode: 'month-day',
-                    onConfirm: () => {}
+                    onConfirm: (val: string) => {
+                      setBirthday(val || '');
+                    }
                   });
                 }}
                 className="font-mono text-xs text-[#2B332E] dark:text-[#FAF8F5] font-bold flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-stone-100/80 dark:bg-white/10 border border-stone-200 dark:border-white/10 hover:border-primary transition-all cursor-pointer shadow-2xs active:scale-95"
               >
                 <Calendar className="w-3.5 h-3.5 text-[#E88765]" />
-                <span>{addPersonBirthday || '选填生日'}</span>
+                <span>{birthday || '选填生日'}</span>
               </button>
             </div>
 
@@ -265,9 +275,9 @@ export const AddPersonModalForm: React.FC<AddPersonModalProps> = ({
             </div>
           </div>
 
-          {/* Card 3: 寄语与初识印象 (Bio & Impression) */}
+          {/* Card 3: 一句话总结寄语 (Bio) */}
           <div className="bg-white/90 dark:bg-white/[0.04] p-3.5 rounded-2xl border border-black/5 dark:border-white/10 space-y-2 shadow-2xs">
-            <span className="text-[11px] font-serif font-medium text-[#526058] dark:text-[#A7B4AD]">一句话总结与初识印象</span>
+            <span className="text-[11px] font-serif font-medium text-[#526058] dark:text-[#A7B4AD]">一句话总结寄语 (选填)</span>
             <input
               name="bio"
               defaultValue=""
@@ -275,19 +285,8 @@ export const AddPersonModalForm: React.FC<AddPersonModalProps> = ({
               autoCorrect="off"
               autoCapitalize="none"
               spellCheck={false}
-              placeholder="选填，如：知心挚友，同路前行"
+              placeholder="如：知心挚友，同路前行"
               className="w-full p-2.5 text-xs font-serif rounded-xl border border-stone-200/80 dark:border-white/10 bg-stone-50/90 dark:bg-black/20 text-[#2B332E] dark:text-[#FAF8F5] focus:outline-none placeholder-[#6E7C75]/50"
-            />
-            <textarea
-              name="impression"
-              defaultValue=""
-              autoComplete="off"
-              autoCorrect="off"
-              autoCapitalize="none"
-              spellCheck={false}
-              rows={2}
-              placeholder="初识温存细节或深刻回忆（选填）..."
-              className="w-full p-2.5 text-xs font-serif rounded-xl border border-stone-200/80 dark:border-white/10 bg-stone-50/90 dark:bg-black/20 text-[#2B332E] dark:text-[#FAF8F5] focus:outline-none resize-none placeholder-[#6E7C75]/50"
             />
           </div>
 
@@ -317,6 +316,8 @@ export interface EditPersonModalProps {
   setDatePickerConfig: (cfg: any) => void;
   setFormGroupPickerTarget: (target: 'add' | 'edit') => void;
   editPersonGroup: string;
+  editPersonBirthday?: string;
+  editPersonKnownDate?: string;
 }
 
 export const EditPersonModalForm: React.FC<EditPersonModalProps> = ({
@@ -330,11 +331,32 @@ export const EditPersonModalForm: React.FC<EditPersonModalProps> = ({
   getZodiacFromBirthday,
   setDatePickerConfig,
   setFormGroupPickerTarget,
-  editPersonGroup
+  editPersonGroup,
+  editPersonBirthday,
+  editPersonKnownDate
 }) => {
   if (!isOpen || !selectedPerson) return null;
 
-  const [avatar, setAvatar] = useState<string>(selectedPerson.avatar || '');
+  const [avatar, setAvatar] = useState<string>(() => selectedPerson?.avatar || '');
+  const [knownDate, setKnownDate] = useState<string>(() => editPersonKnownDate || selectedPerson?.knownDate || '2021-09-01');
+  const [birthday, setBirthday] = useState<string>(() =>
+    editPersonBirthday !== undefined
+      ? editPersonBirthday
+      : (selectedPerson?.birthday && selectedPerson?.birthday !== '未填写' ? selectedPerson.birthday : '')
+  );
+
+  const targetPersonId = selectedPerson?.id;
+
+  // 仅当切换编辑目标人物时同步初始数据，防止父组件重渲染（如日期拾取器关闭）导致用户已选日期被意外重置
+  React.useEffect(() => {
+    if (selectedPerson) {
+      setAvatar(selectedPerson.avatar || '');
+      setKnownDate(selectedPerson.knownDate || '2021-09-01');
+      setBirthday(
+        selectedPerson.birthday && selectedPerson.birthday !== '未填写' ? selectedPerson.birthday : ''
+      );
+    }
+  }, [targetPersonId]);
 
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -365,8 +387,8 @@ export const EditPersonModalForm: React.FC<EditPersonModalProps> = ({
       uploadPersonAvatarToCloud(finalAvatar).catch(() => {});
     }
 
-    const bDay = selectedPerson.birthday || '';
-    const zodiacVal = bDay && bDay !== '未填写' ? getZodiacFromBirthday(bDay) : (selectedPerson.zodiac || '未知');
+    const bDay = birthday?.trim() || '';
+    const zodiacVal = bDay ? getZodiacFromBirthday(bDay) : (selectedPerson.zodiac || '未知');
 
     onUpdate({
       name: cleanName,
@@ -374,7 +396,7 @@ export const EditPersonModalForm: React.FC<EditPersonModalProps> = ({
       group: editPersonGroup || selectedPerson.group || '未分组',
       birthday: bDay || '未填写',
       zodiac: zodiacVal,
-      knownDate: selectedPerson.knownDate || '2021-09-01',
+      knownDate: knownDate || '2021-09-01',
       wechat: cleanWechat,
       qq: cleanQq,
       phone: cleanPhone,
@@ -478,15 +500,17 @@ export const EditPersonModalForm: React.FC<EditPersonModalProps> = ({
                   setDatePickerConfig({
                     isOpen: true,
                     title: '修改相识起始日期',
-                    value: selectedPerson.knownDate || '2021-09-01',
+                    value: knownDate || '2021-09-01',
                     mode: 'full',
-                    onConfirm: () => {}
+                    onConfirm: (val: string) => {
+                      if (val) setKnownDate(val);
+                    }
                   });
                 }}
                 className="font-mono text-xs text-[#2B332E] dark:text-[#FAF8F5] font-bold flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-stone-100/80 dark:bg-white/10 border border-stone-200 dark:border-white/10 hover:border-primary transition-all cursor-pointer shadow-2xs active:scale-95"
               >
                 <Calendar className="w-3.5 h-3.5 text-[#5B7B6D]" />
-                <span>{selectedPerson.knownDate || '2021-09-01'}</span>
+                <span>{knownDate || '2021-09-01'}</span>
               </button>
             </div>
 
@@ -499,15 +523,17 @@ export const EditPersonModalForm: React.FC<EditPersonModalProps> = ({
                   setDatePickerConfig({
                     isOpen: true,
                     title: '修改好友生日',
-                    value: selectedPerson.birthday === '未填写' ? '' : selectedPerson.birthday,
+                    value: birthday || '',
                     mode: 'month-day',
-                    onConfirm: () => {}
+                    onConfirm: (val: string) => {
+                      setBirthday(val || '');
+                    }
                   });
                 }}
                 className="font-mono text-xs text-[#2B332E] dark:text-[#FAF8F5] font-bold flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-stone-100/80 dark:bg-white/10 border border-stone-200 dark:border-white/10 hover:border-primary transition-all cursor-pointer shadow-2xs active:scale-95"
               >
                 <Calendar className="w-3.5 h-3.5 text-[#E88765]" />
-                <span>{selectedPerson.birthday || '选填生日'}</span>
+                <span>{birthday || '选填生日'}</span>
               </button>
             </div>
 

@@ -136,165 +136,173 @@ export const LockScreen: React.FC<LockScreenProps> = ({
   if (!isLocked) return null;
 
   return (
-    <div className="fixed inset-0 w-screen h-[100dvh] z-[99999] overflow-hidden select-none flex flex-col justify-between py-8 px-6 sm:px-12 font-sans">
+    <div className="fixed inset-0 w-screen h-[100dvh] z-[99999] overflow-y-auto custom-scrollbar select-none flex flex-col items-center justify-center p-4 sm:p-6 font-sans">
       {/* 动态雅致背景底色与主题径向流光 */}
       <div
-        className="absolute inset-0 transition-colors duration-700 pointer-events-none -z-20"
+        className="fixed inset-0 transition-colors duration-700 pointer-events-none -z-20"
         style={{
           background: isDarkMode
-            ? `radial-gradient(ellipse at 50% 25%, rgba(${currentTheme.primaryRgb || '91,123,109'}, 0.28) 0%, #0F1412 100%)`
-            : `radial-gradient(ellipse at 50% 20%, rgba(${currentTheme.primaryRgb || '91,123,109'}, 0.16) 0%, #FAF8F5 100%)`
+            ? `radial-gradient(circle at 50% 35%, rgba(${currentTheme.primaryRgb || '91,123,109'}, 0.28) 0%, #0B100E 100%)`
+            : `radial-gradient(circle at 50% 30%, rgba(${currentTheme.primaryRgb || '91,123,109'}, 0.14) 0%, #FAF8F5 100%)`
         }}
       />
-      <div className="absolute inset-0 paper-texture opacity-30 pointer-events-none -z-10" />
+      <div className="fixed inset-0 paper-texture opacity-30 pointer-events-none -z-10" />
 
-      {/* 顶部：东方意境日期与苹果大字居中时钟 */}
-      <motion.div
-        initial={{ opacity: 0, y: -20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.6, ease: 'easeOut' }}
-        className="text-center pt-2 sm:pt-6 space-y-1 sm:space-y-2 z-10"
-      >
-        {/* 日期与农历干支 */}
-        <div className="flex items-center justify-center gap-2 text-xs sm:text-sm font-serif text-[#6E7C75] dark:text-[#A7B4AD] tracking-wider">
-          <span>{easternDate.solarDate}</span>
-          <span>{easternDate.weekday}</span>
-          <span className="opacity-40">·</span>
-          <span>{easternDate.lunarYear}</span>
-        </div>
-
-        {/* 苹果锁屏大字居中时钟 */}
-        <div
-          className="text-6xl sm:text-7xl md:text-8xl font-serif font-bold tracking-tight text-[#2B332E] dark:text-[#FAF8F5] leading-none drop-shadow-2xs tabular-nums"
-          style={{ fontVariantNumeric: 'tabular-nums' }}
-        >
-          {easternDate.timeStr}
-        </div>
-
-        {/* 空间锁标与标题 */}
-        <div className="pt-2 flex items-center justify-center gap-1.5 text-xs text-[#5B7B6D] dark:text-[#E88765] font-serif font-medium">
-          <Lock className="w-3.5 h-3.5" />
-          <span>《拾年》私人时光档案</span>
-        </div>
-      </motion.div>
-
-      {/* 中部：四位密码指示槽与错误震动 */}
-      <motion.div
-        initial={{ opacity: 0, scale: 0.95 }}
-        animate={{ opacity: 1, scale: 1 }}
-        transition={{ duration: 0.5, delay: 0.1 }}
-        className="flex flex-col items-center justify-center space-y-4 my-auto z-10"
-      >
+      {/* 核心黄金比例舒展卡卷：时间、寄语、密码槽与键盘自然连贯，告别割裂断层 */}
+      <div className="w-full max-w-sm mx-auto flex flex-col items-center justify-center my-auto py-4 space-y-6 sm:space-y-7 z-10">
+        
+        {/* 一体化顶部信息层：印章、雅致大时钟、农历节气与岁时寄语 */}
         <motion.div
-          animate={isShaking ? { x: [-12, 12, -8, 8, -4, 4, 0] } : { x: 0 }}
-          transition={{ duration: 0.4 }}
-          className="flex items-center gap-4 sm:gap-5"
+          initial={{ opacity: 0, y: -14 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, ease: [0.25, 1, 0.5, 1] }}
+          className="text-center flex flex-col items-center space-y-2"
         >
-          {Array.from({ length: targetLength }).map((_, idx) => {
-            const isFilled = idx < pinInput.length;
-            return (
-              <div
-                key={idx}
-                className={`w-3.5 h-3.5 sm:w-4 sm:h-4 rounded-full transition-all duration-200 ${
-                  isFilled
-                    ? 'scale-110 shadow-sm'
-                    : 'scale-100 border'
-                }`}
-                style={{
-                  backgroundColor: isFilled
-                    ? isDarkMode
-                      ? currentTheme.accent || '#E88765'
-                      : currentTheme.primary || '#5B7B6D'
-                    : 'transparent',
-                  borderColor: isFilled
-                    ? 'transparent'
-                    : isDarkMode
-                    ? 'rgba(255, 255, 255, 0.25)'
-                    : 'rgba(91, 123, 109, 0.35)',
-                  boxShadow: isFilled
-                    ? isDarkMode
-                      ? `0 0 12px ${currentTheme.accent || '#E88765'}80`
-                      : `0 0 10px ${currentTheme.primary || '#5B7B6D'}50`
-                    : 'none'
-                }}
-              />
-            );
-          })}
+          {/* 空间专属印章微胶囊 */}
+          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/70 dark:bg-white/[0.08] border border-black/5 dark:border-white/10 text-[11px] font-serif text-[#5B7B6D] dark:text-[#E88765] shadow-2xs backdrop-blur-md">
+            <Lock className="w-3 h-3 text-current" />
+            <span>《拾年》私人时光空间</span>
+          </div>
+
+          {/* 东方典雅大时钟 */}
+          <div
+            className="text-6xl sm:text-7xl font-serif font-light tracking-tight text-[#2B332E] dark:text-[#FAF8F5] leading-none drop-shadow-2xs tabular-nums pt-1"
+            style={{ fontVariantNumeric: 'tabular-nums' }}
+          >
+            {easternDate.timeStr}
+          </div>
+
+          {/* 公历、星期与干支农历 */}
+          <div className="flex items-center justify-center gap-2 text-xs sm:text-[13px] font-serif text-[#6E7C75] dark:text-[#A7B4AD] tracking-wider">
+            <span>{easternDate.solarDate}</span>
+            <span className="opacity-35">·</span>
+            <span>{easternDate.weekday}</span>
+            <span className="opacity-35">·</span>
+            <span>{easternDate.lunarYear}</span>
+          </div>
+
+          {/* 岁时轻柔寄语 */}
+          <p className="text-[11.5px] font-serif text-[#6E7C75]/75 dark:text-[#A7B4AD]/65 tracking-widest italic pt-0.5">
+            「岁月不语，唯静候故人来」
+          </p>
         </motion.div>
 
-        <p className="text-[11px] font-serif text-[#6E7C75] dark:text-[#A7B4AD] tracking-widest">
-          请输入私人空间口令
-        </p>
-      </motion.div>
+        {/* 密码指示槽与状态提示：紧随寄语自然舒展，不再悬浮在过大空隙中 */}
+        <motion.div
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ duration: 0.45, delay: 0.08 }}
+          className="flex flex-col items-center justify-center space-y-2.5"
+        >
+          <motion.div
+            animate={isShaking ? { x: [-10, 10, -7, 7, -3, 3, 0] } : { x: 0 }}
+            transition={{ duration: 0.4 }}
+            className="flex items-center gap-3.5 sm:gap-4 py-0.5"
+          >
+            {Array.from({ length: targetLength }).map((_, idx) => {
+              const isFilled = idx < pinInput.length;
+              return (
+                <div
+                  key={idx}
+                  className={`w-3.5 h-3.5 rounded-full transition-all duration-200 ${
+                    isFilled ? 'scale-110' : 'scale-100 border'
+                  }`}
+                  style={{
+                    backgroundColor: isFilled
+                      ? isDarkMode
+                        ? currentTheme.accent || '#E88765'
+                        : currentTheme.primary || '#5B7B6D'
+                      : 'transparent',
+                    borderColor: isFilled
+                      ? 'transparent'
+                      : isDarkMode
+                      ? 'rgba(255, 255, 255, 0.25)'
+                      : 'rgba(91, 123, 109, 0.3)',
+                    boxShadow: isFilled
+                      ? isDarkMode
+                        ? `0 0 12px ${currentTheme.accent || '#E88765'}90`
+                        : `0 0 10px ${currentTheme.primary || '#5B7B6D'}60`
+                      : 'none'
+                  }}
+                />
+              );
+            })}
+          </motion.div>
 
-      {/* 底部：苹果液体毛玻璃晶体数字九宫格按键 */}
-      <motion.div
-        initial={{ opacity: 0, y: 30 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.6, delay: 0.2 }}
-        className="w-full max-w-[320px] mx-auto z-10 pb-4"
-      >
-        <div className="grid grid-cols-3 gap-y-3.5 gap-x-6 sm:gap-y-4 sm:gap-x-7 justify-items-center">
-          {/* 1 到 9 数字按键 */}
-          {[1, 2, 3, 4, 5, 6, 7, 8, 9].map(num => (
+          <p className="text-[11px] font-serif text-[#6E7C75] dark:text-[#A7B4AD] tracking-widest opacity-80">
+            请输入私人空间访问口令
+          </p>
+        </motion.div>
+
+        {/* 苹果液体毛玻璃微晶数字按键九宫格（黄金单手触达区） */}
+        <motion.div
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, delay: 0.15, ease: [0.25, 1, 0.5, 1] }}
+          className="w-full max-w-[290px] mx-auto"
+        >
+          <div className="grid grid-cols-3 gap-y-3.5 gap-x-5 justify-items-center">
+            {/* 1 到 9 数字按键 */}
+            {[1, 2, 3, 4, 5, 6, 7, 8, 9].map(num => (
+              <button
+                key={num}
+                type="button"
+                onClick={() => handleInputDigit(String(num))}
+                className="w-16 h-16 rounded-full flex flex-col items-center justify-center transition-all duration-150 cursor-pointer active:scale-90 select-none backdrop-blur-xl border border-white/70 dark:border-white/15 bg-white/80 dark:bg-white/[0.08] shadow-2xs hover:shadow-md hover:bg-white/95 dark:hover:bg-white/[0.14] group"
+                style={{
+                  boxShadow: isDarkMode
+                    ? '0 4px 16px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.15)'
+                    : '0 4px 14px rgba(91, 123, 109, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.8)'
+                }}
+              >
+                <span className="text-2xl sm:text-[27px] font-serif font-semibold text-[#2B332E] dark:text-[#FAF8F5] group-active:text-[#5B7B6D] dark:group-active:text-[#E88765] leading-none">
+                  {num}
+                </span>
+              </button>
+            ))}
+
+            {/* 左下角：修改口令按钮 */}
             <button
-              key={num}
               type="button"
-              onClick={() => handleInputDigit(String(num))}
-              className="w-16 h-16 sm:w-18 sm:h-18 rounded-full flex flex-col items-center justify-center transition-all duration-150 cursor-pointer active:scale-90 select-none backdrop-blur-xl border border-white/60 dark:border-white/15 bg-white/70 dark:bg-white/[0.08] shadow-2xs hover:shadow-md hover:bg-white/90 dark:hover:bg-white/[0.14] group"
+              onClick={() => {
+                sound.playWaterDrop(820);
+                setIsChangingPin(true);
+              }}
+              className="w-16 h-16 rounded-full flex items-center justify-center text-xs font-serif text-[#6E7C75] hover:text-[#2B332E] dark:text-[#A7B4AD] dark:hover:text-white transition-all cursor-pointer active:scale-95"
+              title="修改口令"
+            >
+              <KeyRound className="w-5 h-5 opacity-70" />
+            </button>
+
+            {/* 0 数字按键 */}
+            <button
+              type="button"
+              onClick={() => handleInputDigit('0')}
+              className="w-16 h-16 rounded-full flex flex-col items-center justify-center transition-all duration-150 cursor-pointer active:scale-90 select-none backdrop-blur-xl border border-white/70 dark:border-white/15 bg-white/80 dark:bg-white/[0.08] shadow-2xs hover:shadow-md hover:bg-white/95 dark:hover:bg-white/[0.14] group"
               style={{
                 boxShadow: isDarkMode
                   ? '0 4px 16px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.15)'
                   : '0 4px 14px rgba(91, 123, 109, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.8)'
               }}
             >
-              <span className="text-2xl sm:text-3xl font-serif font-semibold text-[#2B332E] dark:text-[#FAF8F5] group-active:text-[#5B7B6D] dark:group-active:text-[#E88765]">
-                {num}
+              <span className="text-2xl sm:text-[27px] font-serif font-semibold text-[#2B332E] dark:text-[#FAF8F5] group-active:text-[#5B7B6D] dark:group-active:text-[#E88765] leading-none">
+                0
               </span>
             </button>
-          ))}
 
-          {/* 左下角：修改口令按钮 */}
-          <button
-            type="button"
-            onClick={() => {
-              sound.playWaterDrop(820);
-              setIsChangingPin(true);
-            }}
-            className="w-16 h-16 sm:w-18 sm:h-18 rounded-full flex items-center justify-center text-xs font-serif text-[#6E7C75] hover:text-[#2B332E] dark:text-[#A7B4AD] dark:hover:text-white transition-all cursor-pointer active:scale-95"
-            title="修改口令"
-          >
-            <KeyRound className="w-5 h-5 opacity-75" />
-          </button>
-
-          {/* 0 数字按键 */}
-          <button
-            type="button"
-            onClick={() => handleInputDigit('0')}
-            className="w-16 h-16 sm:w-18 sm:h-18 rounded-full flex flex-col items-center justify-center transition-all duration-150 cursor-pointer active:scale-90 select-none backdrop-blur-xl border border-white/60 dark:border-white/15 bg-white/70 dark:bg-white/[0.08] shadow-2xs hover:shadow-md hover:bg-white/90 dark:hover:bg-white/[0.14] group"
-            style={{
-              boxShadow: isDarkMode
-                ? '0 4px 16px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.15)'
-                : '0 4px 14px rgba(91, 123, 109, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.8)'
-            }}
-          >
-            <span className="text-2xl sm:text-3xl font-serif font-semibold text-[#2B332E] dark:text-[#FAF8F5] group-active:text-[#5B7B6D] dark:group-active:text-[#E88765]">
-              0
-            </span>
-          </button>
-
-          {/* 右下角：退格删除按钮 */}
-          <button
-            type="button"
-            onClick={handleDeleteDigit}
-            disabled={pinInput.length === 0}
-            className="w-16 h-16 sm:w-18 sm:h-18 rounded-full flex items-center justify-center text-xs font-serif text-[#6E7C75] hover:text-[#2B332E] dark:text-[#A7B4AD] dark:hover:text-white transition-all cursor-pointer active:scale-95 disabled:opacity-20 disabled:pointer-events-none"
-            title="回退删除"
-          >
-            <Delete className="w-5 h-5 opacity-80" />
-          </button>
-        </div>
-      </motion.div>
+            {/* 右下角：退格删除按钮 */}
+            <button
+              type="button"
+              onClick={handleDeleteDigit}
+              disabled={pinInput.length === 0}
+              className="w-16 h-16 rounded-full flex items-center justify-center text-xs font-serif text-[#6E7C75] hover:text-[#2B332E] dark:text-[#A7B4AD] dark:hover:text-white transition-all cursor-pointer active:scale-95 disabled:opacity-20 disabled:pointer-events-none"
+              title="回退删除"
+            >
+              <Delete className="w-5 h-5 opacity-75" />
+            </button>
+          </div>
+        </motion.div>
+      </div>
 
       {/* 修改密码弹窗 */}
       <AnimatePresence>

@@ -872,7 +872,7 @@ body.capacitor-native .backdrop-blur-3xl {
    - Content-Visibility Automatic Virtualization
    - Zero Layout Thrashing & GPU Tile Optimization */
 
-/* Smooth Inertia Scrolling & Touch Bounds */
+/* Smooth Inertia Scrolling & Touch Bounds (Avoid blanket translateZ to preserve mobile GPU memory) */
 .custom-scrollbar,
 .custom-scroll,
 .overflow-y-auto,
@@ -883,8 +883,6 @@ main,
   -webkit-overflow-scrolling: touch;
   overscroll-behavior-y: contain;
   scroll-behavior: smooth;
-  transform: translateZ(0);
-  -webkit-transform: translateZ(0);
 }
 
 /* Automatic Virtual Rendering for Long Lists (Timeline, People, Memories, Admin Tables) */
@@ -898,35 +896,47 @@ main,
 .notice-row {
   content-visibility: auto;
   contain-intrinsic-size: auto 120px;
-  contain: content;
-  transform: translate3d(0, 0, 0);
-  -webkit-transform: translate3d(0, 0, 0);
-  backface-visibility: hidden;
-  -webkit-backface-visibility: hidden;
+  contain: paint layout;
 }
 
-/* Hardware Accelerated Image Rendering with Contrast Optimization */
+/* Hardware Accelerated Image Rendering with Contrast Optimization (No blanket translateZ layer explosion) */
 img,
 canvas,
 svg {
   image-rendering: -webkit-optimize-contrast;
-  transform: translateZ(0);
-  -webkit-transform: translateZ(0);
-  backface-visibility: hidden;
-  -webkit-backface-visibility: hidden;
 }
 
-/* Vinyl Player & Ambient Animated Widgets GPU Isolation */
+/* Vinyl Player & Ambient Animated Widgets GPU Isolation (Strict on-demand only) */
 .vinyl-record-disc,
 .animate-spin-slow,
-.music-playing-indicator,
-.smooth-radial-glow,
-.ambient-glow-dither {
-  transform: translate3d(0, 0, 0);
-  -webkit-transform: translate3d(0, 0, 0);
-  will-change: transform, opacity;
-  backface-visibility: hidden;
-  -webkit-backface-visibility: hidden;
+.music-playing-indicator {
+  will-change: transform;
+}
+
+/* Mobile GPU Tile Crash Protection & Multi-Layer Blur Downgrade (Prevent Android WebView White Blank Crash) */
+@media (max-width: 768px) {
+  /* Downgrade heavy multi-pass blur on mobile to lightweight GPU-safe blur */
+  .backdrop-blur-3xl,
+  .backdrop-blur-2xl,
+  .backdrop-blur-xl {
+    backdrop-filter: blur(8px) !important;
+    -webkit-backdrop-filter: blur(8px) !important;
+  }
+
+  .backdrop-blur-lg,
+  .backdrop-blur-md {
+    backdrop-filter: blur(5px) !important;
+    -webkit-backdrop-filter: blur(5px) !important;
+  }
+
+  /* Solid background fallback to guarantee no white/blank canvas drops when VRAM is constrained */
+  .bg-white\/70 {
+    background-color: rgba(255, 255, 255, 0.94) !important;
+  }
+  .dark .bg-white\/70,
+  .dark .bg-white\/95 {
+    background-color: rgba(28, 38, 33, 0.95) !important;
+  }
 }
 
 

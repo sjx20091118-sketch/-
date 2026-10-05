@@ -8,6 +8,7 @@
         "uid": { "type": "string", "maxLength": 128 },
         "account": { "type": "string", "maxLength": 128 },
         "email": { "type": "string", "maxLength": 256 },
+        "phone": { "type": "string", "maxLength": 32 },
         "displayName": { "type": "string", "maxLength": 128 },
         "userNumber": { "type": "string", "maxLength": 32 },
         "passwordHash": { "type": "string", "maxLength": 256 },
@@ -15,9 +16,13 @@
         "createdAt": { "type": "string", "maxLength": 64 },
         "updatedAt": { "type": "string", "maxLength": 64 },
         "lastSyncAt": { "type": "string", "maxLength": 64 },
-        "role": { "type": "string", "enum": ["user", "admin"], "maxLength": 32 }
+        "role": { "type": "string", "enum": ["user", "admin"], "maxLength": 32 },
+        "licenseStatus": { "type": "string", "enum": ["trial", "active", "expired"], "maxLength": 32 },
+        "trialExpireAt": { "type": "string", "maxLength": 64 },
+        "licensedAt": { "type": "string", "maxLength": 64 },
+        "licenseKey": { "type": "string", "maxLength": 128 }
       },
-      "required": ["uid", "account", "userNumber", "createdAt"]
+      "required": ["uid", "account", "createdAt"]
     },
     "UserBackup": {
       "title": "UserBackup",

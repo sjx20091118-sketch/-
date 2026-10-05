@@ -28,9 +28,11 @@ import {
   CheckCircle2,
   Camera,
   Globe,
-  Wifi
+  Wifi,
+  Eye,
+  EyeOff
 } from 'lucide-react';
-import { getApiBaseUrl, setApiBaseUrl, DEFAULT_CLOUD_API_URL, testApiConnection } from '../services/apiConfig';
+import { getApiBaseUrl, getSavedApiServerUrl, setApiBaseUrl, DEFAULT_CLOUD_API_URL, testApiConnection } from '../services/apiConfig';
 import {
   DomesticUser,
   CloudAppVersion,
@@ -60,11 +62,60 @@ import {
   deleteLicenseCode,
   adminSetUserLicenseStatus,
   fetchServerSystemSettings,
-  saveServerSystemSettings
+  saveServerSystemSettings,
+  exportMasterBackup,
+  importMasterBackup,
+  resetSandboxCacheAndPristine
 } from '../services/cloudSyncService';
+import { exportMasterBackupZip, parseMasterBackupFile } from '../utils/zipBackup';
 import { compressImageFile } from './LocalImageUploader';
 import { sound } from '../utils/soundEngine';
 import { HealingTheme } from '../App';
+
+const CLOUDFLARE_WORKER_SNIPPET = `const TARGET_HOST = 'ais-pre-cq7pozdu24b5b7weqvtffs-80463223160.asia-northeast1.run.app';
+
+export default {
+  async fetch(request, env, ctx) {
+    const url = new URL(request.url);
+    if (request.method === 'OPTIONS') {
+      return new Response(null, {
+        status: 204,
+        headers: {
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS, PATCH, HEAD',
+          'Access-Control-Allow-Headers': '*',
+          'Access-Control-Max-Age': '86400',
+        },
+      });
+    }
+    url.hostname = TARGET_HOST;
+    url.protocol = 'https:';
+    url.port = '';
+    const newHeaders = new Headers(request.headers);
+    newHeaders.set('Host', TARGET_HOST);
+    newHeaders.set('X-Forwarded-Host', request.headers.get('Host') || TARGET_HOST);
+    newHeaders.set('X-Real-IP', request.headers.get('cf-connecting-ip') || '');
+    try {
+      const response = await fetch(url.toString(), {
+        method: request.method,
+        headers: newHeaders,
+        body: ['GET', 'HEAD'].includes(request.method) ? undefined : request.body,
+        redirect: 'follow',
+      });
+      const responseHeaders = new Headers(response.headers);
+      responseHeaders.set('Access-Control-Allow-Origin', '*');
+      responseHeaders.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH, HEAD');
+      responseHeaders.set('Access-Control-Allow-Headers', '*');
+      return new Response(response.body, {
+        status: response.status,
+        statusText: response.statusText,
+        headers: responseHeaders,
+      });
+    } catch (err) {
+      return new Response(JSON.stringify({ error: err.message }), { status: 502 });
+    }
+  },
+};`;
 
 // 用户头像安全渲染器：支持 Base64 / 远程图片与首字徽标无缝回退
 const UserListItemAvatar: React.FC<{ photoURL?: string; displayName?: string; primaryColor: string }> = ({
@@ -216,15 +267,16 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
   // 4. SMTP 邮件发信服务配置状态
   const [smtpConfig, setSmtpConfig] = useState<SmtpConfig>(() => getSmtpConfig());
   const [isSavingSmtp, setIsSavingSmtp] = useState(false);
+  const [showSmtpPassword, setShowSmtpPassword] = useState(false);
   const [testEmailAddress, setTestEmailAddress] = useState('');
   const [isSendingTestEmail, setIsSendingTestEmail] = useState(false);
   const [smtpDiagnosticResult, setSmtpDiagnosticResult] = useState<SmtpDiagnosticResult | null>(null);
 
-  const handleSaveSmtp = (e: React.FormEvent) => {
+  const handleSaveSmtp = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSavingSmtp(true);
     sound.playWaterDrop(880);
-    const cleanHost = (smtpConfig.host || '').replace(/[\s\u200B-\u200D\uFEFF\u00A0\u3000\r\n\t]+/g, '');
+    const cleanHost = (smtpConfig.host || '').replace(/[\s\u200B-\u200D\uFEFF\u00A0\u3000\r\n\t]+/g, '').toLowerCase() || 'smtp.qq.com';
     let cleanUser = (smtpConfig.user || '').replace(/[\s\u200B-\u200D\uFEFF\u00A0\u3000\r\n\t]+/g, '');
     if (/^\d+$/.test(cleanUser)) {
       cleanUser = `${cleanUser}@qq.com`;
@@ -235,13 +287,20 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
       host: cleanHost,
       user: cleanUser,
       pass: cleanPass,
-      isConfigured: !!(cleanHost && cleanUser && cleanPass)
+      isConfigured: !!(cleanHost && cleanUser && cleanPass),
+      updatedAt: Date.now()
     };
-    saveSmtpConfig(updated);
-    setSmtpConfig(updated);
-    sound.playZenBell();
-    showToast('SMTP 邮件发信服务配置已保存');
-    setIsSavingSmtp(false);
+    try {
+      const saved = await saveSmtpConfig(updated);
+      setSmtpConfig(saved);
+      sound.playZenBell();
+      showToast('QQ 邮箱 SMTP 发信配置已保存并同步至云端');
+    } catch (err: any) {
+      sound.playHapticClick(600);
+      showToast(err.message || 'SMTP 配置保存异常，请重试');
+    } finally {
+      setIsSavingSmtp(false);
+    }
   };
 
   const handleSendTestEmail = async () => {
@@ -296,9 +355,9 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
     }
   };
 
-  // 全站统一删除确认弹窗状态
+  // 全站统一删除与高危重置确认弹窗状态
   const [deleteConfirm, setDeleteConfirm] = useState<{
-    type: 'version' | 'notice' | 'user';
+    type: 'version' | 'notice' | 'user' | 'code' | 'resetSandbox';
     id: string;
     title: string;
     subtitle?: string;
@@ -363,7 +422,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
   };
 
   // 云端服务器基址与全终端双向同步诊断
-  const [cloudApiHost, setCloudApiHost] = useState<string>(getApiBaseUrl() || DEFAULT_CLOUD_API_URL);
+  const [cloudApiHost, setCloudApiHost] = useState<string>(getSavedApiServerUrl());
   const [isTestingCloud, setIsTestingCloud] = useState<boolean>(false);
   const [cloudTestResult, setCloudTestResult] = useState<{ success: boolean; latencyMs: number; message: string; host: string } | null>(null);
   const [isSyncingFromCloud, setIsSyncingFromCloud] = useState<boolean>(false);
@@ -385,7 +444,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
 
   const handleSaveCloudHost = async () => {
     setApiBaseUrl(cloudApiHost);
-    showToast('云端服务接口地址已保存');
+    showToast('云端服务接口地址已成功保存并持久化！');
     await handleTestCloudConnection();
   };
 
@@ -394,6 +453,45 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
     setApiBaseUrl(DEFAULT_CLOUD_API_URL);
     setCloudTestResult(null);
     showToast('已恢复为《拾年》官方默认云端后台地址');
+  };
+
+  const [showCloudflareGuide, setShowCloudflareGuide] = useState(false);
+  const [isExportingData, setIsExportingData] = useState(false);
+  const [isImportingData, setIsImportingData] = useState(false);
+  const importFileRef = useRef<HTMLInputElement>(null);
+
+  const handleExportData = async () => {
+    setIsExportingData(true);
+    sound.playWaterDrop(880);
+    try {
+      const backup = await exportMasterBackup();
+      await exportMasterBackupZip(backup);
+      sound.playZenBell();
+      showToast('全站核心数据灾备压缩包 (.zip) 已成功打包导出！');
+    } catch (e: any) {
+      showToast('导出数据失败: ' + (e.message || '未知错误'));
+    } finally {
+      setIsExportingData(false);
+    }
+  };
+
+  const handleImportFileSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setIsImportingData(true);
+    sound.playWaterDrop(880);
+    try {
+      const payload = await parseMasterBackupFile(file);
+      const result = await importMasterBackup(payload);
+      sound.playZenBell();
+      showToast(result.message || '全站数据已成功解包并全量恢复！');
+      refreshAllData();
+    } catch (e: any) {
+      showToast('导入恢复失败: ' + (e.message || '文件格式无效'));
+    } finally {
+      setIsImportingData(false);
+      if (importFileRef.current) importFileRef.current.value = '';
+    }
   };
 
   const handleForceSyncFromCloud = async () => {
@@ -424,6 +522,17 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
     }
   };
 
+  const [isResettingPristine, setIsResettingPristine] = useState(false);
+  const handleRequestResetSandbox = () => {
+    sound.playWaterDrop(600);
+    setDeleteConfirm({
+      type: 'resetSandbox',
+      id: 'sandbox_reset',
+      title: '清空缓存并重置初始状态',
+      subtitle: '此操作将彻底清除本地与沙盒的全部临时缓存与数据，重置卡密库与系统设置回初始纯净状态。'
+    });
+  };
+
   const handleGenerateBatchCodes = async () => {
     try {
       setIsGeneratingCodes(true);
@@ -440,15 +549,14 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
     }
   };
 
-  const handleDeleteCode = async (code: string) => {
-    try {
-      sound.playWaterDrop(760);
-      await deleteLicenseCode(code);
-      setLicenseCodes(prev => prev.filter(c => c.code !== code));
-      showToast(`激活卡密 ${code} 已删除`);
-    } catch (err: any) {
-      showToast('删除激活卡密失败');
-    }
+  const handleDeleteCode = (code: string, note?: string) => {
+    sound.playWaterDrop(600);
+    setDeleteConfirm({
+      type: 'code',
+      id: code,
+      title: code,
+      subtitle: note ? `备注：${note}（删除后该卡密立即作废）` : '删除后该激活卡密将物理移除并立即作废'
+    });
   };
 
   useEffect(() => {
@@ -683,10 +791,26 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
         setUsersList(prev => prev.filter(u => u.uid !== id));
         if (editingUserId === id) setEditingUserId(null);
         showToast(`已成功注销该用户，释放邮箱与账号登录资格`);
+      } else if (type === 'code') {
+        await deleteLicenseCode(id);
+        setLicenseCodes(prev => prev.filter(c => c.code !== id));
+        showToast(`激活卡密 ${title} 已删除`);
+      } else if (type === 'resetSandbox') {
+        setIsResettingPristine(true);
+        sound.playWaterDrop(880);
+        try {
+          const result = await resetSandboxCacheAndPristine();
+          setUsersList(result.users);
+          setLicenseCodes(result.codes);
+          sound.playZenBell();
+          showToast('已彻底清空沙箱历史缓存，全站重置为初始纯净状态！');
+        } finally {
+          setIsResettingPristine(false);
+        }
       }
       sound.playWaterDrop(840);
     } catch (err: any) {
-      showToast('删除操作失败，请重试');
+      showToast('操作执行失败，请重试: ' + (err?.message || '未知异常'));
     } finally {
       setDeleteConfirm(null);
     }
@@ -801,7 +925,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
   if (!isOpen) return null;
 
   const currentAdmin = getLocalDomesticUser();
-  const isAuthorizedAdmin = isAuthorUser(currentAdmin) || currentAdmin?.role === 'admin' || currentAdmin?.userNumber === '00001' || currentAdmin?.userNumber === '0001';
+  const isAuthorizedAdmin = isAuthorUser(currentAdmin) || currentAdmin?.role === 'admin';
 
   if (!isAuthorizedAdmin) {
     return createPortal(
@@ -857,7 +981,6 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
       (u.account || '').toLowerCase().includes(q) ||
       (u.displayName || '').toLowerCase().includes(q) ||
       (u.email || '').toLowerCase().includes(q) ||
-      (u.userNumber || '').includes(q) ||
       (u.licenseKey || '').toLowerCase().includes(q)
     );
   });
@@ -942,18 +1065,31 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
               </span>
             </div>
 
-            {/* 右侧：刷新数据按键 */}
-            <motion.button
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.92 }}
-              onClick={refreshAllData}
-              disabled={loading}
-              className="w-8 h-8 rounded-full flex items-center justify-center transition-all cursor-pointer border border-black/5 dark:border-white/10 bg-black/[0.03] dark:bg-white/[0.08] hover:bg-black/[0.06] dark:hover:bg-white/[0.14] active:scale-95 shadow-2xs"
-              style={{ color: isDarkMode ? currentTheme.primary : currentTheme.primaryDark }}
-              title="刷新数据"
-            >
-              <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
-            </motion.button>
+            {/* 右侧：操作按键组（清空沙箱缓存 + 刷新数据） */}
+            <div className="flex items-center gap-1.5">
+              <motion.button
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.92 }}
+                onClick={handleRequestResetSandbox}
+                disabled={isResettingPristine}
+                className="w-8 h-8 rounded-full flex items-center justify-center transition-all cursor-pointer border border-red-500/20 bg-red-500/10 hover:bg-red-500/20 active:scale-95 shadow-2xs text-red-600 dark:text-red-400"
+                title="清空沙箱缓存并重置初始状态"
+              >
+                <Trash2 size={13} className={isResettingPristine ? 'animate-spin' : ''} />
+              </motion.button>
+
+              <motion.button
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.92 }}
+                onClick={refreshAllData}
+                disabled={loading}
+                className="w-8 h-8 rounded-full flex items-center justify-center transition-all cursor-pointer border border-black/5 dark:border-white/10 bg-black/[0.03] dark:bg-white/[0.08] hover:bg-black/[0.06] dark:hover:bg-white/[0.14] active:scale-95 shadow-2xs"
+                style={{ color: isDarkMode ? currentTheme.primary : currentTheme.primaryDark }}
+                title="刷新数据"
+              >
+                <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+              </motion.button>
+            </div>
           </motion.div>
         </div>
 
@@ -1007,7 +1143,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                 })}
               </div>
 
-              {/* SMTP 真实邮件发信服务配置卡片（精简无重叠排版 + 智能诊断与一键预设） */}
+              {/* QQ 邮箱专属 SMTP 真实邮件发信服务配置卡片（严格对齐腾讯官方标准规范） */}
               <div
                 className="p-5 sm:p-6 rounded-[28px] border apple-liquid-glass space-y-4"
                 style={{
@@ -1018,7 +1154,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                   <div className="flex items-center gap-2">
                     <Mail size={16} style={{ color: currentTheme.primary }} />
                     <h3 className="text-sm font-serif font-bold text-[#2B332E] dark:text-[#FAF8F5]">
-                      SMTP 邮件发信服务网关
+                      QQ 邮箱专用 SMTP 发信网关 (官方标准规范)
                     </h3>
                   </div>
                   <span
@@ -1028,41 +1164,20 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                         : 'bg-black/5 dark:bg-white/10 opacity-70'
                     }`}
                   >
-                    {smtpConfig.isConfigured ? '已启用真实发信通道' : '未配置 (使用本地安全模式)'}
+                    {smtpConfig.isConfigured ? '已启用 QQ 邮箱官方直连通道' : '未配置 (使用本地安全模式)'}
                   </span>
                 </div>
 
-                {/* 常用服务商 1 键预设胶囊 */}
-                <div className="space-y-1.5">
-                  <div className="text-[11px] font-serif opacity-70">
-                    快速填充服务商配置：
+                {/* QQ 邮箱官方标准规范要点提示胶囊 */}
+                <div className="p-3 rounded-2xl bg-black/[0.02] dark:bg-white/[0.03] border border-black/5 dark:border-white/5 space-y-1.5 text-[11px] font-serif leading-relaxed">
+                  <div className="flex items-center gap-1.5 font-bold opacity-80 text-[#3E564B] dark:text-[#A3D9C9]">
+                    <ShieldCheck size={13} />
+                    <span>腾讯 QQ 邮箱官方接入规范说明：</span>
                   </div>
-                  <div className="flex flex-wrap gap-1.5">
-                    {[
-                      { name: 'QQ 邮箱', host: 'smtp.qq.com', port: 465 },
-                      { name: '163 网易邮箱', host: 'smtp.163.com', port: 465 },
-                      { name: 'Gmail', host: 'smtp.gmail.com', port: 465 },
-                      { name: 'Outlook', host: 'smtp-mail.outlook.com', port: 587 },
-                      { name: '腾讯企业邮', host: 'smtp.exmail.qq.com', port: 465 },
-                      { name: '阿里企业邮', host: 'smtp.qiye.aliyun.com', port: 465 }
-                    ].map(preset => (
-                      <button
-                        key={preset.name}
-                        type="button"
-                        onClick={() => {
-                          sound.playWaterDrop(840);
-                          setSmtpConfig(prev => ({
-                            ...prev,
-                            host: preset.host,
-                            port: preset.port
-                          }));
-                          showToast(`已填充 ${preset.name} 服务器地址与端口`);
-                        }}
-                        className="px-2.5 py-1 rounded-lg text-[11px] font-serif border border-black/8 dark:border-white/10 hover:bg-black/5 dark:hover:bg-white/5 transition-all cursor-pointer"
-                      >
-                        {preset.name}
-                      </button>
-                    ))}
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 opacity-75 font-sans text-[11px]">
+                    <div>• <strong>发信服务器:</strong> smtp.qq.com</div>
+                    <div>• <strong>端口模式:</strong> 465 (SSL 推荐) / 587 (TLS)</div>
+                    <div>• <strong>专用密码:</strong> 16 位 POP3/SMTP 授权码</div>
                   </div>
                 </div>
 
@@ -1074,16 +1189,48 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                       </label>
                       <input
                         type="text"
-                        value={smtpConfig.host}
+                        value={smtpConfig.host || 'smtp.qq.com'}
                         onChange={e => setSmtpConfig(prev => ({ ...prev, host: e.target.value.trim() }))}
-                        placeholder="如: smtp.qq.com 或 smtp.163.com"
+                        placeholder="smtp.qq.com"
                         className="w-full px-3.5 py-2.5 rounded-xl text-xs font-mono border border-black/10 dark:border-white/10 bg-white/50 dark:bg-black/20 focus:outline-none focus:border-[#5B7B6D]"
                       />
                     </div>
                     <div className="space-y-1.5">
-                      <label className="text-xs font-serif font-medium opacity-80 block">
-                        SMTP 端口 (Port)
-                      </label>
+                      <div className="flex items-center justify-between">
+                        <label className="text-xs font-serif font-medium opacity-80 block">
+                          SMTP 端口 (Port)
+                        </label>
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              sound.playWaterDrop(840);
+                              setSmtpConfig(prev => ({ ...prev, port: 465, secure: true }));
+                            }}
+                            className={`px-1.5 py-0.5 rounded text-[10px] font-mono cursor-pointer transition-all ${
+                              smtpConfig.port === 465
+                                ? 'bg-black/15 dark:bg-white/20 font-bold text-[#3E564B] dark:text-[#A3D9C9]'
+                                : 'opacity-60 hover:opacity-100'
+                            }`}
+                          >
+                            465 SSL
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              sound.playWaterDrop(840);
+                              setSmtpConfig(prev => ({ ...prev, port: 587, secure: false }));
+                            }}
+                            className={`px-1.5 py-0.5 rounded text-[10px] font-mono cursor-pointer transition-all ${
+                              smtpConfig.port === 587
+                                ? 'bg-black/15 dark:bg-white/20 font-bold text-[#3E564B] dark:text-[#A3D9C9]'
+                                : 'opacity-60 hover:opacity-100'
+                            }`}
+                          >
+                            587 TLS
+                          </button>
+                        </div>
+                      </div>
                       <input
                         type="number"
                         value={smtpConfig.port}
@@ -1103,21 +1250,40 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                         type="email"
                         value={smtpConfig.user}
                         onChange={e => setSmtpConfig(prev => ({ ...prev, user: e.target.value.trim() }))}
-                        placeholder="如: service@qq.com"
+                        placeholder="如: 123456@qq.com"
                         className="w-full px-3.5 py-2.5 rounded-xl text-xs font-sans border border-black/10 dark:border-white/10 bg-white/50 dark:bg-black/20 focus:outline-none focus:border-[#5B7B6D]"
                       />
                     </div>
                     <div className="space-y-1.5">
-                      <label className="text-xs font-serif font-medium opacity-80 block">
-                        授权码 / 密钥 (Auth Pass/Key)
-                      </label>
-                      <input
-                        type="password"
-                        value={smtpConfig.pass}
-                        onChange={e => setSmtpConfig(prev => ({ ...prev, pass: e.target.value }))}
-                        placeholder="邮箱服务商生成的 16 位 POP3/SMTP 专用授权码"
-                        className="w-full px-3.5 py-2.5 rounded-xl text-xs font-mono border border-black/10 dark:border-white/10 bg-white/50 dark:bg-black/20 focus:outline-none focus:border-[#5B7B6D]"
-                      />
+                      <div className="flex items-center justify-between">
+                        <label className="text-xs font-serif font-medium opacity-80 block">
+                          授权码 / 密钥 (Auth Pass/Key)
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() => setShowSmtpPassword(!showSmtpPassword)}
+                          className="text-[11px] font-serif opacity-70 hover:opacity-100 flex items-center gap-1 cursor-pointer"
+                        >
+                          {showSmtpPassword ? <EyeOff size={12} /> : <Eye size={12} />}
+                          <span>{showSmtpPassword ? '隐藏' : '显示明文'}</span>
+                        </button>
+                      </div>
+                      <div className="relative">
+                        <input
+                          type={showSmtpPassword ? 'text' : 'password'}
+                          value={smtpConfig.pass}
+                          onChange={e => setSmtpConfig(prev => ({ ...prev, pass: e.target.value }))}
+                          placeholder="邮箱服务商生成的 16 位 POP3/SMTP 专用授权码"
+                          className="w-full px-3.5 py-2.5 rounded-xl text-xs font-mono border border-black/10 dark:border-white/10 bg-white/50 dark:bg-black/20 focus:outline-none focus:border-[#5B7B6D] pr-9"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowSmtpPassword(!showSmtpPassword)}
+                          className="absolute right-2.5 top-1/2 -translate-y-1/2 text-black/40 dark:text-white/40 hover:text-black/70 dark:hover:text-white/70 cursor-pointer"
+                        >
+                          {showSmtpPassword ? <EyeOff size={14} /> : <Eye size={14} />}
+                        </button>
+                      </div>
                     </div>
                   </div>
 
@@ -2398,6 +2564,82 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                       <span className="truncate">{cloudTestResult.message}</span>
                     </div>
                   )}
+
+                  {/* 国内直连与 Cloudflare Worker 指引快捷入口 */}
+                  <div className="pt-2 border-t border-black/5 dark:border-white/5 flex items-center justify-between">
+                    <span className="text-[11px] font-serif opacity-60">
+                      国内网络直连（方案 A）：使用免费 Cloudflare Worker 加速
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setShowCloudflareGuide(true)}
+                      className="text-[11px] font-serif text-[#5B7B6D] dark:text-[#A7B4AD] hover:underline flex items-center gap-1 cursor-pointer font-bold"
+                    >
+                      <span>查看 1 分钟部署指引</span>
+                      <Info size={12} />
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* 全站数据备份与灾备迁移卡片 (Data Migration Suite) */}
+              <div
+                className="p-5 sm:p-6 rounded-[28px] border apple-liquid-glass space-y-4"
+                style={{
+                  borderColor: isDarkMode ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)'
+                }}
+              >
+                <div className="flex items-center justify-between pb-2 border-b border-black/5 dark:border-white/5">
+                  <div className="flex items-center gap-2">
+                    <ShieldCheck size={16} style={{ color: currentTheme.primary }} />
+                    <h3 className="text-sm font-serif font-bold text-[#2B332E] dark:text-[#FAF8F5]">
+                      全站数据备份与迁移恢复
+                    </h3>
+                  </div>
+                  <span className="text-[11px] font-serif opacity-50">
+                    一键打包全量用户、卡密、商业化与邮件配置
+                  </span>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={handleExportData}
+                    disabled={isExportingData}
+                    className="px-4 py-2.5 rounded-xl text-xs font-serif font-bold border flex items-center gap-1.5 transition-all cursor-pointer hover:bg-black/5 dark:hover:bg-white/5 active:scale-95 disabled:opacity-50"
+                    style={{ borderColor: `${currentTheme.primary}40`, color: currentTheme.primary }}
+                  >
+                    <Download size={13} className={isExportingData ? 'animate-bounce' : ''} />
+                    <span>{isExportingData ? '打包中...' : '导出全站灾备压缩包 (.zip)'}</span>
+                  </button>
+
+                  <input
+                    ref={importFileRef}
+                    type="file"
+                    accept=".zip,.json,application/zip,application/json"
+                    onChange={handleImportFileSelected}
+                    className="hidden"
+                  />
+
+                  <button
+                    type="button"
+                    onClick={() => importFileRef.current?.click()}
+                    disabled={isImportingData}
+                    className="px-4 py-2.5 rounded-xl text-xs font-serif font-bold border border-black/10 dark:border-white/10 hover:border-black/20 dark:hover:border-white/20 flex items-center gap-1.5 transition-all cursor-pointer active:scale-95 disabled:opacity-50 text-[#2B332E] dark:text-[#FAF8F5]"
+                  >
+                    <RefreshCw size={13} className={isImportingData ? 'animate-spin' : ''} />
+                    <span>{isImportingData ? '恢复中...' : '导入数据恢复'}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleRequestResetSandbox}
+                    disabled={isResettingPristine}
+                    className="px-4 py-2.5 rounded-xl text-xs font-serif font-bold border border-red-500/20 bg-red-500/5 hover:bg-red-500/10 text-red-600 dark:text-red-400 flex items-center gap-1.5 transition-all cursor-pointer active:scale-95 disabled:opacity-50"
+                  >
+                    <Trash2 size={13} className={isResettingPristine ? 'animate-spin' : ''} />
+                    <span>{isResettingPristine ? '重置中...' : '清空缓存并重置初始状态'}</span>
+                  </button>
                 </div>
               </div>
 
@@ -2646,7 +2888,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                           {!codeItem.redeemedBy && (
                             <button
                               type="button"
-                              onClick={() => handleDeleteCode(codeItem.code)}
+                              onClick={() => handleDeleteCode(codeItem.code, codeItem.note)}
                               className="p-1 text-neutral-400 hover:text-red-500 transition-colors cursor-pointer"
                               title="删除未兑换卡密"
                             >
@@ -2758,7 +3000,11 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                       ? '确认删除该发布版本吗？'
                       : deleteConfirm.type === 'notice'
                       ? '确认删除该系统广播吗？'
-                      : '确认注销该用户账号吗？'}
+                      : deleteConfirm.type === 'user'
+                      ? '确认注销该用户账号吗？'
+                      : deleteConfirm.type === 'code'
+                      ? '确认删除该激活卡密吗？'
+                      : '确认清空缓存并重置初始状态？'}
                   </h3>
                   <div
                     className="text-xs font-serif py-1 px-3 rounded-xl inline-block max-w-full truncate font-bold"
@@ -2777,6 +3023,10 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                   <p className="text-[11px] text-red-500/90 font-serif pt-1">
                     {deleteConfirm.type === 'user'
                       ? '此操作将从云端彻底注销该用户档案，释放绑定的电子邮箱与账号，不可撤销'
+                      : deleteConfirm.type === 'resetSandbox'
+                      ? '高危操作：本地所有沙盒缓存将被清除，卡密库与系统设置将重新初始化，此操作不可撤销'
+                      : deleteConfirm.type === 'code'
+                      ? '删除后该激活卡密将物理移除并立即作废，若用户已兑换则不受影响'
                       : '此操作不可撤销，数据将从云端彻底移除'}
                   </p>
                 </div>
@@ -2804,7 +3054,89 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                       border: '1px solid #B91C1C'
                     }}
                   >
-                    {deleteConfirm.type === 'user' ? '确认注销' : '确认删除'}
+                    {deleteConfirm.type === 'user'
+                      ? '确认注销'
+                      : deleteConfirm.type === 'resetSandbox'
+                      ? '确认重置'
+                      : '确认删除'}
+                  </button>
+                </div>
+              </motion.div>
+            </div>
+          )}
+
+          {/* Cloudflare Worker 1分钟免翻墙极简指引弹窗 */}
+          {showCloudflareGuide && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.95 }}
+                className="w-full max-w-lg p-6 rounded-3xl border apple-liquid-glass space-y-4 shadow-2xl relative max-h-[90vh] overflow-y-auto"
+                style={{
+                  backgroundColor: isDarkMode ? '#1E2622' : '#FAF8F5',
+                  borderColor: isDarkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)'
+                }}
+              >
+                <div className="flex items-center justify-between pb-2 border-b border-black/5 dark:border-white/5">
+                  <div className="flex items-center gap-2">
+                    <Globe size={18} style={{ color: currentTheme.primary }} />
+                    <h3 className="font-serif font-bold text-sm text-[#2B332E] dark:text-[#FAF8F5]">
+                      方案 A：Cloudflare Worker 1 分钟免翻墙加速指引
+                    </h3>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowCloudflareGuide(false)}
+                    className="p-1 rounded-full hover:bg-black/5 dark:hover:bg-white/5 cursor-pointer text-[#6E7C75]"
+                  >
+                    <X size={16} />
+                  </button>
+                </div>
+
+                <div className="space-y-3 text-xs font-serif leading-relaxed text-[#2B332E] dark:text-[#FAF8F5]">
+                  <div className="p-3 rounded-2xl bg-black/[0.02] dark:bg-white/[0.03] border border-black/5 dark:border-white/5 space-y-1.5">
+                    <div className="font-bold">第 1 步：登录 Cloudflare</div>
+                    <p className="opacity-75">
+                      打开 <a href="https://dash.cloudflare.com" target="_blank" rel="noreferrer" className="text-[#5B7B6D] underline">dash.cloudflare.com</a>，免费注册或登录。
+                    </p>
+                  </div>
+
+                  <div className="p-3 rounded-2xl bg-black/[0.02] dark:bg-white/[0.03] border border-black/5 dark:border-white/5 space-y-1.5">
+                    <div className="font-bold">第 2 步：创建 Worker 并粘贴代码</div>
+                    <p className="opacity-75">
+                      左侧菜单进入「Workers & Pages」-&gt;「Create Worker」-&gt; 命名后点击「Deploy」-&gt; 点击「Edit code」-&gt; 将根目录中的 <code>cloudflare_worker.js</code> 代码全选粘贴进去并保存部署。
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        sound.playWaterDrop(880);
+                        navigator.clipboard.writeText(CLOUDFLARE_WORKER_SNIPPET);
+                        showToast('已复制 Worker 完整代理代码至剪贴板');
+                      }}
+                      className="px-3 py-1.5 rounded-lg text-[11px] font-bold border border-black/10 dark:border-white/10 hover:bg-black/5 dark:hover:bg-white/5 flex items-center gap-1 cursor-pointer"
+                    >
+                      <Copy size={12} />
+                      <span>一键复制 Worker 代理代码</span>
+                    </button>
+                  </div>
+
+                  <div className="p-3 rounded-2xl bg-black/[0.02] dark:bg-white/[0.03] border border-black/5 dark:border-white/5 space-y-1.5">
+                    <div className="font-bold">第 3 步：回填并测试</div>
+                    <p className="opacity-75">
+                      复制分配给您的域名（如 <code>https://shinian-api.xxx.workers.dev</code>），填入后台「云端 API 地址」并点击「测试通信」，测试通过后保存即可！
+                    </p>
+                  </div>
+                </div>
+
+                <div className="pt-2 flex justify-end">
+                  <button
+                    type="button"
+                    onClick={() => setShowCloudflareGuide(false)}
+                    className="px-5 py-2 rounded-xl text-xs font-serif font-bold text-white shadow-xs cursor-pointer"
+                    style={{ backgroundColor: currentTheme.primary }}
+                  >
+                    我知道了
                   </button>
                 </div>
               </motion.div>

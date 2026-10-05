@@ -5,11 +5,13 @@ import {
   Download,
   Ticket,
   Image as ImageIcon,
-  Palette
+  Palette,
+  Film
 } from 'lucide-react';
 import { TimelineItem, Artifact, Story, Person } from '../types';
-import { isIndexedDbMedia, resolveMediaUrl } from '../services/indexedDbMedia';
+import { isIndexedDbMedia, resolveMediaUrl, getVideoPosterCache, saveVideoPosterCache } from '../services/indexedDbMedia';
 import { buildApiUrl } from '../services/apiConfig';
+import { isVideoMedia, extractVideoPosterFromUrl } from '../utils/mediaStorage';
 
 export type UniversalShareSource =
   | { type: 'timeline'; data: TimelineItem }
@@ -358,7 +360,13 @@ export const MemoirCardStudioModal: React.FC<MemoirCardStudioModalProps> = ({
     }
   };
 
-  // 高保真绘制 Canvas 卡片画幅（苹果相册 Bento 自适应拼图）
+  // 媒体格元数据结构：标记图像对象与是否为动态影像首帧
+  interface CardMediaSlot {
+    img: HTMLImageElement;
+    isVideo: boolean;
+  }
+
+  // 高保真绘制 Canvas 卡片画幅（智能照片流与视频抽帧第 4 格黄金融合）
   const drawCardToCanvas = useCallback(
     async (canvas: HTMLCanvasElement) => {
       if (!itemData) return;
@@ -387,18 +395,140 @@ export const MemoirCardStudioModal: React.FC<MemoirCardStudioModalProps> = ({
       ctx.lineWidth = 2;
       ctx.strokeRect(16, 16, width - 32, height - 32);
 
-      // 加载并解析最多 4 张高保真图片或视频抽帧
-      const imagesToLoad = (itemData.images && itemData.images.length > 0)
-        ? itemData.images.slice(0, 4)
-        : (itemData.image ? [itemData.image] : []);
+      // ==================== 智能照片与视频分流预加载 ====================
+      // 提取原始相片源列表与视频源列表
+      const rawPhotoUrls: string[] = [];
+      const rawVideoUrls: string[] = [];
 
-      const loadedImages: HTMLImageElement[] = [];
-      for (const imgUrl of imagesToLoad) {
+      if (activeSource && 'type' in activeSource) {
+        if (activeSource.type === 'person') {
+          const d = activeSource.data;
+          const isAvatarImage = d.avatar && (
+            d.avatar.startsWith('http') ||
+            d.avatar.startsWith('data:') ||
+            d.avatar.startsWith('blob:') ||
+            d.avatar.startsWith('idb:')
+          );
+          if (isAvatarImage && !isVideoMedia(d.avatar)) {
+            rawPhotoUrls.push(d.avatar);
+          }
+          if (Array.isArray(d.photos)) {
+            for (const p of d.photos) {
+              if (p) {
+                if (isVideoMedia(p)) {
+                  rawVideoUrls.push(p);
+                } else {
+                  rawPhotoUrls.push(p);
+                }
+              }
+            }
+          }
+        } else if (activeSource.type === 'artifact') {
+          const d = activeSource.data;
+          if (Array.isArray(d.images) && d.images.length > 0) {
+            d.images.forEach(img => {
+              if (img) {
+                if (isVideoMedia(img)) rawVideoUrls.push(img);
+                else rawPhotoUrls.push(img);
+              }
+            });
+          } else if (d.image) {
+            if (isVideoMedia(d.image)) rawVideoUrls.push(d.image);
+            else rawPhotoUrls.push(d.image);
+          }
+          if (d.videoPoster) {
+            rawVideoUrls.push(d.video || d.videoPoster);
+          } else if (d.video) {
+            rawVideoUrls.push(d.video);
+          }
+          if (Array.isArray(d.videos)) {
+            d.videos.forEach(v => {
+              if (v?.url) rawVideoUrls.push(v.url);
+              else if (v?.poster) rawPhotoUrls.push(v.poster);
+            });
+          }
+        } else if (activeSource.type === 'timeline') {
+          const d = activeSource.data;
+          if (d.image) {
+            if (isVideoMedia(d.image)) rawVideoUrls.push(d.image);
+            else rawPhotoUrls.push(d.image);
+          }
+          if (d.videoPoster) {
+            rawVideoUrls.push(d.video || d.videoPoster);
+          } else if (d.video) {
+            rawVideoUrls.push(d.video);
+          }
+        }
+      } else if (itemData.images && itemData.images.length > 0) {
+        for (const u of itemData.images) {
+          if (isVideoMedia(u)) rawVideoUrls.push(u);
+          else rawPhotoUrls.push(u);
+        }
+      }
+
+      // 去重
+      const uniquePhotoUrls = Array.from(new Set(rawPhotoUrls.filter(Boolean)));
+      const uniqueVideoUrls = Array.from(new Set(rawVideoUrls.filter(Boolean)));
+
+      // 1. 加载最多 3 张普通照片作为前 3 格
+      const loadedPhotoSlots: CardMediaSlot[] = [];
+      const photosToFetch = uniquePhotoUrls.slice(0, 3);
+      for (const pUrl of photosToFetch) {
         try {
-          const loaded = await loadCardImage(imgUrl, itemData.title);
-          if (loaded) loadedImages.push(loaded);
+          const loadedImg = await loadCardImage(pUrl, itemData.title);
+          if (loadedImg) {
+            loadedPhotoSlots.push({ img: loadedImg, isVideo: false });
+          }
         } catch {}
       }
+
+      // 2. 视频抽帧作为第 4 格（若相片不足3张，自适应填补）
+      const loadedVideoSlots: CardMediaSlot[] = [];
+      if (uniqueVideoUrls.length > 0) {
+        for (const vidUrl of uniqueVideoUrls.slice(0, 2)) {
+          try {
+            // A. 先查双级 Poster 缓存
+            let posterSrc = await getVideoPosterCache(vidUrl);
+            // B. 若未命中或直接是视频源，调用内置智能避黑采鲜抽帧引擎
+            if (!posterSrc || isVideoMedia(posterSrc)) {
+              let playableUrl = vidUrl;
+              if (isIndexedDbMedia(vidUrl)) {
+                playableUrl = await resolveMediaUrl(vidUrl);
+              }
+              const extracted = await extractVideoPosterFromUrl(playableUrl);
+              if (extracted) {
+                posterSrc = extracted;
+                // 回填缓存
+                await saveVideoPosterCache(vidUrl, extracted);
+              }
+            }
+
+            if (posterSrc) {
+              const loadedVidPoster = await loadCardImage(posterSrc, itemData.title);
+              if (loadedVidPoster) {
+                loadedVideoSlots.push({ img: loadedVidPoster, isVideo: true });
+                break; // 取第一条优质动态影像融合即可
+              }
+            }
+          } catch (e) {
+            console.warn('回忆卡片工坊视频抽帧融合异常:', e);
+          }
+        }
+      }
+
+      // 3. 画格排版编排：前 3 张照片 + 第 4 张视频抽帧
+      // 若无视频，回落至加载第 4 张普通照片
+      const mediaSlots: CardMediaSlot[] = [...loadedPhotoSlots];
+      if (loadedVideoSlots.length > 0) {
+        mediaSlots.push(loadedVideoSlots[0]);
+      } else if (uniquePhotoUrls.length > 3) {
+        try {
+          const fourthImg = await loadCardImage(uniquePhotoUrls[3], itemData.title);
+          if (fourthImg) mediaSlots.push({ img: fourthImg, isVideo: false });
+        } catch {}
+      }
+
+
 
       if (isPolaroid) {
         // ==================== 1. 拍立得样式 (POLAROID) ====================
@@ -492,33 +622,33 @@ export const MemoirCardStudioModal: React.FC<MemoirCardStudioModalProps> = ({
           const frameW = width - 112;
           const frameH = 700;
 
-          if (loadedImages.length > 0) {
+          if (mediaSlots.length > 0) {
             // --- 苹果相册 Bento 自适应拼贴画格算法 ---
             const gap = 8;
-            if (loadedImages.length === 1) {
+            if (mediaSlots.length === 1) {
               // 1 张图片：全幅大赏 (Hero Bleed)
-              drawCoverImage(ctx, loadedImages[0], frameX, frameY, frameW, frameH, 14);
-            } else if (loadedImages.length === 2) {
+              drawCoverImage(ctx, mediaSlots[0].img, frameX, frameY, frameW, frameH, 14);
+            } else if (mediaSlots.length === 2) {
               // 2 张图片：对称双栏 (50/50 Split)
               const colW = (frameW - gap) / 2;
-              drawCoverImage(ctx, loadedImages[0], frameX, frameY, colW, frameH, 14);
-              drawCoverImage(ctx, loadedImages[1], frameX + colW + gap, frameY, colW, frameH, 14);
-            } else if (loadedImages.length === 3) {
+              drawCoverImage(ctx, mediaSlots[0].img, frameX, frameY, colW, frameH, 14);
+              drawCoverImage(ctx, mediaSlots[1].img, frameX + colW + gap, frameY, colW, frameH, 14);
+            } else if (mediaSlots.length === 3) {
               // 3 张图片：左主图 60% + 右双叠 40% (Apple Hero Bento)
               const leftW = Math.round(frameW * 0.6) - gap / 2;
               const rightW = frameW - leftW - gap;
               const rightH = (frameH - gap) / 2;
-              drawCoverImage(ctx, loadedImages[0], frameX, frameY, leftW, frameH, 14);
-              drawCoverImage(ctx, loadedImages[1], frameX + leftW + gap, frameY, rightW, rightH, 14);
-              drawCoverImage(ctx, loadedImages[2], frameX + leftW + gap, frameY + rightH + gap, rightW, rightH, 14);
+              drawCoverImage(ctx, mediaSlots[0].img, frameX, frameY, leftW, frameH, 14);
+              drawCoverImage(ctx, mediaSlots[1].img, frameX + leftW + gap, frameY, rightW, rightH, 14);
+              drawCoverImage(ctx, mediaSlots[2].img, frameX + leftW + gap, frameY + rightH + gap, rightW, rightH, 14);
             } else {
-              // 4 张及以上图片：2x2 经典宫格 Bento
+              // 4 张及以上图片：2x2 经典宫格 Bento（第 4 格精准为智能抽帧视频影像）
               const cellW = (frameW - gap) / 2;
               const cellH = (frameH - gap) / 2;
-              drawCoverImage(ctx, loadedImages[0], frameX, frameY, cellW, cellH, 14);
-              drawCoverImage(ctx, loadedImages[1], frameX + cellW + gap, frameY, cellW, cellH, 14);
-              drawCoverImage(ctx, loadedImages[2], frameX, frameY + cellH + gap, cellW, cellH, 14);
-              drawCoverImage(ctx, loadedImages[3], frameX + cellW + gap, frameY + cellH + gap, cellW, cellH, 14);
+              drawCoverImage(ctx, mediaSlots[0].img, frameX, frameY, cellW, cellH, 14);
+              drawCoverImage(ctx, mediaSlots[1].img, frameX + cellW + gap, frameY, cellW, cellH, 14);
+              drawCoverImage(ctx, mediaSlots[2].img, frameX, frameY + cellH + gap, cellW, cellH, 14);
+              drawCoverImage(ctx, mediaSlots[3].img, frameX + cellW + gap, frameY + cellH + gap, cellW, cellH, 14);
             }
           } else {
             // 无图时的雅致画幅
@@ -702,34 +832,35 @@ export const MemoirCardStudioModal: React.FC<MemoirCardStudioModalProps> = ({
         ctx.font = 'bold 20px "Cinzel", "Songti SC", serif';
         ctx.fillText(`ADMIT ONE · ${itemData.sourceType.toUpperCase()} · 时光放映`, mainX, mainY + 45);
 
-        // 照片画幅 Bento 拼贴
+        // 照片画幅 Bento 拼贴（智能第四张照片融合）
         const mediaY = mainY + 80;
         const photoH = 460;
         const availableW = width - mainX - pad;
 
-        if (loadedImages.length > 0) {
+        if (mediaSlots.length > 0) {
           const gap = 6;
-          if (loadedImages.length === 1) {
-            drawCoverImage(ctx, loadedImages[0], mainX, mediaY, availableW, photoH, 12);
-          } else if (loadedImages.length === 2) {
+          if (mediaSlots.length === 1) {
+            drawCoverImage(ctx, mediaSlots[0].img, mainX, mediaY, availableW, photoH, 12);
+          } else if (mediaSlots.length === 2) {
             const colW = (availableW - gap) / 2;
-            drawCoverImage(ctx, loadedImages[0], mainX, mediaY, colW, photoH, 12);
-            drawCoverImage(ctx, loadedImages[1], mainX + colW + gap, mediaY, colW, photoH, 12);
-          } else if (loadedImages.length === 3) {
+            drawCoverImage(ctx, mediaSlots[0].img, mainX, mediaY, colW, photoH, 12);
+            drawCoverImage(ctx, mediaSlots[1].img, mainX + colW + gap, mediaY, colW, photoH, 12);
+          } else if (mediaSlots.length === 3) {
             const leftW = Math.round(availableW * 0.6) - gap / 2;
             const rightW = availableW - leftW - gap;
             const rightH = (photoH - gap) / 2;
-            drawCoverImage(ctx, loadedImages[0], mainX, mediaY, leftW, photoH, 12);
-            drawCoverImage(ctx, loadedImages[1], mainX + leftW + gap, mediaY, rightW, rightH, 12);
-            drawCoverImage(ctx, loadedImages[2], mainX + leftW + gap, mediaY + rightH + gap, rightW, rightH, 12);
+            drawCoverImage(ctx, mediaSlots[0].img, mainX, mediaY, leftW, photoH, 12);
+            drawCoverImage(ctx, mediaSlots[1].img, mainX + leftW + gap, mediaY, rightW, rightH, 12);
+            drawCoverImage(ctx, mediaSlots[2].img, mainX + leftW + gap, mediaY + rightH + gap, rightW, rightH, 12);
           } else {
-            // 4 张及以上图片：2x2 经典宫格 Bento
+            // 4 张及以上图片：2x2 经典宫格 Bento（第 4 格视频抽帧）
             const cellW = (availableW - gap) / 2;
             const cellH = (photoH - gap) / 2;
-            drawCoverImage(ctx, loadedImages[0], mainX, mediaY, cellW, cellH, 12);
-            drawCoverImage(ctx, loadedImages[1], mainX + cellW + gap, mediaY, cellW, cellH, 12);
-            drawCoverImage(ctx, loadedImages[2], mainX, mediaY + cellH + gap, cellW, cellH, 12);
-            drawCoverImage(ctx, loadedImages[3], mainX + cellW + gap, mediaY + cellH + gap, cellW, cellH, 12);
+            drawCoverImage(ctx, mediaSlots[0].img, mainX, mediaY, cellW, cellH, 12);
+
+            drawCoverImage(ctx, mediaSlots[1].img, mainX + cellW + gap, mediaY, cellW, cellH, 12);
+            drawCoverImage(ctx, mediaSlots[2].img, mainX, mediaY + cellH + gap, cellW, cellH, 12);
+            drawCoverImage(ctx, mediaSlots[3].img, mainX + cellW + gap, mediaY + cellH + gap, cellW, cellH, 12);
           }
         } else {
           ctx.fillStyle = colors.bg;
@@ -773,7 +904,7 @@ export const MemoirCardStudioModal: React.FC<MemoirCardStudioModalProps> = ({
         ctx.fillText(`DATE: ${itemData.date || '2026'} · SEAT: V-01 · SCREEN: MEMOIR`, mainX, height - 70);
       }
     },
-    [itemData, tint, style]
+    [activeSource, itemData, tint, style]
   );
 
   useEffect(() => {

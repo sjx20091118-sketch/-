@@ -1,7 +1,7 @@
 import { useEffect, useRef, useCallback } from 'react';
 import { App as CapApp } from '@capacitor/app';
 import { Capacitor } from '@capacitor/core';
-import { Person, Story, Artifact, Letter } from '../types';
+import { Person, Story, Artifact, Letter, TimelineItem } from '../types';
 
 export interface BackHandlerState {
   datePickerOpen: boolean;
@@ -18,9 +18,6 @@ export interface BackHandlerState {
 
   sealingRitualData?: any;
   closeSealingRitual?: () => void;
-
-  editingImpression: any;
-  closeEditingImpression: () => void;
 
   movingPerson: Person | null;
   closeMovingPerson: () => void;
@@ -39,6 +36,9 @@ export interface BackHandlerState {
 
   editingStory: Story | null;
   closeEditingStory: () => void;
+
+  editingTimeline?: TimelineItem | null;
+  closeEditingTimeline?: () => void;
 
   editingArtifact?: Artifact | null;
   closeEditingArtifact?: () => void;
@@ -354,7 +354,13 @@ export function useAndroidBackHandler(state: BackHandlerState) {
       return true;
     }
 
-    // 15. 旧物编辑弹窗
+    // 15. 时光瞬间编辑弹窗
+    if (s.editingTimeline && s.closeEditingTimeline) {
+      s.closeEditingTimeline();
+      return true;
+    }
+
+    // 16. 旧物编辑弹窗
     if (s.editingArtifact && s.closeEditingArtifact) {
       s.closeEditingArtifact();
       return true;

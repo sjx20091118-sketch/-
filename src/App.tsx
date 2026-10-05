@@ -65,7 +65,8 @@ import {
   Cloud,
   Server,
   Info,
-  User
+  User,
+  Sparkles
 } from 'lucide-react';
 import { onAuthStateChanged } from 'firebase/auth';
 import { auth, testConnection } from './firebase';
@@ -412,6 +413,16 @@ export default function App() {
       try {
         const parsed = JSON.parse(local);
         if (parsed.people && parsed.people.length > 0) {
+          let hasImpression = false;
+          parsed.people.forEach((p: any) => {
+            if (p.impressions) {
+              delete p.impressions;
+              hasImpression = true;
+            }
+          });
+          if (hasImpression) {
+            localStorage.setItem('shinian_app_data_v7', JSON.stringify(parsed));
+          }
           return parsed;
         }
       } catch (e) {
@@ -488,6 +499,21 @@ export default function App() {
   const [licenseRefreshKey, setLicenseRefreshKey] = useState<number>(0);
 
   useEffect(() => {
+    // 启动时自动净化本地沙箱中的废弃历史账号缓存
+    try {
+      const rawUsers = localStorage.getItem('shinian_all_users_cache');
+      if (rawUsers) {
+        const users = JSON.parse(rawUsers);
+        if (Array.isArray(users)) {
+          const cleaned = users.filter((u: any) => {
+            const acc = (u?.account || '').toLowerCase();
+            return u?.uid !== 'u_author_00001' && u?.uid !== 'u_author_shinian' && acc !== 'author' && acc !== '258090';
+          });
+          localStorage.setItem('shinian_all_users_cache', JSON.stringify(cleaned));
+        }
+      }
+    } catch {}
+
     fetchServerSystemSettings().then(() => {
       setLicenseRefreshKey(k => k + 1);
     });
@@ -575,9 +601,7 @@ export default function App() {
     if (currentDomesticUser) {
       setIsAdminUser(
         isAuthorUser(currentDomesticUser) ||
-        currentDomesticUser.role === 'admin' ||
-        currentDomesticUser.userNumber === '00001' ||
-        currentDomesticUser.userNumber === '0001'
+        currentDomesticUser.role === 'admin'
       );
     } else {
       setIsAdminUser(false);
@@ -788,11 +812,6 @@ export default function App() {
 
   // Person sub-modals / actions
   const [isEditingPerson, setIsEditingPerson] = useState<boolean>(false);
-  const [newImpressionYear, setNewImpressionYear] = useState<string>('');
-  const [newImpressionText, setNewImpressionText] = useState<string>('');
-  const [editingImpression, setEditingImpression] = useState<{ id: string; year: string; text: string } | null>(null);
-  const [editImpressionYear, setEditImpressionYear] = useState<string>('');
-  const [editImpressionText, setEditImpressionText] = useState<string>('');
   const [confirmDialog, setConfirmDialog] = useState<{ type?: keyof AppData; id?: string; name: string; onConfirm?: () => void } | null>(null);
 
   // Global Themed Date Picker Modal State
@@ -825,6 +844,14 @@ export default function App() {
   const [formLetterVideoPoster, setFormLetterVideoPoster] = useState<string>('');
   const [editStoryDate, setEditStoryDate] = useState<string>('');
 
+  // Timeline Moment Edit State
+  const [editingTimeline, setEditingTimeline] = useState<TimelineItem | null>(null);
+  const [editTimelineDate, setEditTimelineDate] = useState<string>('');
+  const [editTimelineImage, setEditTimelineImage] = useState<string>('');
+  const [editTimelineVideo, setEditTimelineVideo] = useState<string>('');
+  const [editTimelineVideoPoster, setEditTimelineVideoPoster] = useState<string>('');
+  const [editTimelineMediaType, setEditTimelineMediaType] = useState<'image' | 'video'>('image');
+
   // Artifact Edit State
   const [editingArtifact, setEditingArtifact] = useState<Artifact | null>(null);
   const [editArtifactDate, setEditArtifactDate] = useState<string>('');
@@ -841,16 +868,12 @@ export default function App() {
   const [addPersonBirthday, setAddPersonBirthday] = useState<string>('');
   const [addPersonKnownDate, setAddPersonKnownDate] = useState<string>('2021-09-01');
 
-  // AI States & Dual Engine Support
-  const [aiEngine, setAiEngine] = useState<'gemini' | 'deepseek'>(() => {
-    return (localStorage.getItem('shinian_ai_engine') as 'gemini' | 'deepseek') || 'gemini';
+  // AI Chat & Speech States (Standard Model)
+  const [aiApiKey] = useState<string>(() => {
+    return localStorage.getItem('shinian_ai_key') || '';
   });
-  const [deepSeekKey, setDeepSeekKey] = useState<string>(() => {
-    return localStorage.getItem('shinian_deepseek_key') || '';
-  });
-  const [aiApiKey, setAiApiKey] = useState<string>(() => localStorage.getItem('shinian_gemini_key') || '');
   const [aiChatMessages, setAiChatMessages] = useState<ChatMessage[]>([
-    { role: 'model', text: '你好！我是《拾年》时光 AI 对话助手。我已经阅读了你保存的所有时光记忆，想聊聊过去的哪段时光或哪位老朋友？' }
+    { role: 'model', text: '你好呀，我是《拾年》里的慢言。你可以随时和我聊聊今天的心情、生活里的细碎日常，也可以和我一起翻翻过去的人和故事。今天过得怎么样？' }
   ]);
   const [aiChatInput, setAiChatInput] = useState<string>('');
   const [isAiLoading, setIsAiLoading] = useState<boolean>(false);
@@ -1029,9 +1052,6 @@ export default function App() {
     sealingRitualData,
     closeSealingRitual: () => setSealingRitualData(null),
 
-    editingImpression,
-    closeEditingImpression: () => setEditingImpression(null),
-
     movingPerson,
     closeMovingPerson: () => setMovingPerson(null),
 
@@ -1049,6 +1069,9 @@ export default function App() {
 
     editingStory,
     closeEditingStory: () => setEditingStory(null),
+
+    editingTimeline,
+    closeEditingTimeline: () => setEditingTimeline(null),
 
     editingArtifact,
     closeEditingArtifact: () => setEditingArtifact(null),
@@ -1186,11 +1209,6 @@ export default function App() {
     data.people.forEach(p => {
       const yr = getYearFromDate(p.knownDate);
       if (yr) ySet.add(yr);
-      p.impressions?.forEach(imp => {
-        if (imp.year && /^\d{4}$/.test(imp.year)) {
-          ySet.add(imp.year);
-        }
-      });
     });
     data.letters.forEach(l => {
       const yr1 = getYearFromDate(l.date);
@@ -1278,6 +1296,7 @@ export default function App() {
   };
 
   const requestDelete = (type: keyof AppData, id: string, name: string) => {
+    sound.playWaterDrop(600);
     setConfirmDialog({ type, id, name });
   };
 
@@ -1291,7 +1310,6 @@ export default function App() {
         photos: updatedFields.photos !== undefined ? updatedFields.photos : (currentInDb.photos || selectedPerson.photos || []),
         artifactIds: updatedFields.artifactIds !== undefined ? updatedFields.artifactIds : (currentInDb.artifactIds || selectedPerson.artifactIds || []),
         storyIds: updatedFields.storyIds !== undefined ? updatedFields.storyIds : (currentInDb.storyIds || selectedPerson.storyIds || []),
-        impressions: updatedFields.impressions !== undefined ? updatedFields.impressions : (currentInDb.impressions || selectedPerson.impressions || []),
         customFields: {
           ...(selectedPerson.customFields || {}),
           ...(currentInDb.customFields || {}),
@@ -1364,6 +1382,16 @@ export default function App() {
     showToast(`已保存旧物《${updatedArtifact.name}》修改`);
   };
 
+  const handleUpdateTimeline = (updatedItem: TimelineItem) => {
+    setData(prev => ({
+      ...prev,
+      timeline: prev.timeline.map(t => t.id === updatedItem.id ? updatedItem : t)
+    }));
+    setEditingTimeline(null);
+    sound.playWaterDrop(880);
+    showToast(`已保存定格瞬间《${updatedItem.title}》`);
+  };
+
   const handleUnsealLetter = (letterToUnseal: Letter) => {
     setIsUnsealingLetter(true);
     setTimeout(() => {
@@ -1389,47 +1417,7 @@ export default function App() {
     showToast(`已将好友移入「${groupName}」分组`);
   };
 
-  const handleAddImpression = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newImpressionText.trim() || !selectedPerson) return;
-    const newImp = {
-      id: 'imp-' + Date.now(),
-      year: newImpressionYear.trim() || new Date().getFullYear().toString(),
-      text: newImpressionText.trim()
-    };
-    const updatedImpressions = [newImp, ...(selectedPerson.impressions || [])];
-    handleUpdatePerson({ impressions: updatedImpressions });
-    setNewImpressionText('');
-    setNewImpressionYear('');
-    showToast('已添加新年份记忆印象');
-  };
 
-  const handleSaveEditedImpression = (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    if (!editingImpression || !selectedPerson) return;
-    const fd = new FormData(e.currentTarget);
-    const cleanYear = ((fd.get('year') as string) || editImpressionYear || editingImpression.year).trim();
-    const cleanText = ((fd.get('text') as string) || editImpressionText || editingImpression.text).trim();
-
-    const updatedImpressions = (selectedPerson.impressions || []).map(imp => {
-      if (imp.id === editingImpression.id) {
-        return { ...imp, year: cleanYear, text: cleanText };
-      }
-      return imp;
-    });
-
-    handleUpdatePerson({ impressions: updatedImpressions });
-    setEditingImpression(null);
-    showToast('已更新时光印象切片');
-  };
-
-  const handleDeleteImpression = (impId: string) => {
-    if (!selectedPerson) return;
-    const updatedImpressions = (selectedPerson.impressions || []).filter(imp => imp.id !== impId);
-    handleUpdatePerson({ impressions: updatedImpressions });
-    if (editingImpression?.id === impId) setEditingImpression(null);
-    showToast('已删除该条印象记录');
-  };
 
   const handleExport = async () => {
     if (!requireActiveLicense('导出全量记忆档案备份')) return;
@@ -1555,10 +1543,10 @@ export default function App() {
       let aiResponseText = '';
       let succeeded = false;
 
-      // 1. Try server endpoint
+      // 1. Primary: Server Standard Gemini AI with Multi-turn Context & Deep Thinking
       try {
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 8000);
+        const timeoutId = setTimeout(() => controller.abort(), 9000);
 
         const res = await fetch(buildApiUrl('/api/ai/chat'), {
           method: 'POST',
@@ -1567,8 +1555,7 @@ export default function App() {
             prompt: promptToUse,
             messages: newMessages,
             memoryData: data,
-            engine: aiEngine,
-            customApiKey: aiEngine === 'deepseek' ? deepSeekKey : aiApiKey
+            customApiKey: aiApiKey
           }),
           signal: controller.signal
         });
@@ -1582,38 +1569,23 @@ export default function App() {
           }
         }
       } catch (networkErr) {
-        console.warn('Backend /api/ai/chat unreachable, attempting direct client fallback:', networkErr);
+        console.warn('Backend /api/ai/chat connection notice, checking direct fallback:', networkErr);
       }
 
-      // 2. Client-side direct API fallback if user configured their own key
-      if (!succeeded) {
-        if (aiEngine === 'deepseek' && deepSeekKey.trim()) {
-          try {
-            const formatted = newMessages.map(m => ({
-              role: m.role === 'model' ? 'assistant' : 'user',
-              content: m.text
-            }));
-            aiResponseText = await callClientDeepSeekDirect({
-              apiKey: deepSeekKey,
-              messages: formatted,
-              systemPrompt: `你是名叫“拾年”的私人记忆陪伴助手。请用温润优雅的语调与用户交谈。`
-            });
-            succeeded = true;
-          } catch (dsErr) {
-            console.warn('Client DeepSeek direct failed:', dsErr);
-          }
-        } else if (aiEngine === 'gemini' && aiApiKey.trim()) {
-          try {
-            aiResponseText = await callClientGeminiDirect({
-              apiKey: aiApiKey,
-              prompt: promptToUse,
-              messages: newMessages.slice(0, -1),
-              systemInstruction: `你是名叫“拾年”的私人记忆陪伴助手。请用温和细腻、富有诗意的语言与用户交谈。`
-            });
-            succeeded = true;
-          } catch (geminiErr) {
-            console.warn('Client Gemini direct failed:', geminiErr);
-          }
+      // 2. Client-side direct Gemini standard API call if custom key configured
+      if (!succeeded && aiApiKey.trim()) {
+        try {
+          aiResponseText = await callClientGeminiDirect({
+            apiKey: aiApiKey,
+            prompt: promptToUse,
+            messages: newMessages.slice(0, -1),
+            systemInstruction: `你是名叫“拾年 · 慢言”的私人知心挚友与生活伴聊。
+你性格温和真诚、具备独立思考力与细腻共情心，说话自然如好友知己对坐长谈，绝不使用死板生硬的套路模板。
+如果用户和你聊日常生活、当下情绪、哲学困惑或随口闲聊，请自然交谈；如果涉及回忆、档案或特定朋友旧物，可温润结合记忆自然应答。`
+          });
+          succeeded = true;
+        } catch (geminiErr) {
+          console.warn('Client Gemini direct notice:', geminiErr);
         }
       }
 
@@ -1622,60 +1594,43 @@ export default function App() {
         return;
       }
 
-      throw new Error('Fallback to local memory synthesis');
-    } catch (err: any) {
-      console.warn('AI Chat API fallback / offline synthesis activated:', err);
+      // 3. Fallback: Thoughtful Natural Companion Synthesizer (Zero rigid template, human-like thinking & companion)
       const q = promptToUse.trim();
       const lower = q.toLowerCase();
-
-      // Dynamic Contextual Memory Synthesis Engine with real user data
       let fallbackText = '';
 
-      // 1. Check if user asks about a specific person in data
+      // A. Specific Person Match
       const matchedPerson = data.people.find(p => p.name && (lower.includes(p.name.toLowerCase()) || q.includes(p.name)));
       if (matchedPerson) {
-        const imps = (matchedPerson.impressions || []).map(i => `• ${i.year}年：${i.text}`).join('\n');
         const customWhere = matchedPerson.customFields?.['认识地点'] || '';
-        const bio = matchedPerson.bio ? `档案记述：“${matchedPerson.bio}”` : '';
         const days = matchedPerson.knownDate ? calculateDaysKnown(matchedPerson.knownDate) : null;
-        
-        fallbackText = `关于【${matchedPerson.name}】（${matchedPerson.relationship || '挚友'}）：\n\n${customWhere ? `你们初识于${customWhere}。` : ''}${days ? `至今已相识走过 ${days.toLocaleString()} 个日夜。` : ''}\n${bio}\n${imps ? `\n成长印记轨迹：\n${imps}` : ''}\n\n无论是旧日共同度过的时光还是档案里的一笔一划，都是属于你们最真挚的生命温度。你想进一步回顾哪段共同经历？`;
-      } 
-      // 2. Check if user asks about people / friends overview
-      else if (lower.includes('朋友') || lower.includes('同窗') || lower.includes('谁') || lower.includes('人物') || lower.includes('伙伴') || lower.includes('好友')) {
-        const peopleList = data.people.map(p => `• 「${p.name}」(${p.relationship || '同行者'}${p.customFields?.['认识地点'] ? ` · 结识于${p.customFields['认识地点']}` : ''})`).join('\n');
-        fallbackText = `在你的《拾年》拾人册中，记录着 ${data.people.length} 位重要同路人：\n\n${peopleList || '暂无人物'}\n\n每一位好友都在特定的岁月刻度上为你带来过光亮与陪伴。你想细细聊聊其中哪一位？`;
+        const bio = matchedPerson.bio ? `“${matchedPerson.bio}”` : '';
+        fallbackText = `聊到${matchedPerson.name}，脑海里总会浮现出一种特别踏实的温度。${customWhere ? `你们是在${customWhere}相遇的，` : ''}${days ? `转眼间一起走过了 ${days.toLocaleString()} 个晨昏。` : ''}${bio ? `\n\n那句${bio}，写得多真切啊。` : ''}\n\n人和人之间最难得的，就是走过漫长岁月，那份初心还在。你此刻突然想起Ta，是因为最近碰到了什么事情，还是单纯有些想念了？`;
       }
-      // 3. Check if user asks about a specific artifact
-      const matchedArtifact = data.artifacts.find(a => a.name && (lower.includes(a.name.toLowerCase()) || q.includes(a.name)));
-      if (!fallbackText && matchedArtifact) {
-        fallbackText = `关于旧物【${matchedArtifact.name}】（获得于 ${matchedArtifact.date}）：\n\n“${matchedArtifact.story || '一件承载岁月的静默信物。'}”\n\n物品虽静止无言，却将那段时光的触感与温度悉心保存在了拾物阁里。`;
-      } else if (!fallbackText && (lower.includes('旧物') || lower.includes('物') || lower.includes('相机') || lower.includes('票根') || lower.includes('信物') || lower.includes('藏品'))) {
-        const artSummary = data.artifacts.map(a => `• 《${a.name}》(${a.date}): ${a.story ? a.story.slice(0, 36) + '...' : '岁月信物'}`).join('\n');
-        fallbackText = `在你的「拾物阁」里，安放着 ${data.artifacts.length} 件承载光阴的旧物信物：\n\n${artSummary || '暂无旧物记录'}\n\n这些物品是你青春道路上的微型光阴标本。`;
+      // B. Daily Emotion & Tiredness
+      else if (lower.includes('累') || lower.includes('辛苦') || lower.includes('疲惫') || lower.includes('烦') || lower.includes('压抑') || lower.includes('难过') || lower.includes('伤心') || lower.includes('emo') || lower.includes('焦虑')) {
+        fallbackText = `抱抱你。深呼吸一下，把肩膀放平，先让自己松弛下来。\n\n生活有时确实像一场逆着风的慢跑，不需要时刻都咬紧牙关撑着。现在的你已经做得很棒了。把步子慢下来，去喝口温水，或者什么都不想地发呆十分钟。\n\n如果心里有委屈或郁闷，随时跟我说说，我一直都在这里听你讲。`;
       }
-      // 4. Check if user asks about timeline / specific years / growth
-      const yearMatch = q.match(/\d{4}/)?.[0];
-      if (!fallbackText && yearMatch) {
-        const yearEvents = data.timeline.filter(t => t.date.startsWith(yearMatch));
-        if (yearEvents.length > 0) {
-          const evs = yearEvents.map(t => `• [${t.date}] 《${t.title}》：${t.content}`).join('\n');
-          fallbackText = `定格在 ${yearMatch} 年的时光印记（共 ${yearEvents.length} 条）：\n\n${evs}\n\n那一年的光影与脚步，构成了你生命长河中不可或缺的篇章。`;
-        } else {
-          fallbackText = `${yearMatch} 年的时光长卷暂未记录详细节点。你可以轻触首页右上角的「添加」按钮，随时补录那一年的珍贵故事。`;
-        }
-      } else if (!fallbackText && (lower.includes('时间') || lower.includes('轴') || lower.includes('轨迹') || lower.includes('成长') || lower.includes('总结') || lower.includes('回顾'))) {
-        const topEvents = data.timeline.slice(0, 4).map(t => `• [${t.date}] 《${t.title}》：${t.content ? t.content.slice(0, 40) + '...' : ''}`).join('\n');
-        fallbackText = `回顾你的《拾年》时光长卷，已走过 ${data.timeline.length} 处人生里程碑：\n\n${topEvents}\n\n从最初青涩的起点到如今从容坚定的步履，每一次记录都是你成长的注脚。`;
+      // C. Joy & Happiness
+      else if (lower.includes('开心') || lower.includes('高兴') || lower.includes('快乐') || lower.includes('棒') || lower.includes('顺') || lower.includes('喜事')) {
+        fallbackText = `真替你高兴！看着你的文字，都能感受到字里行间那股雀跃的生命力。\n\n生活里这些哪怕只有几克重的好心情，也是治愈漫长日常的珍贵微光。快跟我分享分享，究竟是什么好事让你今天这么明朗？`;
       }
-      // 5. Check if user asks about stories / chapters
-      if (!fallbackText && (lower.includes('故事') || lower.includes('篇章') || lower.includes('文章') || lower.includes('随笔') || lower.includes('写'))) {
-        const storiesList = data.stories.map(s => `• ${s.chapter} 《${s.title}》(${s.date})`).join('\n');
-        fallbackText = `在你的「拾忆篇」长卷中，已收录 ${data.stories.length} 篇深度故事：\n\n${storiesList || '暂无故事记录'}\n\n你想翻开哪一章节重温那些细腻的文字？`;
+      // D. Greetings & Daily Presence
+      else if (lower.includes('你好') || lower.includes('在吗') || lower.includes('早上好') || lower.includes('早安') || lower.includes('晚安') || lower.includes('嗨') || lower.includes('hello') || lower.includes('hi')) {
+        fallbackText = `在的，我一直都在。\n\n无论外面的世界多么喧嚣纷扰，在这里，时间都可以慢下来。今天过得怎么样？遇到了什么有趣的人，还是有什么想聊聊的心思？`;
       }
-      // 6. Default responsive literary reflection
-      if (!fallbackText) {
-        fallbackText = `漫漫岁月，拾年归处。\n\n在你的私人档案库中，已封存着 ${data.timeline.length} 个时光瞬间、${data.people.length} 位重要同路人、${data.stories.length} 篇故事随笔与 ${data.artifacts.length} 件旧物。\n\n你可以向我询问任何一位好友、某一年份的往事、一件特定旧物，或让我为你整理某段时期的心路历程。你想聊聊哪一段？`;
+      // E. Meaning of Life & Philosophy
+      else if (lower.includes('意义') || lower.includes('迷茫') || lower.includes('方向') || lower.includes('未来') || lower.includes('活着')) {
+        fallbackText = `其实每个人都会在某个安静的深夜或恍惚的黄昏，突然叩问自己这些问题。这恰恰说明你正在认真地对待自己的生命。\n\n《拾年》里记录的那些细碎日子——走过的街角、交谈过的朋友、珍藏的某张旧票根，其实早已在无声地回答：人生的意义或许不是某个宏大终点，而是你投入在每分每秒里的真实感受与爱。\n\n不用急着给未来定下一个唯一的标准答案，慢慢走，走着走着花就开了。`;
+      }
+      // F. Specific Artifact
+      else if (data.artifacts.some(a => a.name && (lower.includes(a.name.toLowerCase()) || q.includes(a.name)))) {
+        const art = data.artifacts.find(a => a.name && (lower.includes(a.name.toLowerCase()) || q.includes(a.name)))!;
+        fallbackText = `【${art.name}】啊，真是件有年头、有呼吸的旧物。${art.date ? `那是 ${art.date} 的痕迹。` : ''}\n\n${art.story ? `“${art.story}”\n\n` : ''}物品最奇妙的地方就在于，当光阴溜走，它却替我们固执地把当年的温度和场景原封不动地锁在了里面。拿在手里的时候，是不是感觉当时的微风又吹过来了？`;
+      }
+      // G. General Natural Companion Response
+      else {
+        fallbackText = `岁月悠悠，静听风吟。\n\n我听见你说的了。有时候，有些思绪就适合像这样信步漫谈，不设防备，也不用刻意归纳总结。\n\n你接下来还想跟我聊聊什么？无论是今天路过的一朵云，还是心里藏了很久的一个故事，我都洗耳恭听。`;
       }
 
       setAiChatMessages([...newMessages, { role: 'model', text: fallbackText }]);
@@ -2272,7 +2227,7 @@ export default function App() {
                         </button>
 
                         {/* Item 6: 管理后台 (仅当作者账号登录时在扩展栏显示，与设置/锁定图标风格完全统一) */}
-                        {(isAdminUser || currentDomesticUser?.userNumber === '00001' || currentDomesticUser?.userNumber === '0001' || currentDomesticUser?.role === 'admin') && (
+                        {(isAdminUser || currentDomesticUser?.role === 'admin') && (
                           <button
                             onClick={() => {
                               sound.playWaterDrop(1000);
@@ -3552,16 +3507,9 @@ export default function App() {
 
               {/* Refactored "拾年 · 慢言" Floating Literary Companion Card */}
               <TimeAiCompanion
-                aiEngine={aiEngine}
-                onToggleEngine={() => {
-                  const nextEngine = aiEngine === 'gemini' ? 'deepseek' : 'gemini';
-                  setAiEngine(nextEngine);
-                  localStorage.setItem('shinian_ai_engine', nextEngine);
-                  showToast(nextEngine === 'deepseek' ? '已切换为 DeepSeek 引擎' : '已切换为标准 AI 模型');
-                }}
                 messages={aiChatMessages}
                 onClearMessages={() => {
-                  setAiChatMessages([{ role: 'model', text: '你好呀。我是这里的时光慢言守护者。你想聊聊哪一段封存的故事，或是哪位很久没见的朋友？' }]);
+                  setAiChatMessages([{ role: 'model', text: '你好呀。无论外面的世界多么喧嚣匆忙，在这里你总可以放慢步调，和我说说今天发生的事情，或者我们一起翻翻那些泛黄的温存旧事。今天过得怎么样？' }]);
                 }}
                 input={aiChatInput}
                 setInput={setAiChatInput}
@@ -3602,6 +3550,15 @@ export default function App() {
                 }}
                 onPlayTts={(text) => handlePlayTts(text)}
                 onDelete={(item) => requestDelete('timeline', item.id, item.title)}
+                onEdit={(item) => {
+                  if (!requireActiveLicense('编辑时光瞬间')) return;
+                  setEditingTimeline(item);
+                  setEditTimelineDate(item.date);
+                  setEditTimelineMediaType(item.mediaType || (item.video ? 'video' : 'image'));
+                  setEditTimelineImage(item.image || '');
+                  setEditTimelineVideo(item.video || '');
+                  setEditTimelineVideoPoster(item.videoPoster || '');
+                }}
                 onOpenYearPicker={() => setIsYearPickerOpen(true)}
                 onShare={(item) => {
                   setShareMemoirItem(item);
@@ -3665,10 +3622,18 @@ export default function App() {
                       viewport={{ once: true, margin: '-20px' }}
                       transition={{ duration: 0.35, delay: Math.min(idx * 0.03, 0.2), ease: 'easeOut' }}
                       onClick={() => setSelectedPerson(person)}
-                      className="bg-white hover:bg-white rounded-3xl p-4.5 border border-[#5B7B6D]/20 hover:border-[#5B7B6D]/50 shadow-2xs hover:shadow-md transition-all duration-300 cursor-pointer group relative overflow-hidden flex flex-col justify-between"
+                      className="bg-white hover:bg-white rounded-3xl p-4.5 border shadow-2xs hover:shadow-md transition-all duration-300 cursor-pointer group relative overflow-hidden flex flex-col justify-between"
+                      style={{
+                        borderColor: isDarkMode ? `${currentTheme.primary}35` : `${currentTheme.primary}20`
+                      }}
                     >
                       {/* Decorative corner accent stamp */}
-                      <div className="absolute top-0 right-0 w-16 h-16 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-[#E88765]/10 via-transparent to-transparent pointer-events-none" />
+                      <div
+                        className="absolute top-0 right-0 w-16 h-16 pointer-events-none"
+                        style={{
+                          backgroundImage: `radial-gradient(ellipse at top right, ${currentTheme.primary}18, transparent 70%)`
+                        }}
+                      />
 
                       <div>
                         {/* Top: Avatar + Identity + Actions */}
@@ -3678,7 +3643,11 @@ export default function App() {
                               <MediaImage
                                 src={person.avatar}
                                 alt={person.name}
-                                className="w-13 h-13 rounded-2xl object-cover border border-[#D9CFC1] shadow-2xs group-hover:scale-105 transition-transform duration-300"
+                                className="w-13 h-13 rounded-2xl object-cover border shadow-2xs group-hover:scale-105 transition-transform duration-300"
+                                style={{
+                                  borderColor: isDarkMode ? `${currentTheme.primary}50` : `${currentTheme.primary}35`,
+                                  boxShadow: `0 2px 8px ${currentTheme.primary}18`
+                                }}
                               />
                             </div>
 
@@ -3688,7 +3657,14 @@ export default function App() {
                                   {person.name}
                                 </h3>
                                 {person.relationship && (
-                                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#FAF6F0] text-[#E88765] font-medium font-sans border border-[#E88765]/20 shrink-0">
+                                  <span
+                                    className="text-[10px] px-2 py-0.5 rounded-full font-medium font-sans border shrink-0"
+                                    style={{
+                                      backgroundColor: isDarkMode ? `${currentTheme.primary}20` : `${currentTheme.primary}12`,
+                                      borderColor: `${currentTheme.primary}30`,
+                                      color: isDarkMode ? (currentTheme.dark?.primary || currentTheme.primary) : currentTheme.primary
+                                    }}
+                                  >
                                     {person.relationship}
                                   </span>
                                 )}
@@ -3840,7 +3816,11 @@ export default function App() {
                     <MediaImage 
                       src={selectedPerson.avatar} 
                       alt={selectedPerson.name} 
-                      className="w-20 h-20 sm:w-22 sm:h-22 rounded-3xl object-cover border-2 border-[#E88765]/30 shadow-xs" 
+                      className="w-20 h-20 sm:w-22 sm:h-22 rounded-3xl object-cover border-2 shadow-xs transition-all" 
+                      style={{
+                        borderColor: isDarkMode ? `${currentTheme.primary}60` : `${currentTheme.primary}45`,
+                        boxShadow: `0 4px 16px ${currentTheme.primary}25`
+                      }}
                     />
                   </div>
 
@@ -3848,7 +3828,14 @@ export default function App() {
                     <div className="flex items-center justify-center sm:justify-start gap-2 flex-wrap">
                       <h2 className="text-xl font-bold text-[#2B332E] dark:text-[#FAF8F5] font-serif tracking-wide">{selectedPerson.name}</h2>
                       {selectedPerson.relationship && (
-                        <span className="text-xs px-2.5 py-0.5 rounded-full bg-[#FAF6F0] dark:bg-[#E88765]/15 text-[#E88765] dark:text-[#FFAF94] font-medium border border-[#E88765]/25 dark:border-[#E88765]/40 font-sans">
+                        <span
+                          className="text-xs px-2.5 py-0.5 rounded-full font-medium border font-sans"
+                          style={{
+                            backgroundColor: isDarkMode ? `${currentTheme.primary}22` : `${currentTheme.primary}12`,
+                            borderColor: `${currentTheme.primary}35`,
+                            color: isDarkMode ? (currentTheme.dark?.primary || currentTheme.primary) : currentTheme.primary
+                          }}
+                        >
                           {selectedPerson.relationship}
                         </span>
                       )}
@@ -3864,8 +3851,15 @@ export default function App() {
                     </p>
 
                     {selectedPerson.knownDate && calculateDaysKnown(selectedPerson.knownDate) !== null && (
-                      <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-[#FDF0EB]/80 dark:bg-[#E88765]/20 text-[#E88765] dark:text-[#FFAF94] rounded-full text-[11px] font-semibold border border-[#E88765]/25 dark:border-[#E88765]/40 font-sans">
-                        <Calendar className="w-3.5 h-3.5 text-[#E88765] dark:text-[#FFAF94]" />
+                      <div
+                        className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-semibold border font-sans"
+                        style={{
+                          backgroundColor: isDarkMode ? `${currentTheme.primary}20` : `${currentTheme.primary}12`,
+                          borderColor: `${currentTheme.primary}35`,
+                          color: isDarkMode ? (currentTheme.dark?.primary || currentTheme.primary) : currentTheme.primary
+                        }}
+                      >
+                        <Calendar className="w-3.5 h-3.5" style={{ color: currentTheme.primary }} />
                         <span>相识于 {selectedPerson.knownDate} · 第 <strong>{calculateDaysKnown(selectedPerson.knownDate)?.toLocaleString()}</strong> 天</span>
                       </div>
                     )}
@@ -3980,6 +3974,8 @@ export default function App() {
                   handleUpdatePerson({ photos: updatedPhotos });
                 }}
                 showToast={showToast}
+                theme={currentTheme}
+                isDarkMode={isDarkMode}
               />
 
               {/* 专属信物陈列柜 (直接从拾物阁拣选并陈列，点击直接唤起拾物阁同款大卡片弹窗) */}
@@ -4932,6 +4928,109 @@ export default function App() {
           </div>
         )}
 
+        {/* Offline Backup Archive Import Confirmation Modal */}
+        {importPreview && (
+          <div className="fixed inset-0 bg-[#2B332E]/60 backdrop-blur-md z-[1000] flex items-center justify-center p-4 animate-fadeIn">
+            <div className="bg-[#FAF8F5] dark:bg-[#141B18] text-[#2B332E] dark:text-[#FAF8F5] w-full max-w-md p-5 sm:p-6 rounded-[32px] border border-[#5B7B6D]/20 dark:border-white/15 shadow-2xl space-y-4 paper-texture">
+              <div className="flex items-center justify-between border-b border-black/5 dark:border-white/10 pb-3">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-xl flex items-center justify-center" style={{ backgroundColor: `${currentTheme.primary}20`, color: currentTheme.primary }}>
+                    <Upload className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-sm font-serif">恢复时光记忆档案</h3>
+                    <p className="text-[10px] opacity-60 font-mono truncate max-w-[200px]">{importPreview.filename}</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setImportPreview(null)}
+                  className="p-1.5 rounded-full hover:bg-black/5 dark:hover:bg-white/10 text-[#6E7C75]"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* Summary Stats Grid */}
+              <div className="grid grid-cols-3 gap-2 text-center text-xs">
+                <div className="p-2.5 rounded-2xl bg-white/70 dark:bg-white/5 border border-black/5 dark:border-white/10">
+                  <div className="text-[10px] opacity-60 font-serif">时光节点</div>
+                  <div className="font-bold font-mono text-sm mt-0.5" style={{ color: currentTheme.primary }}>{importPreview.timelineCount}</div>
+                </div>
+                <div className="p-2.5 rounded-2xl bg-white/70 dark:bg-white/5 border border-black/5 dark:border-white/10">
+                  <div className="text-[10px] opacity-60 font-serif">知己知交</div>
+                  <div className="font-bold font-mono text-sm mt-0.5" style={{ color: currentTheme.primary }}>{importPreview.peopleCount}</div>
+                </div>
+                <div className="p-2.5 rounded-2xl bg-white/70 dark:bg-white/5 border border-black/5 dark:border-white/10">
+                  <div className="text-[10px] opacity-60 font-serif">故事篇章</div>
+                  <div className="font-bold font-mono text-sm mt-0.5" style={{ color: currentTheme.primary }}>{importPreview.storiesCount}</div>
+                </div>
+                <div className="p-2.5 rounded-2xl bg-white/70 dark:bg-white/5 border border-black/5 dark:border-white/10">
+                  <div className="text-[10px] opacity-60 font-serif">拾物旧藏</div>
+                  <div className="font-bold font-mono text-sm mt-0.5" style={{ color: currentTheme.primary }}>{importPreview.artifactsCount}</div>
+                </div>
+                <div className="p-2.5 rounded-2xl bg-white/70 dark:bg-white/5 border border-black/5 dark:border-white/10 col-span-2">
+                  <div className="text-[10px] opacity-60 font-serif">寄年信笺</div>
+                  <div className="font-bold font-mono text-sm mt-0.5" style={{ color: currentTheme.primary }}>{importPreview.lettersCount} 封</div>
+                </div>
+              </div>
+
+              {/* Mode Selection */}
+              <div className="space-y-2 pt-1">
+                <label className="text-[11px] font-serif opacity-70 block px-1">选择恢复模式：</label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setImportMode('overwrite')}
+                    className={`p-3 rounded-2xl border text-left text-xs transition-all ${
+                      importMode === 'overwrite'
+                        ? 'border-[#5B7B6D] bg-[#5B7B6D]/10 font-bold shadow-xs'
+                        : 'border-black/10 dark:border-white/10 hover:bg-black/5 dark:hover:bg-white/5 opacity-80'
+                    }`}
+                    style={importMode === 'overwrite' ? { borderColor: currentTheme.primary, backgroundColor: `${currentTheme.primary}15` } : {}}
+                  >
+                    <div className="font-serif">全量覆盖恢复</div>
+                    <div className="text-[10px] opacity-60 font-serif mt-0.5">完全复原备份包内画卷相册与所有记录</div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setImportMode('merge')}
+                    className={`p-3 rounded-2xl border text-left text-xs transition-all ${
+                      importMode === 'merge'
+                        ? 'border-[#5B7B6D] bg-[#5B7B6D]/10 font-bold shadow-xs'
+                        : 'border-black/10 dark:border-white/10 hover:bg-black/5 dark:hover:bg-white/5 opacity-80'
+                    }`}
+                    style={importMode === 'merge' ? { borderColor: currentTheme.primary, backgroundColor: `${currentTheme.primary}15` } : {}}
+                  >
+                    <div className="font-serif">增量智能合并</div>
+                    <div className="text-[10px] opacity-60 font-serif mt-0.5">保留现有记录，仅导入不重复的新项目</div>
+                  </button>
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setImportPreview(null)}
+                  className="w-1/3 py-2.5 rounded-2xl border border-black/10 dark:border-white/10 text-xs font-serif hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
+                >
+                  取消
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmImport}
+                  className="w-2/3 py-2.5 rounded-2xl text-white font-serif font-bold text-xs shadow-sm transition-transform active:scale-95 flex items-center justify-center gap-1.5"
+                  style={{ backgroundColor: currentTheme.primary }}
+                >
+                  <Check className="w-4 h-4" />
+                  <span>确认立即恢复</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Isolated & Stable Add Person Modal Form */}
         <AddPersonModalForm
           isOpen={activeModal === 'addPerson'}
@@ -4971,6 +5070,8 @@ export default function App() {
           setDatePickerConfig={setDatePickerConfig}
           setFormGroupPickerTarget={setFormGroupPickerTarget}
           editPersonGroup={editPersonGroup}
+          editPersonBirthday={editPersonBirthday}
+          editPersonKnownDate={editPersonKnownDate}
         />
 
         {/* Selected Artifact Detail Modal */}
@@ -5017,6 +5118,16 @@ export default function App() {
                     title="编辑此旧物"
                   >
                     <Edit3 className="w-4 h-4" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      requestDelete('artifacts', selectedArtifact.id, selectedArtifact.name);
+                    }}
+                    className="p-1.5 text-[#6E7C75]/50 hover:text-red-500 rounded-xl hover:bg-red-50 dark:hover:bg-red-950/30 transition-all cursor-pointer"
+                    title="删除此旧物"
+                  >
+                    <Trash2 className="w-4 h-4" />
                   </button>
                   <button onClick={() => setSelectedArtifact(null)} className="p-1 text-[#6E7C75] hover:text-[#2B332E] dark:hover:text-white cursor-pointer rounded-xl hover:bg-black/5">
                     <X className="w-5 h-5" />
@@ -5178,6 +5289,16 @@ export default function App() {
                 <div className="flex gap-2.5 pt-2">
                   <button
                     type="button"
+                    onClick={() => {
+                      requestDelete('artifacts', editingArtifact.id, editingArtifact.name);
+                    }}
+                    className="p-3 rounded-2xl border border-red-500/20 bg-red-500/5 hover:bg-red-500/10 text-red-500 transition-all active:scale-[0.98] cursor-pointer flex items-center justify-center shrink-0"
+                    title="删除旧物"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                  <button
+                    type="button"
                     onClick={() => setEditingArtifact(null)}
                     className="flex-1 py-3 rounded-2xl border border-black/10 dark:border-white/10 bg-white/70 dark:bg-white/[0.05] text-[#6E7C75] dark:text-[#A7B4AD] font-serif font-semibold text-xs hover:bg-black/5 transition-all active:scale-[0.98] cursor-pointer"
                   >
@@ -5189,6 +5310,176 @@ export default function App() {
                     style={{ backgroundColor: currentTheme.primary }}
                   >
                     保存旧物更新
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* Timeline Moment Edit Modal (定格瞬间编辑) */}
+        {editingTimeline && (
+          <div className="absolute inset-0 bg-[#2B332E]/40 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 animate-fadeIn">
+            <div className="bg-white dark:bg-[#1E2822] w-full max-w-lg max-h-[92%] sm:max-h-[88%] rounded-t-3xl sm:rounded-3xl border border-stone-200/90 dark:border-white/10 shadow-2xl flex flex-col overflow-hidden text-xs font-sans">
+              {/* Sheet Pull Indicator for Mobile */}
+              <div className="w-10 h-1 bg-stone-300 dark:bg-white/20 rounded-full mx-auto mt-2 sm:hidden shrink-0" />
+
+              {/* Header */}
+              <div className="p-4 sm:p-5 border-b border-black/5 dark:border-white/10 flex justify-between items-center shrink-0">
+                <div className="flex items-center gap-2">
+                  <div
+                    className="w-2.5 h-2.5 rounded-full"
+                    style={{ backgroundColor: currentTheme.primary }}
+                  />
+                  <h3 className="font-bold text-base text-[#2B332E] dark:text-[#FAF8F5] font-serif">
+                    编辑【{editingTimeline.title}】时光瞬间
+                  </h3>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setEditingTimeline(null)}
+                  className="w-7 h-7 rounded-full bg-black/5 dark:bg-white/10 flex items-center justify-center text-[#6E7C75] dark:text-[#A7B4AD] hover:text-[#2B332E] dark:hover:text-white transition-colors cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* Form Content */}
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  const fd = new FormData(e.currentTarget);
+                  const updatedTitle = (fd.get('title') as string)?.trim() || editingTimeline.title;
+                  const updatedContent = (fd.get('content') as string) || '';
+                  const updatedTag = (fd.get('tag') as string)?.trim() || '时光';
+
+                  const updated: TimelineItem = {
+                    ...editingTimeline,
+                    title: updatedTitle,
+                    content: updatedContent,
+                    tag: updatedTag,
+                    date: editTimelineDate || editingTimeline.date,
+                    mediaType: editTimelineMediaType,
+                    image: editTimelineMediaType === 'image' ? (editTimelineImage || undefined) : undefined,
+                    video: editTimelineMediaType === 'video' ? (editTimelineVideo || undefined) : undefined,
+                    videoPoster: editTimelineMediaType === 'video' ? (editTimelineVideoPoster || undefined) : undefined
+                  };
+
+                  handleUpdateTimeline(updated);
+                }}
+                className="p-4 sm:p-6 overflow-y-auto space-y-4 flex-1 custom-scrollbar"
+              >
+                {/* Title Input */}
+                <div>
+                  <label className="text-[11px] font-serif text-[#6E7C75] dark:text-[#A7B4AD] block mb-1">瞬间标题</label>
+                  <input
+                    name="title"
+                    required
+                    defaultValue={editingTimeline.title}
+                    placeholder="定格一个瞬间标题..."
+                    className="w-full text-base sm:text-lg font-serif font-bold bg-transparent border-b border-black/10 dark:border-white/10 pb-2 text-[#2B332E] dark:text-[#FAF8F5] focus:outline-none placeholder-[#6E7C75]/50"
+                  />
+                </div>
+
+                {/* Local Media Uploader (完全适配暗黑模式) */}
+                <LocalMediaUploader
+                  value={editTimelineMediaType === 'video' ? editTimelineVideo : editTimelineImage}
+                  poster={editTimelineVideoPoster}
+                  mediaType={editTimelineMediaType}
+                  onChange={(url, type, poster) => {
+                    setEditTimelineMediaType(type);
+                    if (type === 'video') {
+                      setEditTimelineVideo(url);
+                      setEditTimelineVideoPoster(poster || '');
+                    } else {
+                      setEditTimelineImage(url);
+                      setEditTimelineVideo('');
+                      setEditTimelineVideoPoster('');
+                    }
+                  }}
+                  onClear={() => {
+                    setEditTimelineImage('');
+                    setEditTimelineVideo('');
+                    setEditTimelineVideoPoster('');
+                    setEditTimelineMediaType('image');
+                  }}
+                  label="时光影像记录 (支持相片 / 视频)"
+                  allowVideo={true}
+                />
+
+                {/* Date and Tag Settings */}
+                <div className="bg-white/90 dark:bg-white/[0.04] rounded-2xl border border-black/5 dark:border-white/10 divide-y divide-black/5 dark:divide-white/10 shadow-2xs">
+                  <div className="flex items-center justify-between p-3.5">
+                    <span className="text-[11px] font-serif text-[#6E7C75] dark:text-[#A7B4AD] shrink-0">定格时日</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setDatePickerConfig({
+                          isOpen: true,
+                          title: '修改定格瞬间日期',
+                          value: editTimelineDate || editingTimeline.date || new Date().toISOString().slice(0, 10),
+                          mode: 'full',
+                          onConfirm: (val) => setEditTimelineDate(val)
+                        });
+                      }}
+                      className="font-mono text-xs text-[#2B332E] dark:text-[#FAF8F5] font-bold flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#FAF8F5] dark:bg-white/10 border border-[#5B7B6D]/25 hover:border-[#5B7B6D] transition-all cursor-pointer shadow-2xs active:scale-95"
+                    >
+                      <Calendar className="w-3.5 h-3.5 text-[#5B7B6D]" />
+                      <span>{editTimelineDate || editingTimeline.date}</span>
+                    </button>
+                    <input type="hidden" name="date" value={editTimelineDate || editingTimeline.date} />
+                  </div>
+
+                  <div className="flex items-center justify-between p-3.5">
+                    <span className="text-[11px] font-serif text-[#6E7C75] dark:text-[#A7B4AD] shrink-0">岁月标签</span>
+                    <input
+                      name="tag"
+                      defaultValue={editingTimeline.tag || '时光'}
+                      placeholder="如: 远行、相聚、独处..."
+                      className="text-right text-xs font-serif font-bold text-[#2B332E] dark:text-[#FAF8F5] bg-transparent outline-none placeholder-[#6E7C75]/40"
+                    />
+                  </div>
+                </div>
+
+                {/* Narrative Textarea */}
+                <div className="bg-white/90 dark:bg-white/[0.04] p-3.5 rounded-2xl border border-black/5 dark:border-white/10 space-y-2 shadow-2xs">
+                  <label className="text-[11px] font-serif font-medium text-[#526058] dark:text-[#A7B4AD] block px-0.5">记忆详述</label>
+                  <textarea
+                    name="content"
+                    required
+                    rows={4}
+                    defaultValue={editingTimeline.content}
+                    placeholder="写下那一刻的光影、心境与细碎回响..."
+                    className="w-full p-3 bg-[#FAF8F5] dark:bg-black/20 rounded-xl border border-[#5B7B6D]/20 dark:border-white/10 text-[#2B332E] dark:text-[#FAF8F5] font-serif leading-relaxed text-xs focus:outline-none resize-none placeholder-[#6E7C75]/50 focus:border-[#5B7B6D]"
+                  />
+                </div>
+
+                {/* Footer Buttons */}
+                <div className="flex gap-2.5 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      requestDelete('timeline', editingTimeline.id, editingTimeline.title);
+                      setEditingTimeline(null);
+                    }}
+                    className="p-3 rounded-2xl border border-red-500/20 bg-red-500/5 hover:bg-red-500/10 text-red-500 transition-all active:scale-[0.98] cursor-pointer flex items-center justify-center shrink-0"
+                    title="删除瞬间"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setEditingTimeline(null)}
+                    className="flex-1 py-3 rounded-2xl border border-black/10 dark:border-white/10 bg-white/70 dark:bg-white/[0.05] text-[#6E7C75] dark:text-[#A7B4AD] font-serif font-semibold text-xs hover:bg-black/5 transition-all active:scale-[0.98] cursor-pointer"
+                  >
+                    取消
+                  </button>
+                  <button
+                    type="submit"
+                    className="flex-1 py-3 rounded-2xl text-white font-serif font-bold text-xs shadow-xs transition-all active:scale-[0.98] cursor-pointer"
+                    style={{ backgroundColor: currentTheme.primary }}
+                  >
+                    保存瞬间更新
                   </button>
                 </div>
               </form>
@@ -5745,6 +6036,16 @@ export default function App() {
                 <div className="flex gap-2.5 pt-1">
                   <button
                     type="button"
+                    onClick={() => {
+                      requestDelete('stories', editingStory.id, editingStory.title);
+                    }}
+                    className="p-3 rounded-2xl border border-red-500/20 bg-red-500/5 hover:bg-red-500/10 text-red-500 transition-all active:scale-[0.98] cursor-pointer flex items-center justify-center shrink-0"
+                    title="删除篇章"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                  <button
+                    type="button"
                     onClick={() => setEditingStory(null)}
                     className="flex-1 py-3 rounded-2xl border border-black/10 dark:border-white/10 bg-white/70 dark:bg-white/[0.05] text-[#6E7C75] dark:text-[#A7B4AD] font-serif font-semibold text-xs hover:bg-black/5 transition-all active:scale-[0.98] cursor-pointer"
                   >
@@ -5763,112 +6064,12 @@ export default function App() {
           </div>
         )}
 
-        {/* Impression (岁月印记时光切片) Card Modal */}
-        {editingImpression && (
-          <div className="absolute inset-0 bg-[#2B332E]/60 backdrop-blur-xs z-50 flex items-center justify-center p-4 sm:p-6 animate-fadeIn font-sans">
-            <div className="bg-[#FAF8F5] w-full max-w-md p-5 sm:p-6 rounded-3xl border border-[#5B7B6D]/20 shadow-2xl space-y-4.5 paper-texture">
-              <div className="flex justify-between items-center border-b border-[#5B7B6D]/15 pb-3">
-                <div className="flex items-center gap-2">
-                  <div className="w-8 h-8 rounded-xl bg-[#5B7B6D]/10 flex items-center justify-center text-[#5B7B6D]">
-                    <Edit3 className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <h3 className="font-bold text-[#2B332E] text-base font-serif">编辑时光印记切片</h3>
-                    <p className="text-[11px] text-[#6E7C75]">修订岁月切片记忆细节与年份描述</p>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setEditingImpression(null)}
-                  className="w-8 h-8 rounded-full flex items-center justify-center text-[#6E7C75] hover:text-[#2B332E] hover:bg-[#5B7B6D]/10 transition-all"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
 
-              <form onSubmit={handleSaveEditedImpression} className="space-y-4">
-                <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-[#5B7B6D] flex items-center justify-between">
-                    <span>切片日期</span>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setDatePickerConfig({
-                          isOpen: true,
-                          title: '选取时光切片日期',
-                          value: new Date().toISOString().slice(0, 10),
-                          mode: 'full',
-                          onConfirm: (val) => {
-                            const parts = val.split('-');
-                            if (parts.length === 3) {
-                              setEditImpressionYear(`${parts[0]}.${parseInt(parts[1], 10)}.${parseInt(parts[2], 10)}`);
-                            } else {
-                              setEditImpressionYear(val);
-                            }
-                          }
-                        });
-                      }}
-                      className="text-[11px] text-[#E88765] hover:underline flex items-center gap-1 font-normal cursor-pointer"
-                    >
-                      <Calendar className="w-3 h-3" /> 弹窗选择日期
-                    </button>
-                  </label>
-                  <input
-                    name="year"
-                    type="text"
-                    defaultValue={editImpressionYear || editingImpression.year}
-                    placeholder="如：2026.8.6"
-                    autoComplete="off"
-                    autoCorrect="off"
-                    autoCapitalize="none"
-                    spellCheck={false}
-                    className="w-full p-2.5 rounded-xl border border-[#5B7B6D]/20 bg-white font-mono text-xs focus:outline-none focus:border-[#5B7B6D]"
-                    required
-                  />
-                </div>
 
-                <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-[#5B7B6D]">
-                    切片细节描述
-                  </label>
-                  <textarea
-                    name="text"
-                    rows={4}
-                    defaultValue={editImpressionText || editingImpression.text}
-                    placeholder="记录该年份留下的深刻印象、共同经历或瞬间..."
-                    autoComplete="off"
-                    autoCorrect="off"
-                    autoCapitalize="none"
-                    spellCheck={false}
-                    className="w-full p-3 rounded-xl border border-[#5B7B6D]/20 bg-white font-serif text-xs leading-relaxed focus:outline-none focus:border-[#5B7B6D]"
-                    required
-                  />
-                </div>
-
-                <div className="flex gap-2.5 pt-1">
-                  <button
-                    type="button"
-                    onClick={() => setEditingImpression(null)}
-                    className="flex-1 py-2.5 rounded-xl border border-[#5B7B6D]/25 bg-white text-[#6E7C75] text-xs font-semibold hover:bg-[#F2EFE9] transition-all active:scale-95 shadow-2xs"
-                  >
-                    取消
-                  </button>
-                  <button
-                    type="submit"
-                    className="flex-1 py-2.5 bg-[#5B7B6D] text-white text-xs font-bold rounded-xl shadow-md hover:bg-[#3E564B] transition-all active:scale-95"
-                  >
-                    保存切片修改
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
-        )}
-
-        {/* Custom Delete Confirmation Modal with Bulletproof Cross-Device Styles */}
+        {/* Custom Delete Confirmation Modal with Bulletproof Cross-Device Styles & Zen Bell Feedback */}
         {confirmDialog && (
-          <div className="absolute inset-0 bg-[#2B332E]/60 backdrop-blur-xs z-50 flex items-center justify-center p-4 sm:p-6 animate-fadeIn font-sans">
-            <div className="bg-[#FAF8F5] w-full max-w-xs p-5 sm:p-6 rounded-3xl border border-[#5B7B6D]/20 shadow-2xl text-center space-y-4 paper-texture">
+          <div className="absolute inset-0 bg-[#2B332E]/60 dark:bg-black/70 backdrop-blur-xs z-50 flex items-center justify-center p-4 sm:p-6 animate-fadeIn font-sans">
+            <div className="bg-[#FAF8F5] dark:bg-[#1A2520] w-full max-w-xs p-5 sm:p-6 rounded-3xl border border-[#5B7B6D]/20 dark:border-white/15 shadow-2xl text-center space-y-4 paper-texture">
               <div
                 className="w-13 h-13 rounded-full flex items-center justify-center mx-auto shadow-2xs"
                 style={{ backgroundColor: '#FEE2E2', color: '#DC2626', border: '1px solid #FECACA' }}
@@ -5876,26 +6077,35 @@ export default function App() {
                 <Trash2 className="w-6 h-6" style={{ color: '#DC2626' }} />
               </div>
               <div className="space-y-1">
-                <h3 className="font-bold text-[#2B332E] text-sm sm:text-base font-serif">确认要抹去此项记忆记录吗？</h3>
-                <p className="text-xs text-[#6E7C75] font-serif bg-white/80 py-1 px-2.5 rounded-xl border border-[#5B7B6D]/15 inline-block max-w-full truncate">
+                <h3 className="font-bold text-[#2B332E] dark:text-[#FAF8F5] text-sm sm:text-base font-serif">确认要抹去此项记忆记录吗？</h3>
+                <p className="text-xs text-[#6E7C75] dark:text-[#A7B4AD] font-serif bg-white/80 dark:bg-white/10 py-1 px-2.5 rounded-xl border border-[#5B7B6D]/15 dark:border-white/10 inline-block max-w-full truncate font-medium">
                   {confirmDialog.name}
                 </p>
-                <p className="text-[11px] text-[#6E7C75]/80 leading-relaxed font-sans pt-0.5">
+                <p className="text-[11px] text-[#6E7C75]/80 dark:text-[#A7B4AD]/80 leading-relaxed font-sans pt-0.5">
                   抹去后该项记录将从当前私人时光空间中彻底移除
                 </p>
               </div>
               <div className="flex gap-2.5 pt-1.5">
                 <button
                   type="button"
-                  onClick={() => setConfirmDialog(null)}
-                  className="flex-1 py-2.5 rounded-xl border border-[#5B7B6D]/25 bg-white text-[#6E7C75] text-xs font-semibold hover:bg-[#F2EFE9] transition-all active:scale-95 shadow-2xs"
-                  style={{ backgroundColor: '#FFFFFF', color: '#6E7C75', borderColor: 'rgba(91, 123, 109, 0.25)' }}
+                  onClick={() => {
+                    sound.playWaterDrop(740);
+                    setConfirmDialog(null);
+                  }}
+                  className="flex-1 py-2.5 rounded-xl border border-[#5B7B6D]/25 dark:border-white/20 bg-white dark:bg-white/10 text-[#6E7C75] dark:text-[#A7B4AD] text-xs font-semibold hover:bg-[#F2EFE9] dark:hover:bg-white/15 transition-all active:scale-95 shadow-2xs cursor-pointer"
                 >
                   取消
                 </button>
                 <button
                   type="button"
                   onClick={() => {
+                    sound.playZenBell();
+                    sound.playHapticClick(700);
+                    try {
+                      if (typeof navigator !== 'undefined' && navigator.vibrate) {
+                        navigator.vibrate([15, 30, 15]);
+                      }
+                    } catch {}
                     if (confirmDialog.onConfirm) {
                       confirmDialog.onConfirm();
                     } else if (confirmDialog.type && confirmDialog.id) {
@@ -5903,7 +6113,7 @@ export default function App() {
                     }
                     setConfirmDialog(null);
                   }}
-                  className="flex-1 py-2.5 rounded-xl text-white text-xs font-bold shadow-md transition-all active:scale-95 hover:brightness-110"
+                  className="flex-1 py-2.5 rounded-xl text-white text-xs font-bold shadow-md transition-all active:scale-95 hover:brightness-110 cursor-pointer"
                   style={{ backgroundColor: '#DC2626', color: '#FFFFFF', border: '1px solid #B91C1C' }}
                 >
                   确认抹去

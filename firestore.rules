@@ -28,11 +28,11 @@ service cloud.firestore {
     }
 
     function isValidUserProfile(data) {
-      return data.keys().hasAll(['uid', 'account', 'userNumber', 'createdAt']) &&
-             data.keys().hasOnly(['uid', 'account', 'email', 'phone', 'displayName', 'userNumber', 'passwordHash', 'photoURL', 'createdAt', 'updatedAt', 'lastSyncAt', 'role']) &&
+      return data.keys().hasAll(['uid', 'account', 'createdAt']) &&
+             data.keys().hasOnly(['uid', 'account', 'email', 'phone', 'displayName', 'userNumber', 'passwordHash', 'photoURL', 'createdAt', 'updatedAt', 'lastSyncAt', 'role', 'licenseStatus', 'trialExpireAt', 'licensedAt', 'licenseKey']) &&
              data.uid is string && data.uid.size() <= 128 &&
              data.account is string && data.account.size() <= 128 &&
-             data.userNumber is string && data.userNumber.size() <= 32 &&
+             (!('userNumber' in data) || (data.userNumber is string && data.userNumber.size() <= 32)) &&
              data.createdAt is string && data.createdAt.size() <= 64 &&
              (!('email' in data) || (data.email is string && data.email.size() <= 256)) &&
              (!('phone' in data) || (data.phone is string && data.phone.size() <= 32)) &&
@@ -41,7 +41,11 @@ service cloud.firestore {
              (!('photoURL' in data) || (data.photoURL is string && data.photoURL.size() <= 524288)) &&
              (!('updatedAt' in data) || (data.updatedAt is string && data.updatedAt.size() <= 64)) &&
              (!('lastSyncAt' in data) || (data.lastSyncAt is string && data.lastSyncAt.size() <= 64)) &&
-             (!('role' in data) || (data.role in ['user', 'admin']));
+             (!('role' in data) || (data.role in ['user', 'admin'])) &&
+             (!('licenseStatus' in data) || (data.licenseStatus in ['trial', 'active', 'expired'])) &&
+             (!('trialExpireAt' in data) || (data.trialExpireAt is string && data.trialExpireAt.size() <= 64)) &&
+             (!('licensedAt' in data) || (data.licensedAt is string && data.licensedAt.size() <= 64)) &&
+             (!('licenseKey' in data) || (data.licenseKey is string && data.licenseKey.size() <= 128));
     }
 
     function isValidUserBackup(data, userId) {
@@ -136,6 +140,23 @@ service cloud.firestore {
       allow read: if true;
       allow create, update: if true;
       allow delete: if isAdmin();
+    }
+
+    // License Activation Codes (云端卡密与买断激活校验同步)
+    match /activation_codes/{codeId} {
+      allow read: if true;
+      allow create, update, delete: if true;
+    }
+
+    // System Settings & Configurations
+    match /system_settings/{settingId} {
+      allow read: if true;
+      allow create, update, delete: if true;
+    }
+
+    match /settings/{settingId} {
+      allow read: if true;
+      allow create, update, delete: if true;
     }
   }
 }

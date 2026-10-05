@@ -1,40 +1,41 @@
 # 《拾年》最新全套安卓原生打包与功能落地实施指南（2026 最终终极融合版）
 
-本文档为《拾年》移动端落地的最终权威方案，深度融合了全套最新架构进展、Windows PowerShell 容错规范、彻底禁用安卓原生选择器浮层并由软件内置东方美化选择条（CustomTextSelectionBar）全权接管、前端原生桥接通道（相册直存与 ZIP 分类直存）、失焦防丢字、90Hz/120Hz 高刷解锁以及后台防蓝标等全项优化。
+本文档为《拾年》移动端落地的最终权威方案，深度融合了全套最新架构进展、个人中心沉浸式管理、无缝水墨背景、音乐播放器同款调色板按键、多端 4 级数据原子增量同步、Windows PowerShell 容错规范、彻底禁用安卓原生选择器浮层并由软件内置东方美化选择条（CustomTextSelectionBar）全权接管、前端原生桥接通道（相册直存与 ZIP 分类直存）、失焦防丢字、90Hz/120Hz 高刷解锁以及后台防蓝标等全项优化。
 
 ---
 
 ## 核心机理剖析与全盘根治行动
 
-### 1. 彻底禁用安卓原生选择器，由软件内置美化选择条全权接管
-- **根因剖析**：
-  Android 原生系统在选中文本时，会自动拉起系统级 `ActionMode` 浮动操作栏（并在某些机型或 MIUI / HyperOS / ColorOS 上附带巨大的白色矩形背景与水滴白色拖拽块），与应用内优雅的东方宣纸与微透琉璃美学发生严重视觉割裂。
-- **全盘根治**：
-  1. **原生层物理屏蔽**：在 `MainActivity.java` 中重写 `onWindowStartingActionMode` 并为 `bridgeWebView` 挂载 `setCustomSelectionActionModeCallback`，直接拦截系统原生选择器（返回 `null`/`false`），物理阻断原生白块弹出；
-  2. **软件内置美化接管**：由前端 `src/components/CustomTextSelectionBar.tsx` 100% 接管长按选区与操作（支持复制、剪切、粘贴、全选、水墨晕染高亮、禅意音效反馈与触感震动）。
+### 1. 全局沉浸个人管理中心与无缝水墨背景（最新架构）
+- **全屏通体形态**: 彻底摆脱传统弹窗卡片，升级为 100vw / 100vh 全屏沉浸管理界面；
+- **无缝水墨贯通**: 消除顶部身份区与下方编辑卡片之间的横线与白块割裂感，全屏采用通体统一水墨弥散背景（光晕平滑过渡，60FPS GPU 硬件加速）；
+- **纯净无界头像与泼彩光晕**: 彻底移除了紧贴头像的生硬单色圆框，采用多层柔光呼吸泼彩晕染（`Splatter Bloom Glow`），使头像悬浮于东方光泽之上；
+- **精致单向返回**: 保留左上角精致悬浮返回箭头（带触感微鸣与优雅波纹退出），严格去除了右上角多余的关闭按钮。
 
-### 2. 输入法合成态与失焦防丢字根因及根治
-- **根因分析**：
-  在 Android 系统上，用户输入英文或拼音时处于 IME 预输入合成态。当未按空格确认直接点击其他输入框时，Chromium/Blink 内核失焦会调用 `ImeCancelComposition()`，若组件绑定了受控状态，React 异步重绘会使用过时 state 冲刷 DOM，导致输入的英文字母全部丢失。
-- **全盘根治**：
-  前端全表单全面升级为原生非受控架构（`name="..."` 与 `defaultValue`），配合 `onSubmit` 统一通过 `new FormData(e.currentTarget)` 提交。同时在关键输入框均配置 `autoComplete="off" autoCorrect="off" autoCapitalize="none" spellCheck={false}`，彻底阻断丢词与系统强制误选。
+### 2. 按键美术与音乐播放器同款调色板对齐（最新架构）
+- **色彩与质感对齐**: 参照复古黑胶音乐播放器（`VinylMusicPlayer`）最上方「歌单库」、「黑胶唱机」在**选中激活状态下**的主题色调（`currentTheme.primary`），摒弃高饱和刺眼的线性渐变；
+- **统一按键涵盖**: 保存昵称、换绑邮箱、获取验证码、确认绑定/换绑、保存密码等按键，全部对齐音乐播放器选中态风格（纯正主题主色 + 纯白高对比度文字 + 伴光晕阴影 `0 3px 12px ${currentTheme.primary}40`）。
 
-### 3. 后台挂起 10 秒返回应用冒出蓝色 Capacitor 标志根治
-- **根因分析**：
-  原生工程的 `AppTheme.NoActionBarLaunch` 默认引用了 `<item name="android:background">@drawable/splash</item>`，而该资源在休眠唤醒时被系统拉起为蓝色十字图标。
-- **全盘根治**：
-  在 `styles.xml` 中将 `AppTheme.NoActionBarLaunch` 的 `android:background` 与 `android:windowBackground` 强制锁定为东方宣纸米色 `#FAF8F5`，物理剔除 `@drawable/splash`，并设置 Android 12+ SplashScreen 动画图标为透明。
+### 3. 多端 4 级原子同步与时间戳熔融（根治昵称回退）
+- **4 级原子写**: 前端修改昵称、邮箱或头像时，同步写入 **Firestore 云端数据库**、**服务端磁盘 JSON (`/api/admin/users/save`)**、**全量用户本地缓存 (`shinian_all_users_cache`)** 与 **当前登录会话**；
+- **时间戳增量合并**: `listAllUsers` 与 `loginDomesticUser` 均引入 `updatedAt` 时间戳比对逻辑，确保管理后台（AdminPortal）与重新登录时，始终以最新修改的档案为准，杜绝旧缓存覆盖最新修改。
+
+### 4. 彻底禁用安卓原生选择器，由软件内置美化选择条全权接管
+- **原生层物理屏蔽**: 在 `MainActivity.java` 中重写 Activity 窗口级 `onWindowStartingActionMode`（直接返回 `null`），物理阻断系统原生浮动操作栏与白块弹出；
+- **软件内置美化接管**: 由前端 `src/components/CustomTextSelectionBar.tsx` 100% 接管长按选区与操作（支持复制、剪切、粘贴、全选、水墨晕染高亮、禅意音效反馈与触感震动）。
+
+### 5. 输入法合成态与失焦防丢字根治
+- **全表单非受控架构**: 前端全表单全面升级为原生非受控架构（`name="..."` 与 `defaultValue`），配合 `onSubmit` 统一通过 `new FormData(e.currentTarget)` 提交，配置 `autoComplete="off" autoCorrect="off" autoCapitalize="none" spellCheck={false}`，彻底阻断输入法合成态失焦丢字。
+
+### 6. 后台挂起 10 秒返回应用冒出蓝色 Capacitor 标志根治
+- **启动背景锁死**: 在 `styles.xml` 中将 `AppTheme.NoActionBarLaunch` 的 `android:background` 与 `android:windowBackground` 强制锁定为东方宣纸米色 `#FAF8F5`，物理剔除 `@drawable/splash`，并将 Android 12+ SplashScreen 动画图标设为透明。
 
 ---
 
 ## 第一阶段：VS Code（前端产物构建与 Capacitor 初始化）
 
 ### 步骤 1：定位项目根目录
-在 VS Code 中打开项目根目录，按快捷键 `Ctrl + ~` 唤起终端：
-```bash
-# 若存在嵌套路径（如末尾为 --main），先进入对应子目录：
-# cd --main
-```
+在 VS Code 中打开项目根目录，按快捷键 `Ctrl + ~` 唤起终端。
 
 ### 步骤 2：安装最新完整依赖并编译 Web 静态产物
 ```bash
@@ -118,7 +119,7 @@ npx cap sync android
 2. 或在 **Settings ➔ Build, Execution, Deployment ➔ Build Tools ➔ Gradle** 中，将 Gradle JDK 切换为 **Embedded JDK (17 或 21)**。
 
 ### 步骤 6：配置沉浸式主题 styles.xml（消除冷启动蓝标与透明无缝背景）
-展开目录：`app ➔ res ➔ values ➔ styles.xml`（以及若存在 `values-night/styles.xml`、`values-v31/styles.xml`），全选替换为以下代码：
+展开目录：`app ➔ res ➔ values ➔ styles.xml`，全选替换为以下代码：
 
 ```xml
 <?xml version="1.0" encoding="utf-8"?>
@@ -145,13 +146,13 @@ npx cap sync android
         <item name="android:windowLightStatusBar">true</item>
         <item name="android:windowLightNavigationBar">true</item>
 
-        <!-- 【核心修复 1】彻底消除冷启动及 Android 12+ 强制居中出现的蓝色 Capacitor 图标 -->
+        <!-- 彻底消除冷启动及 Android 12+ 强制居中出现的蓝色 Capacitor 图标 -->
         <item name="android:windowSplashScreenBackground">#FAF8F5</item>
         <item name="android:windowSplashScreenAnimatedIcon">@android:color/transparent</item>
         <item name="android:windowSplashScreenAnimationDuration">0</item>
     </style>
 
-    <!-- 【核心修复 2】消除后台挂起 10 秒切回再次冒出蓝标：绝不引用 @drawable/splash，直接锁定为米色背景 -->
+    <!-- 消除后台挂起 10 秒切回再次冒出蓝标：绝不引用 @drawable/splash，直接锁定为米色背景 -->
     <style name="AppTheme.NoActionBarLaunch" parent="AppTheme.NoActionBar">
         <item name="android:background">#FAF8F5</item>
         <item name="android:windowBackground">#FAF8F5</item>
@@ -230,8 +231,6 @@ import android.provider.MediaStore;
 import android.util.Base64;
 import android.view.ActionMode;
 import android.view.Display;
-import android.view.Menu;
-import android.view.MenuItem;
 import android.view.View;
 import android.view.Window;
 import android.view.WindowManager;
@@ -322,7 +321,7 @@ public class MainActivity extends BridgeActivity {
         }
     }
 
-    // 【核心拦截 1】彻底禁用原生 Android 系统的文本选择 ActionMode（拦截系统白色浮动菜单与白块）
+    // 彻底禁用原生 Android 系统的文本选择 ActionMode（拦截系统白色浮动菜单与白块）
     @Override
     public ActionMode onWindowStartingActionMode(ActionMode.Callback callback, int type) {
         return null; // 拦截系统 ActionMode 弹窗，由前端 CustomTextSelectionBar 全权接管
@@ -357,7 +356,7 @@ public class MainActivity extends BridgeActivity {
             window.setNavigationBarContrastEnforced(false);
         }
 
-        // 4. 【核心性能突破】强制解锁 90Hz / 120Hz / 144Hz 极限屏幕刷新率
+        // 4. 强制解锁 90Hz / 120Hz / 144Hz 极限屏幕刷新率
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             try {
                 WindowManager.LayoutParams params = window.getAttributes();
@@ -402,7 +401,7 @@ public class MainActivity extends BridgeActivity {
             return windowInsets;
         });
 
-        // 6. 【WebView 渲染加速引擎与原生 JSBridge 挂载】
+        // 6. WebView 渲染加速引擎与原生 JSBridge 挂载
         WebView bridgeWebView = getBridge().getWebView();
         if (bridgeWebView != null) {
             // 启用硬件加速绘制层与透明背景
@@ -418,25 +417,7 @@ public class MainActivity extends BridgeActivity {
             settings.setAllowContentAccess(true);
             settings.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
 
-            // 【核心拦截 2】设置 WebView 回调彻底阻断系统原生选择菜单
-            bridgeWebView.setCustomSelectionActionModeCallback(new ActionMode.Callback() {
-                @Override
-                public boolean onCreateActionMode(ActionMode mode, Menu menu) {
-                    return false; // 阻断系统原生选择器弹出
-                }
-                @Override
-                public boolean onPrepareActionMode(ActionMode mode, Menu menu) {
-                    return false;
-                }
-                @Override
-                public boolean onActionItemClicked(ActionMode mode, MenuItem item) {
-                    return false;
-                }
-                @Override
-                public void onDestroyActionMode(ActionMode mode) {}
-            });
-
-            // 挂载原生相册与文件桥接通道
+            // 挂载原生相册与文件桥接通道 (由 MainActivity 的 onWindowStartingActionMode 全局拦截原生选择器，由前端 CustomTextSelectionBar 美化接管)
             bridgeWebView.addJavascriptInterface(new WebAppInterface(), "AndroidBridge");
         }
     }
@@ -465,8 +446,9 @@ public class MainActivity extends BridgeActivity {
 | 验收场景 | 预期完美表现 |
 | :--- | :--- |
 | **文本选择与浮动操作栏** | 长按选中文本，安卓系统原生粗糙白块与白色操作菜单完全被拦截屏蔽，仅呈现软件内置东方琉璃美化选择条（水滴双游标、水墨朱砂双层微光、复制/剪切/粘贴/全选） |
-| **冷启动与后台切回** | 启动与后台挂起 10 秒后切回，全程米色无缝进入页面，绝不出现蓝色 Capacitor 标志 |
+| **全屏沉浸个人管理** | 100vw/100vh 水墨一体化底图，卡片无缝衔接，无割裂横线；保存昵称等按键色彩与音乐播放器选中态完全一致 |
+| **多端数据与昵称同步** | 修改昵称后，管理后台实时同步；刷新网页与重新登录后，昵称保持最新不重置（4 级原子同步 + 时间戳熔融） |
+| **冷启动与后台切回** | 启动与后台挂起 10 秒后切回，全程米色 `#FAF8F5` 无缝进入页面，绝不出现蓝色 Capacitor 标志 |
 | **输入英文字母转移焦点** | 账号或密码输入框输入英文后直接点其他输入框，英文字符完全保留，绝不被清空或只剩数字 |
-| **高刷与动画流畅度** | 模态框与卡片滑动展开保持 90Hz / 120Hz 满帧，无任何白色或渐变撕裂色块 |
+| **高刷与动画流畅度** | 模态框与卡片滑动展开保持 90Hz / 120Hz / 144Hz 满帧，无任何白色或渐变撕裂色块 |
 | **公共直存通道** | 卡片直达系统相册「拾年回忆」，全量备份 ZIP 直达系统「下载」与「压缩包」分类目录 |
-| **云端多端同步** | 国内免翻墙网络秒级直连中枢，手机与电脑端数据实时双向同步，账号唯一性严格校验 |

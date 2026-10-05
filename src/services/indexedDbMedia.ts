@@ -300,3 +300,77 @@ export async function offloadBase64MediaToIndexedDb(appData: any): Promise<{ dat
   return { data: clone, hasChanged };
 }
 
+// 内存与 IndexedDB 双级海报缓存表，实现相册缩略图 0ms 秒开无黑屏
+const memoryPosterCache = new Map<string, string>();
+
+/**
+ * 针对视频 URI 存取关联的高清海报封面 (持久化至 IndexedDB 并维护极速内存索引)
+ */
+export async function saveVideoPosterCache(videoUri: string, posterDataUrl: string): Promise<string> {
+  if (!videoUri || !posterDataUrl) return '';
+  const safeId = videoUri.replace('idb://', '').replace(/[^a-zA-Z0-9_-]/g, '_');
+
+  try {
+    const posterKey = `poster_${safeId}`;
+    if (posterDataUrl.startsWith('data:')) {
+      const res = await fetch(posterDataUrl);
+      const blob = await res.blob();
+      const uri = await saveMediaBlob(blob, posterKey);
+      const resolved = await resolveMediaUrl(uri);
+      memoryPosterCache.set(videoUri, resolved || posterDataUrl);
+      memoryPosterCache.set(safeId, resolved || posterDataUrl);
+      return resolved || posterDataUrl;
+    }
+  } catch (err) {
+    console.warn('保存海报至 IndexedDB 失败，降级为内存索引', err);
+  }
+
+  memoryPosterCache.set(videoUri, posterDataUrl);
+  memoryPosterCache.set(safeId, posterDataUrl);
+  return posterDataUrl;
+}
+
+/**
+ * 获取视频关联的高清海报封面 (0ms 内存瞬开 + IndexedDB 磁盘回填，保证返回有效可展示的 blob: 或 data: 地址)
+ */
+export async function getVideoPosterCache(videoUri: string): Promise<string | null> {
+  if (!videoUri) return null;
+  const safeId = videoUri.replace('idb://', '').replace(/[^a-zA-Z0-9_-]/g, '_');
+
+  if (memoryPosterCache.has(videoUri)) {
+    const cached = memoryPosterCache.get(videoUri)!;
+    if (isIndexedDbMedia(cached)) {
+      const resolved = await resolveMediaUrl(cached);
+      memoryPosterCache.set(videoUri, resolved);
+      return resolved;
+    }
+    return cached;
+  }
+  if (memoryPosterCache.has(safeId)) {
+    const cached = memoryPosterCache.get(safeId)!;
+    if (isIndexedDbMedia(cached)) {
+      const resolved = await resolveMediaUrl(cached);
+      memoryPosterCache.set(safeId, resolved);
+      return resolved;
+    }
+    return cached;
+  }
+
+  // 尝试从 IndexedDB 检索并解析为 Blob URL
+  try {
+    const posterKey = `idb://poster_${safeId}`;
+    const blob = await getMediaBlob(posterKey);
+    if (blob) {
+      const url = await resolveMediaUrl(posterKey);
+      if (url) {
+        memoryPosterCache.set(videoUri, url);
+        memoryPosterCache.set(safeId, url);
+        return url;
+      }
+    }
+  } catch {}
+
+  return null;
+}
+
+

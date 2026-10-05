@@ -221,7 +221,7 @@ export const LocalMediaUploader: React.FC<LocalMediaUploaderProps> = ({
               </div>
             </div>
           ) : (
-            <div className="relative aspect-video rounded-3xl overflow-hidden bg-white">
+            <div className="relative aspect-video rounded-3xl overflow-hidden bg-white dark:bg-black/40 border border-black/5 dark:border-white/10">
               <img
                 src={resolvedPlaybackUrl || value}
                 alt="预览"
@@ -260,19 +260,22 @@ export const LocalMediaUploader: React.FC<LocalMediaUploaderProps> = ({
       ) : (
         <div
           onClick={() => !isProcessing && fileInputRef.current?.click()}
-          className="border-2 border-dashed border-[#5B7B6D]/20 hover:border-[#5B7B6D]/50 rounded-2xl p-4 bg-[#FAF8F5]/60 hover:bg-white transition-all cursor-pointer text-center group active:scale-[0.99] shadow-2xs"
+          className="border-2 border-dashed border-[#5B7B6D]/20 dark:border-white/15 hover:border-[#5B7B6D]/50 dark:hover:border-white/30 rounded-2xl p-4 bg-[#FAF8F5]/60 dark:bg-white/[0.03] hover:bg-white dark:hover:bg-white/[0.07] transition-all cursor-pointer text-center group active:scale-[0.99] shadow-2xs"
         >
           <div className="flex flex-col items-center justify-center gap-1.5 py-1">
-            <div className="w-10 h-10 rounded-2xl bg-white border border-[#5B7B6D]/15 flex items-center justify-center text-[#5B7B6D] group-hover:scale-105 group-hover:border-[#5B7B6D]/40 transition-all shadow-2xs">
+            <div className="w-10 h-10 rounded-2xl bg-white dark:bg-white/10 border border-[#5B7B6D]/15 dark:border-white/15 flex items-center justify-center text-[#5B7B6D] dark:text-[#E88765] group-hover:scale-105 group-hover:border-[#5B7B6D]/40 dark:group-hover:border-white/30 transition-all shadow-2xs">
               {isProcessing ? (
-                <Loader2 className="w-5 h-5 text-[#5B7B6D] animate-spin" />
+                <Loader2 className="w-5 h-5 text-[#5B7B6D] dark:text-[#E88765] animate-spin" />
               ) : (
-                <ImagePlus className="w-5 h-5 text-[#5B7B6D]" />
+                <ImagePlus className="w-5 h-5 text-[#5B7B6D] dark:text-[#E88765]" />
               )}
             </div>
             <div className="text-xs font-serif font-bold text-[#2B332E] dark:text-[#FAF8F5]">
               {isProcessing ? '正在处理影像附件...' : '点击上传相片或视频'}
             </div>
+            <p className="text-[10px] text-[#6E7C75] dark:text-[#A7B4AD] font-serif">
+              支持相片、实况照片或本地短视频 · 单机离线留存
+            </p>
           </div>
         </div>
       )}

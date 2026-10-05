@@ -3,25 +3,34 @@ import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { Plus, Trash2, X, ChevronLeft, ChevronRight, Image as ImageIcon, Check, CheckSquare, Film, Video, Camera } from 'lucide-react';
 import { compressImageFile } from './LocalImageUploader';
-import { isVideoMedia } from '../utils/mediaStorage';
+import { isVideoMedia, extractVideoPoster, extractVideoPosterFromUrl } from '../utils/mediaStorage';
 import { VintageVideoPlayer } from './VintageVideoPlayer';
-import { saveMediaBlob, resolveMediaUrl, isIndexedDbMedia } from '../services/indexedDbMedia';
+import { saveMediaBlob, resolveMediaUrl, isIndexedDbMedia, saveVideoPosterCache, getVideoPosterCache } from '../services/indexedDbMedia';
 import { useBackHandler } from '../hooks/useAndroidBackHandler';
+import { HealingTheme } from '../types';
 
-// 媒体缩略展示组件：支持快速异步解析 IndexedDB 二进制流地址，秒开保真
+// 媒体缩略展示组件：接入内置智能避黑采鲜抽帧引擎，实现海报秒开保真，彻底告别安卓黑圈与破损图
 export const AlbumThumbnailMedia: React.FC<{
   src: string;
   isVid: boolean;
   className?: string;
   alt?: string;
 }> = ({ src, isVid, className = '', alt = '留影' }) => {
-  const [resolvedUrl, setResolvedUrl] = useState<string>(src);
+  const [resolvedUrl, setResolvedUrl] = useState<string>(() => (isIndexedDbMedia(src) ? '' : src));
+  const [videoPoster, setVideoPoster] = useState<string>('');
+  const [isExtractingPoster, setIsExtractingPoster] = useState<boolean>(false);
 
   useEffect(() => {
     let isMounted = true;
+    if (!src) {
+      setResolvedUrl('');
+      return;
+    }
     if (isIndexedDbMedia(src)) {
       resolveMediaUrl(src).then(u => {
-        if (isMounted) setResolvedUrl(u);
+        if (isMounted) setResolvedUrl(u || '');
+      }).catch(() => {
+        if (isMounted) setResolvedUrl('');
       });
     } else {
       setResolvedUrl(src);
@@ -31,14 +40,94 @@ export const AlbumThumbnailMedia: React.FC<{
     };
   }, [src]);
 
+  // 针对视频项：优先检索双级海报缓存；若未命中或海报失效则后台静默调用智能抽帧系统并回填
+  useEffect(() => {
+    if (!isVid || !src) return;
+
+    let isMounted = true;
+
+    // 1. 快速查询海报缓存并确保解析真实展示 URL (blob: 或 data:)
+    getVideoPosterCache(src).then(async (cached) => {
+      if (!isMounted) return;
+      if (cached) {
+        let finalPoster = cached;
+        if (isIndexedDbMedia(cached)) {
+          finalPoster = await resolveMediaUrl(cached);
+        }
+        if (isMounted && finalPoster) {
+          setVideoPoster(finalPoster);
+          return;
+        }
+      }
+
+      // 2. 缓存未命中时（针对老旧无封面历史视频或异常项）：获取真实的视频 Blob URL 并后台静默抽帧
+      try {
+        const realVidUrl = isIndexedDbMedia(src) ? await resolveMediaUrl(src) : src;
+        if (!isMounted || !realVidUrl || isIndexedDbMedia(realVidUrl)) return;
+
+        setIsExtractingPoster(true);
+        const extracted = await extractVideoPosterFromUrl(realVidUrl);
+        if (!isMounted) return;
+        setIsExtractingPoster(false);
+
+        if (extracted) {
+          setVideoPoster(extracted);
+          await saveVideoPosterCache(src, extracted);
+        }
+      } catch {
+        if (isMounted) setIsExtractingPoster(false);
+      }
+    });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [isVid, src]);
+
   if (isVid) {
+    if (videoPoster) {
+      return (
+        <img
+          src={videoPoster}
+          alt={alt}
+          loading="lazy"
+          onError={async () => {
+            // 自动重试自愈：若当前海报解析异常，实时调用抽取并持久化更新
+            try {
+              const realVidUrl = isIndexedDbMedia(src) ? await resolveMediaUrl(src) : src;
+              if (realVidUrl && !isIndexedDbMedia(realVidUrl)) {
+                const newPoster = await extractVideoPosterFromUrl(realVidUrl);
+                if (newPoster) {
+                  setVideoPoster(newPoster);
+                  await saveVideoPosterCache(src, newPoster);
+                }
+              }
+            } catch (err) {
+              console.warn('视频海报自愈抽帧异常', err);
+            }
+          }}
+          className={`w-full h-full object-cover transition-transform duration-300 ${className}`}
+        />
+      );
+    }
+
+    // 抽帧中或无海报时的优雅温润骨架微光与胶片图标，严格杜绝裸渲染 <video> 导致的安卓原生黑圈占位符！
     return (
-      <video
-        src={resolvedUrl}
-        playsInline
-        muted
-        className={`w-full h-full object-cover transition-transform duration-300 ${className}`}
-      />
+      <div className={`w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-stone-900 via-stone-850 to-stone-950 text-white/50 ${className}`}>
+        <Film className={`w-6 h-6 stroke-[1.5] ${isExtractingPoster ? 'animate-pulse text-amber-400/90' : 'text-white/40'}`} />
+        <span className="text-[9px] font-mono tracking-wider opacity-60 mt-1">
+          {isExtractingPoster ? '智能抽帧中' : '影像视频'}
+        </span>
+      </div>
+    );
+  }
+
+  // 图片展示：如果尚未完成 IndexedDB 异步流化解析，渲染优雅占位骨架，严格防止 <img src="idb://..."> 导致浏览器抛出破损图！
+  if (!resolvedUrl) {
+    return (
+      <div className={`w-full h-full bg-[#FAF8F5] dark:bg-[#18231D] animate-pulse flex items-center justify-center ${className}`}>
+        <ImageIcon className="w-5 h-5 text-stone-300 dark:text-stone-700" />
+      </div>
     );
   }
 
@@ -47,6 +136,14 @@ export const AlbumThumbnailMedia: React.FC<{
       src={resolvedUrl}
       alt={alt}
       loading="lazy"
+      onError={async () => {
+        if (isIndexedDbMedia(src)) {
+          const retry = await resolveMediaUrl(src);
+          if (retry && retry !== resolvedUrl) {
+            setResolvedUrl(retry);
+          }
+        }
+      }}
       className={`w-full h-full object-cover transition-transform duration-300 ${className}`}
     />
   );
@@ -58,14 +155,19 @@ interface PersonAlbumProps {
   onUpdatePhotos: (photos: string[]) => void;
   showToast: (msg: string) => void;
   onRequestDelete?: (photoIndex: number) => void;
+  theme?: HealingTheme;
+  isDarkMode?: boolean;
 }
 
 export const PersonAlbum: React.FC<PersonAlbumProps> = ({
   photos = [],
   personName,
   onUpdatePhotos,
-  showToast
+  showToast,
+  theme,
+  isDarkMode = false
 }) => {
+  const primaryColor = theme?.primary || '#5B7B6D';
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isUploading, setIsUploading] = useState<boolean>(false);
   const [previewIndex, setPreviewIndex] = useState<number | null>(null);
@@ -76,6 +178,21 @@ export const PersonAlbum: React.FC<PersonAlbumProps> = ({
   const [isMultiSelectMode, setIsMultiSelectMode] = useState<boolean>(false);
   const [selectedIndices, setSelectedIndices] = useState<Set<number>>(new Set());
   const [isBatchConfirmOpen, setIsBatchConfirmOpen] = useState<boolean>(false);
+
+  const [previewPoster, setPreviewPoster] = useState<string>('');
+
+  useEffect(() => {
+    if (previewIndex !== null && photos[previewIndex] && isVideoMedia(photos[previewIndex])) {
+      getVideoPosterCache(photos[previewIndex]).then(async (p) => {
+        if (p) {
+          const resolved = isIndexedDbMedia(p) ? await resolveMediaUrl(p) : p;
+          setPreviewPoster(resolved || '');
+        }
+      });
+    } else {
+      setPreviewPoster('');
+    }
+  }, [previewIndex, photos]);
 
   // Level 4: 物理返回拦截：大图放映、单图删除与批量删除确认 (Priority 100)
   useBackHandler('person-album-preview', 100, previewIndex !== null, () => {
@@ -99,18 +216,6 @@ export const PersonAlbum: React.FC<PersonAlbumProps> = ({
     setIsAllModalOpen(false);
   });
 
-  // 当弹窗打开时，锁定 body 滚动，防止移动端滚动穿透或错位
-  const isAnyModalActive = isAllModalOpen || previewIndex !== null || deleteConfirmIndex !== null || isBatchConfirmOpen;
-  useEffect(() => {
-    if (isAnyModalActive) {
-      const originalOverflow = document.body.style.overflow;
-      document.body.style.overflow = 'hidden';
-      return () => {
-        document.body.style.overflow = originalOverflow;
-      };
-    }
-  }, [isAnyModalActive]);
-
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
@@ -122,8 +227,18 @@ export const PersonAlbum: React.FC<PersonAlbumProps> = ({
 
       let mediaData = '';
       if (isVid) {
-        // 百兆长视频直接写入 IndexedDB 原生二进制安全存储，绝无 Base64 内存暴涨与白屏闪退
-        mediaData = await saveMediaBlob(file);
+        // 1. 软件内置智能避黑采鲜抽帧系统：提取高清视频首帧海报
+        const posterPromise = extractVideoPoster(file);
+        // 2. 原生二进制写入 IndexedDB 安全持久化存储
+        const blobPromise = saveMediaBlob(file);
+
+        const [posterRes, savedMediaUri] = await Promise.all([posterPromise, blobPromise]);
+        mediaData = savedMediaUri;
+
+        if (posterRes.poster) {
+          // 持久化关联存储海报封面
+          await saveVideoPosterCache(mediaData, posterRes.poster);
+        }
         showToast(`已向专属相册添加 1 段影像视频`);
       } else {
         mediaData = await compressImageFile(file, 1200, 1200, 0.82);
@@ -186,11 +301,24 @@ export const PersonAlbum: React.FC<PersonAlbumProps> = ({
   const count = photos.length;
 
   return (
-    <div className="bg-white dark:bg-[#16211B] p-4 sm:p-5 rounded-3xl border border-[#D9CFC1] dark:border-[#5B7B6D]/30 shadow-2xs space-y-3 font-sans transition-all">
+    <div
+      className="bg-white dark:bg-[#16211B] p-4 sm:p-5 rounded-3xl border shadow-2xs space-y-3 font-sans transition-all"
+      style={{
+        borderColor: isDarkMode ? `${primaryColor}45` : `${primaryColor}30`,
+        boxShadow: `0 2px 12px ${primaryColor}0d`
+      }}
+    >
       {/* 头部标题区：图标与专属相册 */}
       <div className="flex justify-between items-center pb-2 border-b border-[#5B7B6D]/10 dark:border-white/10">
         <div className="flex items-center gap-2">
-          <div className="w-7 h-7 rounded-xl bg-[#FAF8F5] dark:bg-[#203026] border border-[#5B7B6D]/20 dark:border-white/10 flex items-center justify-center text-[#5B7B6D] dark:text-[#A7D1BF]">
+          <div
+            className="w-7 h-7 rounded-xl border flex items-center justify-center transition-colors"
+            style={{
+              backgroundColor: isDarkMode ? `${primaryColor}25` : `${primaryColor}15`,
+              borderColor: `${primaryColor}35`,
+              color: isDarkMode ? (theme?.dark?.primary || primaryColor) : primaryColor
+            }}
+          >
             <ImageIcon className="w-3.5 h-3.5" />
           </div>
           <div>
@@ -209,7 +337,12 @@ export const PersonAlbum: React.FC<PersonAlbumProps> = ({
           type="button"
           onClick={() => fileInputRef.current?.click()}
           disabled={isUploading}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#FAF8F5] dark:bg-white/10 border border-[#5B7B6D]/30 hover:border-[#5B7B6D] hover:bg-[#5B7B6D]/10 text-[#5B7B6D] dark:text-[#A7B4AD] transition-all text-xs font-serif font-medium shadow-2xs cursor-pointer active:scale-95 disabled:opacity-50"
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border transition-all text-xs font-serif font-medium shadow-2xs cursor-pointer active:scale-95 disabled:opacity-50"
+          style={{
+            backgroundColor: isDarkMode ? `${primaryColor}20` : `${primaryColor}10`,
+            borderColor: `${primaryColor}35`,
+            color: isDarkMode ? (theme?.dark?.primary || primaryColor) : primaryColor
+          }}
         >
           <Plus className="w-3.5 h-3.5" />
           <span>添加相片</span>
@@ -226,13 +359,27 @@ export const PersonAlbum: React.FC<PersonAlbumProps> = ({
       />
 
       {/* 3 槽位动态展示区 */}
-      {/* 情况 1: 0 张照片/视频 - 仿照食物阁/食忆篇连选的统一优雅留白风格 */}
+      {/* 情况 1: 0 张照片/视频 - 统一优雅留白风格 */}
       {count === 0 && (
         <div
           onClick={() => fileInputRef.current?.click()}
-          className="cursor-pointer border-2 border-dashed border-[#5B7B6D]/20 dark:border-[#5B7B6D]/30 hover:border-[#E88765]/40 dark:hover:border-[#E88765]/50 bg-[#FAF8F5] dark:bg-[#141C18] hover:bg-[#FAF6F0] dark:hover:bg-[#1A2620] rounded-2xl p-6 text-center transition-all group"
+          className="cursor-pointer border-2 border-dashed bg-[#FAF8F5] dark:bg-[#141C18] rounded-2xl p-6 text-center transition-all group"
+          style={{
+            borderColor: isDarkMode ? `${primaryColor}35` : `${primaryColor}25`
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.borderColor = primaryColor;
+            e.currentTarget.style.backgroundColor = isDarkMode ? `${primaryColor}15` : `${primaryColor}08`;
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.borderColor = isDarkMode ? `${primaryColor}35` : `${primaryColor}25`;
+            e.currentTarget.style.backgroundColor = '';
+          }}
         >
-          <Camera className="w-8 h-8 text-[#5B7B6D]/40 group-hover:text-[#E88765] dark:text-[#A7D1BF]/40 dark:group-hover:text-[#E88765] mx-auto mb-2 transition-colors" />
+          <Camera
+            className="w-8 h-8 mx-auto mb-2 transition-colors"
+            style={{ color: `${primaryColor}90` }}
+          />
           <p className="text-xs text-[#6E7C75] dark:text-[#A7B4AD] font-serif">
             {isUploading ? '正在载入处理中...' : '暂无专属留影，轻触即可添加相片或短视频'}
           </p>
@@ -248,7 +395,10 @@ export const PersonAlbum: React.FC<PersonAlbumProps> = ({
               <div
                 key={idx}
                 onClick={() => setPreviewIndex(idx)}
-                className="relative aspect-square rounded-2xl overflow-hidden bg-black/90 border border-[#5B7B6D]/15 dark:border-white/10 group cursor-pointer shadow-2xs hover:shadow-md transition-all active:scale-[0.98]"
+                className="relative aspect-square rounded-2xl overflow-hidden bg-black/90 border group cursor-pointer shadow-2xs hover:shadow-md transition-all active:scale-[0.98]"
+                style={{
+                  borderColor: isDarkMode ? `${primaryColor}35` : `${primaryColor}25`
+                }}
                 title={isVid ? '点击放映视频' : '点击放大查看'}
               >
                 <AlbumThumbnailMedia src={itemUrl} isVid={isVid} alt={`留影 ${idx + 1}`} />
@@ -267,10 +417,22 @@ export const PersonAlbum: React.FC<PersonAlbumProps> = ({
             type="button"
             onClick={() => fileInputRef.current?.click()}
             disabled={isUploading}
-            className="aspect-square rounded-2xl border-2 border-dashed border-[#5B7B6D]/20 dark:border-[#5B7B6D]/30 hover:border-[#E88765]/40 dark:hover:border-[#E88765]/50 bg-[#FAF8F5] dark:bg-[#141C18] hover:bg-[#FAF6F0] dark:hover:bg-[#1A2620] transition-all flex flex-col items-center justify-center gap-1 text-[#5B7B6D] dark:text-[#A7D1BF] group active:scale-95 cursor-pointer"
+            className="aspect-square rounded-2xl border-2 border-dashed bg-[#FAF8F5] dark:bg-[#141C18] transition-all flex flex-col items-center justify-center gap-1 group active:scale-95 cursor-pointer"
+            style={{
+              borderColor: isDarkMode ? `${primaryColor}35` : `${primaryColor}25`,
+              color: isDarkMode ? (theme?.dark?.primary || primaryColor) : primaryColor
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.borderColor = primaryColor;
+              e.currentTarget.style.backgroundColor = isDarkMode ? `${primaryColor}15` : `${primaryColor}08`;
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.borderColor = isDarkMode ? `${primaryColor}35` : `${primaryColor}25`;
+              e.currentTarget.style.backgroundColor = '';
+            }}
             title="添加照片或视频"
           >
-            <Plus className="w-5 h-5 stroke-[2] group-hover:scale-110 text-[#5B7B6D] dark:text-[#A7D1BF] transition-transform" />
+            <Plus className="w-5 h-5 stroke-[2] group-hover:scale-110 transition-transform" />
             <span className="text-[10px] text-[#6E7C75] dark:text-[#A7B4AD]">
               {isUploading ? '处理中' : '添加影像'}
             </span>
@@ -284,7 +446,10 @@ export const PersonAlbum: React.FC<PersonAlbumProps> = ({
           {/* 第 1 项 */}
           <div
             onClick={() => setPreviewIndex(0)}
-            className="relative aspect-square rounded-2xl overflow-hidden bg-black/90 border border-[#5B7B6D]/15 group cursor-pointer shadow-2xs hover:shadow-md transition-all active:scale-[0.98]"
+            className="relative aspect-square rounded-2xl overflow-hidden bg-black/90 border group cursor-pointer shadow-2xs hover:shadow-md transition-all active:scale-[0.98]"
+            style={{
+              borderColor: isDarkMode ? `${primaryColor}35` : `${primaryColor}25`
+            }}
             title="点击查看"
           >
             <AlbumThumbnailMedia src={photos[0]} isVid={isVideoMedia(photos[0])} alt="留影 1" />
@@ -299,7 +464,10 @@ export const PersonAlbum: React.FC<PersonAlbumProps> = ({
           {/* 第 2 项 */}
           <div
             onClick={() => setPreviewIndex(1)}
-            className="relative aspect-square rounded-2xl overflow-hidden bg-black/90 border border-[#5B7B6D]/15 group cursor-pointer shadow-2xs hover:shadow-md transition-all active:scale-[0.98]"
+            className="relative aspect-square rounded-2xl overflow-hidden bg-black/90 border group cursor-pointer shadow-2xs hover:shadow-md transition-all active:scale-[0.98]"
+            style={{
+              borderColor: isDarkMode ? `${primaryColor}35` : `${primaryColor}25`
+            }}
             title="点击查看"
           >
             <AlbumThumbnailMedia src={photos[1]} isVid={isVideoMedia(photos[1])} alt="留影 2" />
@@ -318,7 +486,10 @@ export const PersonAlbum: React.FC<PersonAlbumProps> = ({
               setSelectedIndices(new Set());
               setIsAllModalOpen(true);
             }}
-            className="relative aspect-square rounded-2xl overflow-hidden border border-[#5B7B6D]/25 group cursor-pointer shadow-2xs flex flex-col justify-end p-2.5 active:scale-95 transition-all hover:shadow-md select-none"
+            className="relative aspect-square rounded-2xl overflow-hidden border group cursor-pointer shadow-2xs flex flex-col justify-end p-2.5 active:scale-95 transition-all hover:shadow-md select-none"
+            style={{
+              borderColor: isDarkMode ? `${primaryColor}45` : `${primaryColor}30`
+            }}
             title="展开全量相册"
           >
             {photos[2] && (
@@ -352,30 +523,45 @@ export const PersonAlbum: React.FC<PersonAlbumProps> = ({
       {typeof document !== 'undefined' && createPortal(
         <AnimatePresence>
           {isAllModalOpen && (
-            <div className="fixed inset-0 w-screen h-[100dvh] z-[9999] flex items-center justify-center p-3 sm:p-6 select-none">
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
+            <motion.div
+              key="person-album-all-modal-wrapper"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.18, ease: 'easeOut' }}
+              className="fixed inset-0 w-full h-full z-[9999] flex items-center justify-center p-3 sm:p-6 select-none"
+              style={{ transform: 'translateZ(0)' }}
+            >
+              <div
                 onClick={() => {
                   setIsAllModalOpen(false);
                   setIsMultiSelectMode(false);
                   setSelectedIndices(new Set());
                 }}
-                className="fixed inset-0 bg-[#2B332E]/80 dark:bg-black/85 backdrop-blur-sm"
+                className="absolute inset-0 bg-[#2B332E]/80 dark:bg-black/85 backdrop-blur-xs"
               />
 
               <motion.div
-                initial={{ scale: 0.92, opacity: 0, y: 15 }}
+                initial={{ scale: 0.95, opacity: 0, y: 10 }}
                 animate={{ scale: 1, opacity: 1, y: 0 }}
-                exit={{ scale: 0.92, opacity: 0, y: 15 }}
-                transition={{ duration: 0.2, ease: 'easeOut' }}
-                className="relative w-full max-w-xl bg-[#FAF8F5] dark:bg-[#141E18] rounded-3xl border border-[#5B7B6D]/30 dark:border-white/15 shadow-2xl overflow-hidden flex flex-col font-sans z-10 paper-texture max-h-[88dvh]"
+                exit={{ scale: 0.95, opacity: 0, y: 10 }}
+                transition={{ duration: 0.18, ease: 'easeOut' }}
+                className="relative w-full max-w-xl bg-[#FAF8F5] dark:bg-[#141E18] rounded-3xl border shadow-2xl overflow-hidden flex flex-col font-sans z-10 paper-texture max-h-[88dvh]"
+                style={{
+                  borderColor: isDarkMode ? `${primaryColor}45` : `${primaryColor}30`,
+                }}
               >
                 {/* 弹窗头部：专属相册 + 多选状态 */}
                 <div className="p-4 bg-white/95 dark:bg-[#18251E] border-b border-[#5B7B6D]/15 dark:border-white/10 flex items-center justify-between shrink-0">
                   <div className="flex items-center gap-2">
-                    <div className="w-8 h-8 rounded-xl bg-[#FAF8F5] dark:bg-[#203026] border border-[#5B7B6D]/20 dark:border-white/10 flex items-center justify-center text-[#5B7B6D] dark:text-[#A7D1BF]">
+                    <div
+                      className="w-8 h-8 rounded-xl border flex items-center justify-center transition-colors"
+                      style={{
+                        backgroundColor: isDarkMode ? `${primaryColor}25` : `${primaryColor}15`,
+                        borderColor: `${primaryColor}35`,
+                        color: isDarkMode ? (theme?.dark?.primary || primaryColor) : primaryColor
+                      }}
+                    >
                       <ImageIcon className="w-4 h-4" />
                     </div>
                     <div>
@@ -398,15 +584,27 @@ export const PersonAlbum: React.FC<PersonAlbumProps> = ({
                           setSelectedIndices(new Set());
                         }}
                         disabled={photos.length === 0}
-                        className="px-2.5 py-1 text-xs font-serif text-[#6E7C75] dark:text-[#A7B4AD] hover:text-red-700 dark:hover:text-red-400 hover:bg-red-50/80 dark:hover:bg-red-950/40 border border-[#5B7B6D]/20 dark:border-white/15 hover:border-red-200 dark:hover:border-red-900/50 rounded-xl transition-all flex items-center gap-1.5 cursor-pointer active:scale-95 disabled:opacity-40 disabled:pointer-events-none shadow-2xs"
+                        className="px-2.5 py-1 text-xs font-serif border rounded-xl transition-all flex items-center gap-1.5 cursor-pointer active:scale-95 disabled:opacity-40 disabled:pointer-events-none shadow-2xs"
+                        style={{
+                          backgroundColor: isDarkMode ? `${primaryColor}15` : `${primaryColor}08`,
+                          borderColor: `${primaryColor}35`,
+                          color: isDarkMode ? (theme?.dark?.primary || primaryColor) : primaryColor
+                        }}
                         title="开启多选批量删除"
                       >
-                        <CheckSquare className="w-3.5 h-3.5 text-[#5B7B6D] dark:text-[#A7D1BF]" />
+                        <CheckSquare className="w-3.5 h-3.5" style={{ color: primaryColor }} />
                         <span>多选删除</span>
                       </button>
                     ) : (
                       <div className="flex items-center gap-1.5">
-                        <span className="text-xs font-serif text-[#5B7B6D] dark:text-[#A7D1BF] bg-[#5B7B6D]/10 dark:bg-[#5B7B6D]/20 px-2.5 py-1 rounded-xl border border-[#5B7B6D]/20 dark:border-[#5B7B6D]/40">
+                        <span
+                          className="text-xs font-serif px-2.5 py-1 rounded-xl border"
+                          style={{
+                            backgroundColor: isDarkMode ? `${primaryColor}25` : `${primaryColor}15`,
+                            borderColor: `${primaryColor}40`,
+                            color: isDarkMode ? (theme?.dark?.primary || primaryColor) : primaryColor
+                          }}
+                        >
                           已选择 {selectedIndices.size} 项
                         </span>
                       </div>
@@ -447,9 +645,12 @@ export const PersonAlbum: React.FC<PersonAlbumProps> = ({
                             isMultiSelectMode
                               ? isSelected
                                 ? 'border-2 border-red-500 ring-2 ring-red-400/30 scale-[0.97]'
-                                : 'border border-[#5B7B6D]/20 hover:border-[#5B7B6D]/50'
-                              : 'border border-[#5B7B6D]/20 hover:border-[#5B7B6D]/50 hover:shadow-md'
+                                : 'border hover:border-stone-400'
+                              : 'border hover:shadow-md'
                           }`}
+                          style={!isSelected ? {
+                            borderColor: isDarkMode ? `${primaryColor}35` : `${primaryColor}25`
+                          } : undefined}
                           title={isMultiSelectMode ? '点击勾选/取消勾选' : isVid ? '点击放映视频' : '点击放大查看'}
                         >
                           <AlbumThumbnailMedia
@@ -487,11 +688,22 @@ export const PersonAlbum: React.FC<PersonAlbumProps> = ({
                         type="button"
                         onClick={() => fileInputRef.current?.click()}
                         disabled={isUploading}
-                        className="aspect-square rounded-2xl border-2 border-dashed border-[#5B7B6D]/30 dark:border-white/20 hover:border-[#5B7B6D] bg-white/60 dark:bg-[#18231E]/60 hover:bg-white dark:hover:bg-[#18231E] transition-all flex flex-col items-center justify-center gap-1.5 text-[#5B7B6D] dark:text-[#A7D1BF] group active:scale-95 cursor-pointer shadow-2xs"
+                        className="aspect-square rounded-2xl border-2 border-dashed transition-all flex flex-col items-center justify-center gap-1.5 group active:scale-95 cursor-pointer shadow-2xs"
+                        style={{
+                          borderColor: isDarkMode ? `${primaryColor}35` : `${primaryColor}25`,
+                          backgroundColor: isDarkMode ? '#18231E80' : '#ffffff99'
+                        }}
                         title="添加照片或视频"
                       >
-                        <div className="w-8 h-8 rounded-xl bg-[#FAF8F5] dark:bg-[#203026] border border-[#5B7B6D]/20 dark:border-white/10 flex items-center justify-center shadow-2xs group-hover:scale-105 group-hover:border-[#5B7B6D] transition-all">
-                          <Plus className="w-4 h-4 stroke-[2.2] text-[#5B7B6D] dark:text-[#A7D1BF]" />
+                        <div
+                          className="w-8 h-8 rounded-xl border flex items-center justify-center shadow-2xs group-hover:scale-105 transition-all"
+                          style={{
+                            backgroundColor: isDarkMode ? `${primaryColor}25` : `${primaryColor}15`,
+                            borderColor: `${primaryColor}35`,
+                            color: isDarkMode ? (theme?.dark?.primary || primaryColor) : primaryColor
+                          }}
+                        >
+                          <Plus className="w-4 h-4 stroke-[2.2]" />
                         </div>
                         <span className="text-[11px] font-serif text-[#2B332E] dark:text-[#FAF8F5] font-medium">
                           {isUploading ? '处理中...' : '添加影像'}
@@ -508,7 +720,7 @@ export const PersonAlbum: React.FC<PersonAlbumProps> = ({
                       initial={{ y: 24, opacity: 0 }}
                       animate={{ y: 0, opacity: 1 }}
                       exit={{ y: 24, opacity: 0 }}
-                      transition={{ duration: 0.22, ease: 'easeOut' }}
+                      transition={{ duration: 0.18, ease: 'easeOut' }}
                       className="p-3.5 sm:p-4 bg-white/95 dark:bg-[#18251E] border-t border-[#5B7B6D]/15 dark:border-white/10 flex items-center justify-between gap-2.5 shrink-0 shadow-sm"
                     >
                       {/* 按钮 1: 全选 / 取消全选 */}
@@ -523,7 +735,7 @@ export const PersonAlbum: React.FC<PersonAlbumProps> = ({
                         }}
                         className="flex-1 py-2.5 px-2.5 sm:px-3 rounded-2xl border border-[#5B7B6D]/20 dark:border-white/15 bg-[#FAF8F5] dark:bg-[#141C18] hover:bg-stone-100 dark:hover:bg-[#1E2922] text-[#526058] dark:text-[#C2CDC7] hover:text-[#2B332E] dark:hover:text-white font-medium text-xs font-serif flex items-center justify-center gap-1.5 shadow-2xs active:scale-95 transition-all cursor-pointer"
                       >
-                        <CheckSquare className="w-3.5 h-3.5 text-[#5B7B6D] dark:text-[#A7D1BF]" />
+                        <CheckSquare className="w-3.5 h-3.5" style={{ color: primaryColor }} />
                         <span>{selectedIndices.size === photos.length ? '取消全选' : '全选照片'}</span>
                       </button>
 
@@ -557,7 +769,7 @@ export const PersonAlbum: React.FC<PersonAlbumProps> = ({
                   )}
                 </AnimatePresence>
               </motion.div>
-            </div>
+            </motion.div>
           )}
         </AnimatePresence>,
         document.body
@@ -567,32 +779,47 @@ export const PersonAlbum: React.FC<PersonAlbumProps> = ({
       {typeof document !== 'undefined' && createPortal(
         <AnimatePresence>
           {previewIndex !== null && photos[previewIndex] && (
-            <div className="fixed inset-0 w-screen h-[100dvh] z-[10000] flex items-center justify-center p-3 sm:p-6 select-none">
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
+            <motion.div
+              key="person-album-preview-modal-wrapper"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.18, ease: 'easeOut' }}
+              className="fixed inset-0 w-full h-full z-[10000] flex items-center justify-center p-3 sm:p-6 select-none"
+              style={{ transform: 'translateZ(0)' }}
+            >
+              <div
                 onClick={() => setPreviewIndex(null)}
-                className="fixed inset-0 bg-[#2B332E]/90 dark:bg-black/90 backdrop-blur-md"
+                className="absolute inset-0 bg-[#2B332E]/90 dark:bg-black/90 backdrop-blur-xs"
               />
 
               <motion.div
-                initial={{ scale: 0.92, opacity: 0, y: 15 }}
+                initial={{ scale: 0.95, opacity: 0, y: 10 }}
                 animate={{ scale: 1, opacity: 1, y: 0 }}
-                exit={{ scale: 0.92, opacity: 0, y: 15 }}
-                transition={{ duration: 0.2, ease: 'easeOut' }}
-                className="relative w-full max-w-xl bg-[#FAF8F5] dark:bg-[#141E18] rounded-3xl border border-[#5B7B6D]/30 dark:border-white/15 shadow-2xl overflow-hidden flex flex-col font-sans z-10 paper-texture max-h-[92dvh]"
+                exit={{ scale: 0.95, opacity: 0, y: 10 }}
+                transition={{ duration: 0.18, ease: 'easeOut' }}
+                className="relative w-full max-w-xl bg-[#FAF8F5] dark:bg-[#141E18] rounded-3xl border shadow-2xl overflow-hidden flex flex-col font-sans z-10 paper-texture max-h-[92dvh]"
+                style={{
+                  borderColor: isDarkMode ? `${primaryColor}45` : `${primaryColor}30`,
+                }}
               >
                 {/* 卡片顶端操作条 */}
                 <div className="p-3 sm:px-4 sm:py-3 bg-white/95 dark:bg-[#18251E] border-b border-[#5B7B6D]/15 dark:border-white/10 flex items-center justify-between shrink-0">
                   <div className="flex items-center gap-2">
-                    <span className="text-xs font-mono font-bold bg-[#FAF8F5] dark:bg-[#203026] border border-[#5B7B6D]/20 dark:border-white/15 text-[#5B7B6D] dark:text-[#A7D1BF] px-2.5 py-1 rounded-xl">
+                    <span
+                      className="text-xs font-mono font-bold border px-2.5 py-1 rounded-xl"
+                      style={{
+                        backgroundColor: isDarkMode ? `${primaryColor}25` : `${primaryColor}15`,
+                        borderColor: `${primaryColor}35`,
+                        color: isDarkMode ? (theme?.dark?.primary || primaryColor) : primaryColor
+                      }}
+                    >
                       {previewIndex + 1} / {photos.length}
                     </span>
                     <span className="text-xs text-[#2B332E] dark:text-[#FAF8F5] font-serif font-bold truncate max-w-[180px] flex items-center gap-1.5">
                       {isVideoMedia(photos[previewIndex]) ? (
                         <>
-                          <Film className="w-3.5 h-3.5 text-[#5B7B6D] dark:text-[#A7D1BF]" />
+                          <Film className="w-3.5 h-3.5" style={{ color: primaryColor }} />
                           <span>珍藏影像放映</span>
                         </>
                       ) : (
@@ -626,6 +853,7 @@ export const PersonAlbum: React.FC<PersonAlbumProps> = ({
                   {isVideoMedia(photos[previewIndex]) ? (
                     <VintageVideoPlayer
                       src={photos[previewIndex]}
+                      poster={previewPoster}
                       autoPlayMuted={false}
                       title={`【${personName}】专属影像`}
                       showFullscreenButton={false}
@@ -660,7 +888,7 @@ export const PersonAlbum: React.FC<PersonAlbumProps> = ({
                   )}
                 </div>
               </motion.div>
-            </div>
+            </motion.div>
           )}
         </AnimatePresence>,
         document.body
@@ -670,12 +898,24 @@ export const PersonAlbum: React.FC<PersonAlbumProps> = ({
       {typeof document !== 'undefined' && createPortal(
         <AnimatePresence>
           {deleteConfirmIndex !== null && (
-            <div className="fixed inset-0 w-screen h-[100dvh] z-[10010] flex items-center justify-center p-4 bg-[#2B332E]/60 dark:bg-black/80 backdrop-blur-xs select-none">
+            <motion.div
+              key="person-album-del-modal-wrapper"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.18, ease: 'easeOut' }}
+              className="fixed inset-0 w-full h-full z-[10010] flex items-center justify-center p-4 bg-[#2B332E]/60 dark:bg-black/80 backdrop-blur-xs select-none"
+              style={{ transform: 'translateZ(0)' }}
+            >
               <motion.div
-                initial={{ scale: 0.9, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                exit={{ scale: 0.9, opacity: 0 }}
-                className="bg-[#FAF8F5] dark:bg-[#16211B] w-full max-w-xs p-5 rounded-3xl border border-[#5B7B6D]/20 dark:border-white/15 shadow-2xl text-center space-y-4 paper-texture"
+                initial={{ scale: 0.92, opacity: 0, y: 8 }}
+                animate={{ scale: 1, opacity: 1, y: 0 }}
+                exit={{ scale: 0.92, opacity: 0, y: 8 }}
+                transition={{ duration: 0.18, ease: 'easeOut' }}
+                className="bg-[#FAF8F5] dark:bg-[#16211B] w-full max-w-xs p-5 rounded-3xl border shadow-2xl text-center space-y-4 paper-texture"
+                style={{
+                  borderColor: isDarkMode ? `${primaryColor}40` : `${primaryColor}25`
+                }}
               >
                 <div className="w-12 h-12 rounded-full bg-red-100 dark:bg-red-950/40 border border-red-200 dark:border-red-900/50 text-red-600 dark:text-red-400 flex items-center justify-center mx-auto shadow-2xs">
                   <Trash2 className="w-5 h-5 text-red-600 dark:text-red-400" />
@@ -705,7 +945,7 @@ export const PersonAlbum: React.FC<PersonAlbumProps> = ({
                   </button>
                 </div>
               </motion.div>
-            </div>
+            </motion.div>
           )}
         </AnimatePresence>,
         document.body
@@ -715,12 +955,24 @@ export const PersonAlbum: React.FC<PersonAlbumProps> = ({
       {typeof document !== 'undefined' && createPortal(
         <AnimatePresence>
           {isBatchConfirmOpen && (
-            <div className="fixed inset-0 w-screen h-[100dvh] z-[10020] flex items-center justify-center p-4 bg-[#2B332E]/60 dark:bg-black/80 backdrop-blur-xs select-none">
+            <motion.div
+              key="person-album-batch-modal-wrapper"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.18, ease: 'easeOut' }}
+              className="fixed inset-0 w-full h-full z-[10020] flex items-center justify-center p-4 bg-[#2B332E]/60 dark:bg-black/80 backdrop-blur-xs select-none"
+              style={{ transform: 'translateZ(0)' }}
+            >
               <motion.div
-                initial={{ scale: 0.9, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                exit={{ scale: 0.9, opacity: 0 }}
-                className="bg-[#FAF8F5] dark:bg-[#16211B] w-full max-w-xs p-5 rounded-3xl border border-[#5B7B6D]/20 dark:border-white/15 shadow-2xl text-center space-y-4 paper-texture"
+                initial={{ scale: 0.92, opacity: 0, y: 8 }}
+                animate={{ scale: 1, opacity: 1, y: 0 }}
+                exit={{ scale: 0.92, opacity: 0, y: 8 }}
+                transition={{ duration: 0.18, ease: 'easeOut' }}
+                className="bg-[#FAF8F5] dark:bg-[#16211B] w-full max-w-xs p-5 rounded-3xl border shadow-2xl text-center space-y-4 paper-texture"
+                style={{
+                  borderColor: isDarkMode ? `${primaryColor}40` : `${primaryColor}25`
+                }}
               >
                 <div className="w-12 h-12 rounded-full bg-red-100 dark:bg-red-950/40 border border-red-200 dark:border-red-900/50 text-red-600 dark:text-red-400 flex items-center justify-center mx-auto shadow-2xs">
                   <Trash2 className="w-5 h-5 text-red-600 dark:text-red-400" />
@@ -750,7 +1002,7 @@ export const PersonAlbum: React.FC<PersonAlbumProps> = ({
                   </button>
                 </div>
               </motion.div>
-            </div>
+            </motion.div>
           )}
         </AnimatePresence>,
         document.body
